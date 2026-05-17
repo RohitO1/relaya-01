@@ -1,0 +1,17 @@
+.dart_tool/
+.idea/
+.vscode/
+.gradle/
+build/
+android/.gradle/
+android/app/build/
+android/app/src/main/gen/
+android/app/src/main/assets/
+ios/.symlinks/
+ios/Pods/
+linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/
+node_modules/
+"*.iml"
+"*.class"

@@ -1,0 +1,3176 @@
+// ignore_for_file: prefer_final_fields, unused_field, curly_braces_in_flow_control_structures
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:ui';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:livekit_client/livekit_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'chatrooms_screen.dart';
+import 'bolroom_config.dart';
+
+class BolRoomManager {
+  static OverlayEntry? _overlayEntry;
+  static GlobalKey<_ChatroomLiveScreenState>? _roomKey;
+  static Map<String, dynamic>? _currentRoomArgs;
+
+  static void openRoom(BuildContext context, {
+    required String roomId, 
+    required String roomName, 
+    required String topic, 
+    required String hostId, 
+    required String hostName
+  }) {
+    // If a room is already active, just maximize it
+    if (_roomKey != null) {
+      if (_overlayEntry != null) {
+        maximizeRoom(context);
+      }
+      return;
+    }
+
+    _roomKey = GlobalKey<_ChatroomLiveScreenState>();
+    _currentRoomArgs = {
+      'roomId': roomId, 'roomName': roomName, 'topic': topic,
+      'hostId': hostId, 'hostName': hostName,
+    };
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatroomLiveScreen(
+          key: _roomKey,
+          roomId: roomId, roomName: roomName, topic: topic,
+          hostId: hostId, hostName: hostName,
+        ),
+      ),
+    );
+  }
+
+  static void minimizeRoom(BuildContext context) {
+    if (_roomKey == null || _overlayEntry != null) return;
+    
+    // Tell the state it's minimized
+    _roomKey!.currentState?.setMinimized(true);
+    
+    // Pop the fullscreen route
+    Navigator.pop(context);
+    
+    // Insert the floating overlay
+    _overlayEntry = OverlayEntry(
+      builder: (ctx) => ChatroomLiveScreen(
+        key: _roomKey,
+        roomId: _currentRoomArgs!['roomId'],
+        roomName: _currentRoomArgs!['roomName'],
+        topic: _currentRoomArgs!['topic'],
+        hostId: _currentRoomArgs!['hostId'],
+        hostName: _currentRoomArgs!['hostName'],
+      ),
+    );
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  static void maximizeRoom(BuildContext context) {
+    if (_roomKey == null || _overlayEntry == null) return;
+    
+    // Remove the overlay
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+    
+    // Tell the state it's maximized
+    _roomKey!.currentState?.setMinimized(false);
+    
+    // Push the fullscreen route
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatroomLiveScreen(
+          key: _roomKey,
+          roomId: _currentRoomArgs!['roomId'],
+          roomName: _currentRoomArgs!['roomName'],
+          topic: _currentRoomArgs!['topic'],
+          hostId: _currentRoomArgs!['hostId'],
+          hostName: _currentRoomArgs!['hostName'],
+        ),
+      ),
+    );
+  }
+
+  static void completelyCloseRoom() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+    _roomKey = null;
+    _currentRoomArgs = null;
+  }
+}
+
+class ChatroomLiveScreen extends StatefulWidget {
+  final String roomId;
+  final String roomName;
+  final String topic;
+  final String hostId;
+  final String hostName;
+
+  const ChatroomLiveScreen({
+    Key? key,
+    required this.roomId,
+    required this.roomName,
+    required this.topic,
+    required this.hostId,
+    required this.hostName,
+  }) : super(key: key);
+
+  @override
+  State<ChatroomLiveScreen> createState() => _ChatroomLiveScreenState();
+}
+
+class _ChatroomLiveScreenState extends State<ChatroomLiveScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  final _sb = Supabase.instance.client;
+  final _msgCtrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
+
+  List<Map<String, dynamic>> _members = [];
+  List<Map<String, dynamic>> _messages = [];
+  bool _isMuted = true;
+  bool _isVoiceMasked = true;
+  bool _isHost = false;
+  String _myId = '';
+  String _myName = 'User';
+  String? _myAvatar;
+  Set<String> _speakingIdentities =
+      {}; // LiveKit: uses string identity = supabase user_id
+  Set<String> _seenMemberIds = {};
+  bool _micRequestSent = false;
+  final Map<String, String> _memberReactions =
+      {}; // uid -> emoji (shown on avatar for 1.5s)
+
+  // Join toast banner
+  String? _joinToastText;
+  Timer? _toastTimer;
+
+  // LiveKit
+  Room? _livekitRoom;
+  EventsListener<RoomEvent>? _roomListener;
+  bool _voiceReady = false;
+  late AnimationController _pulseCtrl;
+
+  // Realtime Channels
+  RealtimeChannel? _memberChannel;
+  RealtimeChannel? _msgChannel;
+  final ValueNotifier<List<Map<String, dynamic>>> _membersNotify = ValueNotifier([]);
+  final ValueNotifier<Set<String>> _micRequestsNotify = ValueNotifier({});
+
+  // Atom orbital animation
+  late AnimationController _orbitCtrl;
+  late AnimationController _orbitCtrl2;
+
+  // Chat overlay - Instagram style
+  bool _showChat = false;
+  bool _chatActive = false; // full opacity mode
+  Timer? _chatFadeTimer;
+
+  // Reactions
+  final List<_FloatingReaction> _floatingReactions = [];
+  int _reactionIdCounter = 0;
+
+  // Mic requests
+  bool _hasMicPermission = false;
+  final Set<String> _micRequests = {};
+
+  // Ban list
+  final Set<String> _bannedUserIds = {};
+
+  // X Spaces features
+  bool _isRecording = false;
+  bool _isMinimized = false;
+  double _minimizedX = 20;
+  double _minimizedY = 100;
+
+  Future<void> _sendSystemCommand(String cmd, String targetUid) async {
+    try {
+      await _sb.from('chatroom_messages').insert({
+        'room_id': widget.roomId,
+        'user_id': _myId,
+        'user_name': 'System',
+        'text': 'SYSTEM_CMD:$cmd:$targetUid',
+        'is_system': true,
+        'created_at': DateTime.now().toUtc().toIso8601String()
+      });
+    } catch (_) {}
+  }
+  String? _pinnedPost;
+  String _speakPermission = 'everyone'; // from room DB
+  bool _showPinnedInput = false;
+  final TextEditingController _pinnedCtrl = TextEditingController();
+
+  // Avatar colors per user
+  final _avatarColors = <String, Color>{};
+  final _colorPool = [
+    BolRoomColors.cyan,
+    BolRoomColors.purple,
+    BolRoomColors.accent,
+    BolRoomColors.gold,
+    const Color(0xFF38D9A9),
+    const Color(0xFF4ECDC4),
+    const Color(0xFFFF6B6B),
+    const Color(0xFF845EC2)
+  ];
+
+  Color _colorForUser(String id) {
+    return _avatarColors.putIfAbsent(
+        id, () => _colorPool[_avatarColors.length % _colorPool.length]);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _pulseCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1200))
+      ..repeat(reverse: true);
+    _orbitCtrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 20))
+          ..repeat();
+    _orbitCtrl2 =
+        AnimationController(vsync: this, duration: const Duration(seconds: 30))
+          ..repeat();
+    _myId = _sb.auth.currentUser?.id ?? '';
+    _isHost = _myId == widget.hostId;
+    _hasMicPermission = _isHost;
+    _isMuted = !_isHost;
+
+    _subscribeRealtime();
+    _joinRoom();
+    _loadRoomMeta();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Auto-leave room on dispose only if it's completely closing
+    if (BolRoomManager._roomKey == null) {
+      _leaveRoom();
+    }
+    _pulseCtrl.dispose();
+    _orbitCtrl.dispose();
+    _orbitCtrl2.dispose();
+    _chatFadeTimer?.cancel();
+    _toastTimer?.cancel();
+    _memberChannel?.unsubscribe();
+    _msgChannel?.unsubscribe();
+    _msgCtrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Future<bool> didPopRoute() async {
+    if (_showChat) {
+      setState(() => _showChat = false);
+      return true;
+    }
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return false; // let system pop bottom sheet
+    
+    if (!_isMinimized) {
+      BolRoomManager.minimizeRoom(context);
+      return true;
+    }
+    return false;
+  }
+
+  void setMinimized(bool val) {
+    if (mounted) {
+      setState(() {
+        _isMinimized = val;
+      });
+    }
+  }
+
+  Future<void> _loadRoomMeta() async {
+    try {
+      final res = await _sb
+          .from('chatrooms')
+          .select('is_recording, pinned_post, speak_permission')
+          .eq('id', widget.roomId)
+          .maybeSingle();
+      if (res != null && mounted)
+        setState(() {
+          _isRecording = res['is_recording'] == true;
+          _pinnedPost = res['pinned_post']?.toString();
+          _speakPermission = res['speak_permission']?.toString() ?? 'everyone';
+        });
+    } catch (_) {}
+  }
+
+  Future<void> _toggleRecording() async {
+    final next = !_isRecording;
+    setState(() => _isRecording = next);
+    await _sb
+        .from('chatrooms')
+        .update({'is_recording': next}).eq('id', widget.roomId);
+    _showToast(next ? '🔴 Recording started' : '⏹️ Recording stopped');
+  }
+
+  Future<void> _setPinnedPost(String text) async {
+    setState(() {
+      _pinnedPost = text.trim().isEmpty ? null : text.trim();
+      _showPinnedInput = false;
+    });
+    await _sb
+        .from('chatrooms')
+        .update({'pinned_post': text.trim().isEmpty ? null : text.trim()}).eq(
+            'id', widget.roomId);
+  }
+
+  String _firstName(String fullName) {
+    final trimmed = fullName.trim();
+    if (trimmed.isEmpty) return '?';
+    return trimmed.split(' ').first;
+  }
+  Future<void> _loadMyProfile() async {
+    // Always use BolRoom anonymous profile from Supabase
+    try {
+      final bp = await _sb
+          .from('bolroom_profiles')
+          .select('anon_name, avatar_key, aura_color')
+          .eq('id', _myId)
+          .maybeSingle();
+      if (bp != null && mounted) {
+        final anonName = (bp['anon_name'] ?? '').toString().trim();
+        if (anonName.isNotEmpty) {
+          setState(() {
+            _myName = anonName;
+            _myAvatar = null;
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+    // Fallback to main profile if no bolroom profile exists
+    try {
+      final p = await _sb
+          .from('profiles')
+          .select('name, full_name, avatar_url')
+          .eq('id', _myId)
+          .maybeSingle();
+      if (p != null && mounted) {
+        final loaded = (p['name'] ?? p['full_name'] ?? '').toString().trim();
+        setState(() {
+          _myName = loaded.isNotEmpty ? loaded : 'User';
+          _myAvatar = p['avatar_url'];
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _joinRoom() async {
+    await _loadMyProfile(); // must load BEFORE LiveKit token & DB insert
+    try {
+      await _sb
+          .from('chatroom_members')
+          .delete()
+          .eq('room_id', widget.roomId)
+          .eq('user_id', _myId);
+      await _sb.from('chatroom_members').insert({
+        'room_id': widget.roomId,
+        'user_id': _myId,
+        'user_name': _myName,
+        'avatar_url': _myAvatar,
+        'is_speaker': _isHost,
+        'is_muted': _isMuted,
+        'joined_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      await _sb.from('chatroom_messages').insert({
+        'room_id': widget.roomId,
+        'user_id': _myId,
+        'user_name': _myName,
+        'text': '${_firstName(_myName)} joined the room 👋',
+        'is_system': true,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('Join DB: $e');
+    }
+    _loadMembers();
+    _loadMessages();
+    _initLiveKit(); // init voice AFTER profile is loaded so token has correct identity
+  }
+
+  // ── Leave: just remove yourself; transfer host if you're the host ──
+  Future<void> _leaveRoom() async {
+    try {
+      await _livekitRoom?.disconnect();
+      // Optimistic local update
+      if (mounted) setState(() => _members.removeWhere((m) => m['user_id'] == _myId));
+      await _sb
+          .from('chatroom_members')
+          .delete()
+          .eq('room_id', widget.roomId)
+          .eq('user_id', _myId);
+      // Check remaining members
+      final remaining = await _sb
+          .from('chatroom_members')
+          .select('user_id, user_name')
+          .eq('room_id', widget.roomId)
+          .order('joined_at');
+      if (remaining.isEmpty) {
+        // Auto-dissolve: no one left
+        await _sb.from('chatrooms').delete().eq('id', widget.roomId);
+      } else if (_isHost) {
+        // Transfer host to next person
+        final nextHostId = remaining[0]['user_id'];
+        final nextHostName = remaining[0]['user_name'] ?? 'Someone';
+        await _sb
+            .from('chatrooms')
+            .update({'host_id': nextHostId, 'host_name': nextHostName}).eq(
+                'id', widget.roomId);
+        await _sb.from('chatroom_messages').insert({
+          'room_id': widget.roomId,
+          'user_id': nextHostId,
+          'user_name': nextHostName,
+          'text': '${_firstName(nextHostName)} is now the host 👑',
+          'is_system': true,
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        });
+      }
+    } catch (e) {
+      debugPrint('Leave: $e');
+    }
+  }
+
+  // ── End: dissolve the entire room ──
+  Future<void> _endRoom() async {
+    try {
+      await _livekitRoom?.disconnect();
+      if (mounted) setState(() => _members.clear());
+      await _sb.from('chatroom_members').delete().eq('room_id', widget.roomId);
+      await _sb.from('chatrooms').delete().eq('id', widget.roomId);
+    } catch (e) {
+      debugPrint('End room: $e');
+    }
+  }
+
+  Future<void> _loadMembers() async {
+    try {
+      final res = await _sb
+          .from('chatroom_members')
+          .select('*')
+          .eq('room_id', widget.roomId)
+          .order('joined_at');
+      if (!mounted) return;
+      final newList = List<Map<String, dynamic>>.from(res);
+      // Show join toast for newly arrived members
+      for (final m in newList) {
+        final uid = m['user_id']?.toString() ?? '';
+        if (uid.isNotEmpty && !_seenMemberIds.contains(uid)) {
+          _seenMemberIds.add(uid);
+          final joinerName = m['user_name'] ?? 'Someone';
+          final toast =
+              uid == _myId ? 'You joined the room 🎉' : '$joinerName joined 👋';
+          _showToast(toast);
+        }
+      }
+      // Track who has requested mic
+      final requested = newList
+          .where((m) => m['mic_requested'] == true)
+          .map((m) => m['user_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      setState(() {
+        _members = newList;
+        _micRequests.addAll(requested);
+        _membersNotify.value = newList;
+        _micRequestsNotify.value = Set.from(_micRequests);
+
+        // Sync local state for current user
+        final me = newList.firstWhere((m) => m['user_id'] == _myId,
+            orElse: () => {});
+        if (me.isNotEmpty) {
+          _hasMicPermission = me['is_speaker'] == true || _isHost;
+          _micRequestSent = me['mic_requested'] == true;
+          if (_hasMicPermission) {
+            _isMuted = me['is_muted'] ?? true;
+          }
+        }
+      });
+    } catch (_) {}
+  }
+
+  void _showToast(String text) {
+    _toastTimer?.cancel();
+    setState(() => _joinToastText = text);
+    _toastTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _joinToastText = null);
+    });
+  }
+
+  Future<void> _loadMessages() async {
+    try {
+      final res = await _sb
+          .from('chatroom_messages')
+          .select('*')
+          .eq('room_id', widget.roomId)
+          .order('created_at', ascending: true)
+          .limit(100);
+      if (mounted) {
+        setState(() => _messages = List<Map<String, dynamic>>.from(res));
+        _scrollToBottom();
+      }
+    } catch (_) {}
+  }
+
+  void _subscribeRealtime() {
+    // Clean up existing if any (safety for hot restart)
+    if (_memberChannel != null) _sb.removeChannel(_memberChannel!);
+    if (_msgChannel != null) _sb.removeChannel(_msgChannel!);
+
+    _memberChannel = _sb.channel('rm_${widget.roomId}').onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'chatroom_members',
+        filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'room_id',
+            value: widget.roomId),
+        callback: (p) {
+          if (!mounted) return;
+          if (p.eventType == PostgresChangeEvent.delete) {
+            final old = p.oldRecord['user_id']?.toString();
+            if (old != null)
+              setState(() =>
+                  _members.removeWhere((m) => m['user_id']?.toString() == old));
+          } else if (p.eventType == PostgresChangeEvent.insert) {
+            if (p.newRecord.isNotEmpty) {
+              final uid = p.newRecord['user_id']?.toString() ?? '';
+              if (!_members.any((m) => m['user_id'] == uid)) {
+                setState(() => _members.add(p.newRecord));
+              }
+            }
+          } else if (p.eventType == PostgresChangeEvent.update) {
+            if (p.newRecord.isNotEmpty) {
+              final uid = p.newRecord['user_id']?.toString() ?? '';
+              setState(() {
+                final idx = _members.indexWhere((m) => m['user_id'] == uid);
+                if (idx != -1)
+                  _members[idx] = p.newRecord;
+                else
+                  _members.add(p.newRecord);
+                if (uid == _myId) {
+                  final nowSpeaker = p.newRecord['is_speaker'] == true;
+                  final nowMuted = p.newRecord['is_muted'] == true;
+                  
+                  if (nowSpeaker && !_hasMicPermission) {
+                    _hasMicPermission = true;
+                    _micRequestSent = false;
+                    _isMuted = false;
+                    _livekitRoom?.localParticipant?.setMicrophoneEnabled(true);
+                    _showToast('You can speak now! 🎙️');
+                  } else if (!nowSpeaker && _hasMicPermission && !_isHost) {
+                    _hasMicPermission = false;
+                    _micRequestSent = false;
+                    _isMuted = true;
+                    _livekitRoom?.localParticipant?.setMicrophoneEnabled(false);
+                    _showToast('Your mic was revoked by the host');
+                  } else if (_hasMicPermission) {
+                    if (nowMuted && !_isMuted) {
+                      _isMuted = true;
+                      _livekitRoom?.localParticipant?.setMicrophoneEnabled(false);
+                      _showToast('You were muted by the host 🔇');
+                    } else if (!nowMuted && _isMuted) {
+                      _isMuted = false;
+                      _livekitRoom?.localParticipant?.setMicrophoneEnabled(true);
+                      _showToast('Your mic was unmuted by the host 🎙️');
+                    }
+                  }
+                }
+                // Sync mic request state & show popup to host
+                if (p.newRecord['mic_requested'] == true) {
+                  if (!_micRequests.contains(uid)) {
+                    _micRequests.add(uid);
+                    if (_isHost || _amICohost()) {
+                      _showMicRequestNotification(
+                          p.newRecord['user_name'] ?? 'Someone', uid);
+                    }
+                  }
+                } else {
+                  _micRequests.remove(uid);
+                }
+                _membersNotify.value = List.from(_members);
+                _micRequestsNotify.value = Set.from(_micRequests);
+              });
+            }
+          }
+        });
+    _memberChannel!.subscribe();
+
+    _msgChannel = _sb.channel('rc_${widget.roomId}').onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'chatroom_messages',
+        filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'room_id',
+            value: widget.roomId),
+        callback: (p) {
+          if (!mounted) return;
+          if (p.newRecord.isNotEmpty) {
+            final txt = p.newRecord['text']?.toString() ?? '';
+            if (p.newRecord['is_system'] == true && txt.startsWith('SYSTEM_CMD:')) {
+              if (txt == 'SYSTEM_CMD:GRANT_MIC:$_myId') {
+                _sb.from('chatroom_members').update({'is_speaker': true, 'is_muted': false, 'mic_requested': false}).eq('room_id', widget.roomId).eq('user_id', _myId);
+              } else if (txt == 'SYSTEM_CMD:REVOKE_MIC:$_myId') {
+                _sb.from('chatroom_members').update({'is_speaker': false, 'is_muted': true, 'mic_requested': false}).eq('room_id', widget.roomId).eq('user_id', _myId);
+              } else if (txt == 'SYSTEM_CMD:MUTE:$_myId') {
+                _sb.from('chatroom_members').update({'is_muted': true}).eq('room_id', widget.roomId).eq('user_id', _myId);
+              } else if (txt == 'SYSTEM_CMD:UNMUTE:$_myId') {
+                _sb.from('chatroom_members').update({'is_muted': false}).eq('room_id', widget.roomId).eq('user_id', _myId);
+              } else if (txt == 'SYSTEM_CMD:KICK:$_myId') {
+                BolRoomManager.completelyCloseRoom();
+                if (!_isMinimized && mounted) Navigator.pop(context);
+              } else if (txt == 'SYSTEM_CMD:END') {
+                BolRoomManager.completelyCloseRoom();
+                if (!_isMinimized && mounted) Navigator.pop(context);
+                _showToast('Room ended by host');
+              } else if (txt == 'SYSTEM_CMD:NEW_HOST:$_myId') {
+                setState(() {
+                  _isHost = true;
+                  _hasMicPermission = true;
+                  _isMuted = false;
+                });
+                _livekitRoom?.localParticipant?.setMicrophoneEnabled(true);
+                _showToast('You are now the host 👑');
+              }
+              return; // don't add to chat UI
+            }
+
+            setState(() {
+              _messages.add(p.newRecord);
+            });
+            _scrollToBottom();
+          }
+        });
+    _msgChannel!.subscribe();
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(100.ms, () {
+      if (_scrollCtrl.hasClients)
+        _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent,
+            duration: 200.ms, curve: Curves.easeOut);
+    });
+  }
+
+  // ── HMAC-SHA256 JWT using dart:crypto (Google-maintained) ──
+  static String _base64UrlNoPad(List<int> bytes) =>
+      base64Url.encode(bytes).replaceAll('=', '');
+
+  static String _b64NoPad(String s) =>
+      base64Url.encode(utf8.encode(s)).replaceAll('=', '');
+
+  String _buildLiveKitToken(String roomName) {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final payload = {
+      'metadata': jsonEncode({'avatarUrl': _myAvatar ?? ''}),
+      'name': _myName,
+      'video': {
+        'roomJoin': true,
+        'room': roomName,
+        'canPublish': true,
+        'canSubscribe': true,
+        'canPublishData': true,
+      },
+      'iss': BolRoomConfig.livekitApiKey,
+      'exp': now + 21600,
+      'nbf': now,
+      'sub': _myId,
+    };
+
+    // Header MUST match official LiveKit SDK: no "typ" field
+    const header = '{"alg":"HS256"}';
+    final signingInput =
+        '${_b64NoPad(header)}.${_b64NoPad(jsonEncode(payload))}';
+
+    final hmac = Hmac(sha256, utf8.encode(BolRoomConfig.livekitApiSecret));
+    final sig = hmac.convert(utf8.encode(signingInput)).bytes;
+
+    return '$signingInput.${_base64UrlNoPad(sig)}';
+  }
+
+  Future<void> _initLiveKit() async {
+    if (kIsWeb) return;
+    if (!BolRoomConfig.isVoiceEnabled) return;
+
+    // ── Step 1: Mic permission ─────────────────────────────────
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      _showToast(status.isPermanentlyDenied
+          ? 'Mic blocked. Go to Settings → Apps → Meetra → Permissions.'
+          : 'Microphone permission denied. Tap mic to retry.');
+      return;
+    }
+
+    // ── Step 2: Build token with pure-Dart HMAC-SHA256 ────────
+    _showToast('Connecting to voice...');
+    final roomName = 'bolroom-${widget.roomId}';
+    final String token;
+    try {
+      token = _buildLiveKitToken(roomName);
+      debugPrint('LiveKit token built ✅ room=$roomName identity=$_myId');
+    } catch (e, st) {
+      debugPrint('LiveKit token build error: $e\n$st');
+      _showToast('Token error: $e');
+      return;
+    }
+
+    // ── Step 3: Connect ───────────────────────────────────────
+    try {
+      _livekitRoom = Room(
+        roomOptions: const RoomOptions(
+          adaptiveStream: true,
+          dynacast: true,
+        ),
+      );
+      _roomListener = _livekitRoom!.createListener();
+
+      _roomListener!
+        ..on<RoomConnectedEvent>((_) async {
+          debugPrint('LiveKit: connected ✅');
+          if (mounted) setState(() => _voiceReady = true);
+          try {
+            await Hardware.instance.setSpeakerphoneOn(true);
+          } catch (_) {}
+          await _livekitRoom!.localParticipant?.setMicrophoneEnabled(!_isMuted);
+          _showToast(_isMuted
+              ? 'Voice connected 🎙️ (mic muted)'
+              : 'Voice connected 🎙️ Speak now!');
+        })
+        ..on<RoomDisconnectedEvent>((e) {
+          debugPrint('LiveKit: disconnected — ${e.reason}');
+          if (mounted) setState(() => _voiceReady = false);
+        })
+        ..on<ParticipantConnectedEvent>((_) => _loadMembers())
+        ..on<ParticipantDisconnectedEvent>((_) => _loadMembers())
+        ..on<ActiveSpeakersChangedEvent>((e) {
+          if (!mounted) return;
+          setState(() {
+            _speakingIdentities = e.speakers.map((p) => p.identity).toSet();
+          });
+        });
+
+      await _livekitRoom!.connect(
+        BolRoomConfig.livekitUrl,
+        token,
+        fastConnectOptions: FastConnectOptions(
+          microphone: TrackOption(enabled: !_isMuted),
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('LiveKit connect error: $e\n$st');
+      _showToast('Voice failed: $e');
+    }
+  }
+
+  void _toggleMute() async {
+    final newMuted = !_isMuted;
+    setState(() => _isMuted = newMuted);
+    HapticFeedback.mediumImpact();
+
+    if (_livekitRoom == null) {
+      // Try to init if not yet connected
+      _initLiveKit();
+    } else {
+      await _livekitRoom!.localParticipant?.setMicrophoneEnabled(!newMuted);
+      debugPrint('LiveKit mic: muted=$newMuted');
+    }
+
+    try {
+      await _sb
+          .from('chatroom_members')
+          .update({'is_muted': newMuted})
+          .eq('room_id', widget.roomId)
+          .eq('user_id', _myId);
+    } catch (_) {}
+  }
+
+  void _sendMessage() async {
+    if (_msgCtrl.text.trim().isEmpty) return;
+    final text = _msgCtrl.text.trim();
+    _msgCtrl.clear();
+    try {
+      await _sb.from('chatroom_messages').insert({
+        'room_id': widget.roomId,
+        'user_id': _myId,
+        'user_name': _myName,
+        'text': text,
+        'is_system': false,
+        'created_at': DateTime.now().toUtc().toIso8601String()
+      });
+    } catch (_) {}
+  }
+
+  bool _amICohost() =>
+      _members.any((m) => m['user_id'] == _myId && m['is_cohost'] == true);
+  int get _speakerCount => _members
+      .where((m) =>
+          m['is_speaker'] == true ||
+          m['is_cohost'] == true ||
+          m['user_id'] == widget.hostId)
+      .length;
+  int get _cohostCount => _members.where((m) => m['is_cohost'] == true).length;
+
+  // In-app mic request notification banner with Approve/Deny buttons
+  void _showMicRequestNotification(String name, String uid) {
+    if (!(_isHost || _amICohost())) return;
+
+    late final OverlayEntry overlayEntry;
+    overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 10,
+        left: 16,
+        right: 16,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                  colors: [Color(0xFF1A2744), Color(0xFF0D1B38)]),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.amber.withValues(alpha: 0.5)),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.amber.withValues(alpha: 0.15), blurRadius: 20)
+              ],
+            ),
+            child: Row(children: [
+              Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.15),
+                      shape: BoxShape.circle),
+                  child: const Icon(Icons.mic, color: Colors.amber, size: 16)),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Mic Request',
+                      style: GoogleFonts.inter(
+                          color: Colors.amber,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800)),
+                  Text('${_firstName(name)} wants to speak',
+                      style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600)),
+                ],
+              )),
+              const SizedBox(width: 8),
+              // Approve (Tick)
+              GestureDetector(
+                onTap: () async {
+                  overlayEntry.remove();
+                  await _sb.from('chatroom_members').update({
+                    'is_speaker': true,
+                    'is_muted': false,
+                    'mic_requested': false
+                  }).eq('room_id', widget.roomId).eq('user_id', uid);
+                  await _sendSystemCommand('GRANT_MIC', uid);
+                  setState(() => _micRequests.remove(uid));
+                  _showToast('Mic granted ✅');
+                },
+                child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: const BoxDecoration(
+                        color: Colors.green, shape: BoxShape.circle),
+                    child:
+                        const Icon(Icons.check, color: Colors.white, size: 16)),
+              ),
+              const SizedBox(width: 8),
+              // Deny (Cross)
+              GestureDetector(
+                onTap: () async {
+                  overlayEntry.remove();
+                  await _sb
+                      .from('chatroom_members')
+                      .update({'mic_requested': false})
+                      .eq('room_id', widget.roomId)
+                      .eq('user_id', uid);
+                  setState(() => _micRequests.remove(uid));
+                },
+                child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        shape: BoxShape.circle),
+                    child:
+                        const Icon(Icons.close, color: Colors.white, size: 16)),
+              ),
+            ]),
+          ).animate().slideY(begin: -1, end: 0, duration: 300.ms).fadeIn(),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(overlayEntry);
+    Timer(const Duration(seconds: 2), () {
+      if (overlayEntry.mounted) overlayEntry.remove();
+    });
+  }
+
+  // Quick single-action popup: mute OR give mic
+  void _showQuickMicAction(Map<String, dynamic> member, bool hasMic) {
+    final uid = member['user_id']?.toString() ?? '';
+    final name = member['user_name'] ?? 'User';
+    if (uid.isEmpty || uid == widget.hostId) return;
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        decoration: BoxDecoration(
+          color: const Color(0xFF111827),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.white12,
+                  borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 16),
+          Row(children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _colorForUser(uid).withValues(alpha: 0.15)),
+              child: Center(
+                  child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: GoogleFonts.poppins(
+                          color: _colorForUser(uid),
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold))),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(name,
+                      style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
+                  Text(
+                      hasMic
+                          ? '🎙️ Has mic permission'
+                          : '🎧 No mic permission',
+                      style: GoogleFonts.inter(
+                          color:
+                              hasMic ? const Color(0xFF7856FF) : Colors.white38,
+                          fontSize: 12)),
+                ])),
+          ]),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(context);
+                if (hasMic) {
+                  // Mute and revoke mic
+                  await _sb
+                      .from('chatroom_members')
+                      .update({
+                        'is_muted': true,
+                        'is_speaker': false,
+                        'mic_requested': false
+                      })
+                      .eq('room_id', widget.roomId)
+                      .eq('user_id', uid);
+                  await _sendSystemCommand('REVOKE_MIC', uid);
+                  setState(() => _micRequests.remove(uid));
+                  _showToast('${_firstName(name)} muted & mic revoked');
+                } else {
+                  // Grant mic
+                  await _sb
+                      .from('chatroom_members')
+                      .update({
+                        'is_speaker': true,
+                        'is_muted': false,
+                        'mic_requested': false
+                      })
+                      .eq('room_id', widget.roomId)
+                      .eq('user_id', uid);
+                  await _sendSystemCommand('GRANT_MIC', uid);
+                  setState(() => _micRequests.remove(uid));
+                  _showToast('Mic granted to ${_firstName(name)} 🎙️');
+                }
+                _loadMembers();
+              },
+              icon: Icon(hasMic ? Icons.mic_off : Icons.mic, size: 20),
+              label: Text(
+                  hasMic ? 'Mute This Participant' : 'Give Mic Permission',
+                  style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w800, fontSize: 15)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    hasMic ? Colors.redAccent : const Color(0xFF7856FF),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  void _showMicRequestPopup(String name, String uid) {
+    late final Timer _dialogTimer;
+    showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (ctx) {
+          _dialogTimer = Timer(const Duration(seconds: 4), () {
+            if (Navigator.of(ctx).canPop()) Navigator.of(ctx).pop();
+          });
+          return AlertDialog(
+            backgroundColor: BolRoomColors.card,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(children: [
+              Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                      color: BolRoomColors.cyan.withValues(alpha: 0.15),
+                      shape: BoxShape.circle),
+                  child: const Icon(Icons.mic,
+                      color: BolRoomColors.cyan, size: 20)),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: Text('Mic Request',
+                      style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold))),
+            ]),
+            content: Text('${_firstName(name)} has requested mic permission',
+                style: GoogleFonts.inter(
+                    color: BolRoomColors.muted, fontSize: 14)),
+            actions: [
+              TextButton(
+                  onPressed: () {
+                    _dialogTimer.cancel();
+                    Navigator.pop(ctx);
+                    _sb
+                        .from('chatroom_members')
+                        .update({'mic_requested': false})
+                        .eq('room_id', widget.roomId)
+                        .eq('user_id', uid);
+                    setState(() => _micRequests.remove(uid));
+                  },
+                  child: Text('Decline',
+                      style: GoogleFonts.inter(color: Colors.redAccent))),
+              ElevatedButton(
+                onPressed: () async {
+                  _dialogTimer.cancel();
+                  Navigator.pop(ctx);
+                  await _sb
+                      .from('chatroom_members')
+                      .update({
+                        'is_speaker': true,
+                        'is_muted': false,
+                        'mic_requested': false
+                      })
+                      .eq('room_id', widget.roomId)
+                      .eq('user_id', uid);
+                  await _sendSystemCommand('GRANT_MIC', uid);
+                  setState(() => _micRequests.remove(uid));
+                  _showToast('Mic granted to ${_firstName(name)} 🎙️');
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: BolRoomColors.cyan,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12))),
+                child: Text('Allow',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        });
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isMinimized) {
+      return Positioned(
+        left: _minimizedX,
+        top: _minimizedY,
+        child: GestureDetector(
+          onPanUpdate: (details) {
+            setState(() {
+              _minimizedX += details.delta.dx;
+              _minimizedY += details.delta.dy;
+            });
+          },
+          onPanEnd: (details) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final screenHeight = MediaQuery.of(context).size.height;
+            setState(() {
+              if (_minimizedX + 100 < screenWidth / 2) {
+                _minimizedX = 16; // snap to left
+              } else {
+                _minimizedX = screenWidth - 200 - 16; // snap to right (pill width 200)
+              }
+              // Prevent dragging out of vertical bounds
+              if (_minimizedY < 50) _minimizedY = 50;
+              if (_minimizedY > screenHeight - 120) _minimizedY = screenHeight - 120;
+            });
+          },
+          onTap: () {
+            BolRoomManager.maximizeRoom(context);
+          },
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 200, height: 64,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                color: const Color(0xFF13101E).withOpacity(0.95),
+                boxShadow: [BoxShadow(color: BolRoomColors.cyan.withOpacity(0.2), blurRadius: 15, spreadRadius: 1)],
+                border: Border.all(color: BolRoomColors.cyan.withOpacity(0.3), width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  AnimatedBuilder(
+                    animation: _pulseCtrl,
+                    builder: (ctx, child) {
+                      return Icon(
+                        _isMuted ? Icons.mic_off : Icons.mic, 
+                        color: _isMuted ? Colors.white54 : BolRoomColors.cyan, 
+                        size: 20 + (_isMuted ? 0 : (_pulseCtrl.value * 4))
+                      );
+                    }
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.roomName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Text('${_members.length} listening', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                      ],
+                    )
+                  ),
+                  const Icon(Icons.open_in_full, color: Colors.white70, size: 18),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Material(
+      type: MaterialType.transparency,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0C0914),
+        body: Stack(children: [
+          AnimatedBuilder(
+            animation: _pulseCtrl,
+            builder: (ctx, _) {
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0, -0.6),
+                    radius: 1.2 + (_pulseCtrl.value * 0.1),
+                    colors: [
+                      _colorForUser(widget.hostId).withOpacity(0.15 + (_pulseCtrl.value * 0.05)),
+                      const Color(0xFF0C0914),
+                    ],
+                  ),
+                ),
+              );
+            }
+          ),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: SafeArea(
+                  child: Stack(children: [
+                    Column(children: [
+                      _buildTopBar(),
+                      // Pinned post banner
+                      if (_pinnedPost != null && _pinnedPost!.isNotEmpty)
+                        _buildPinnedBanner(),
+                      Expanded(
+                          child: Stack(children: [
+                        _buildGridStage(),
+                        _buildLiveChat(),
+                      ])),
+                    ]),
+                    _buildBottomBar(),
+              ])),
+            ),
+          ),
+          ..._floatingReactions.map((r) => _buildFloatingEmoji(r)),
+          if (_showChat) _buildChatOverlay(),
+          if (_joinToastText != null)
+            Positioned(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 16,
+                right: 16,
+                child: _buildToastBanner(_joinToastText!)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildPinnedBanner() {
+    return GestureDetector(
+      onLongPress: _isHost
+          ? () => setState(() {
+                _pinnedPost = null;
+                _sb
+                    .from('chatrooms')
+                    .update({'pinned_post': null}).eq('id', widget.roomId);
+              })
+          : null,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: BolRoomColors.gold.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: BolRoomColors.gold.withValues(alpha: 0.25)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.push_pin, color: BolRoomColors.gold, size: 14),
+          const SizedBox(width: 8),
+          Expanded(
+              child: Text(_pinnedPost!,
+                  style: GoogleFonts.inter(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 12))),
+          if (_isHost)
+            GestureDetector(
+                onTap: () => setState(() {
+                      _pinnedPost = null;
+                      _sb.from('chatrooms').update({'pinned_post': null}).eq(
+                          'id', widget.roomId);
+                    }),
+                child:
+                    const Icon(Icons.close, color: Colors.white38, size: 14)),
+        ]),
+      ),
+    ).animate().fadeIn().slideY(begin: -0.2, end: 0);
+  }
+
+  Widget _buildToastBanner(String text) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+              colors: [Color(0xFF1A2744), Color(0xFF0D1B38)]),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: BolRoomColors.cyan.withValues(alpha: 0.3)),
+          boxShadow: [
+            BoxShadow(
+                color: BolRoomColors.cyan.withValues(alpha: 0.15),
+                blurRadius: 20)
+          ],
+        ),
+        child: Row(children: [
+          Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                  color: BolRoomColors.cyan.withValues(alpha: 0.15),
+                  shape: BoxShape.circle),
+              child: const Icon(Icons.person_add,
+                  color: BolRoomColors.cyan, size: 16)),
+          const SizedBox(width: 10),
+          Expanded(
+              child: Text(text,
+                  style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600))),
+        ]),
+      ),
+    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.3, end: 0);
+  }
+
+  // ==========================================
+  // TOP BAR
+  // ==========================================
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          GestureDetector(
+              onTap: () {
+                BolRoomManager.minimizeRoom(context);
+              },
+              child: const Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 32)),
+          Expanded(
+              child: Column(
+                  children: [
+                Text(widget.roomName,
+                    style: GoogleFonts.poppins(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                if (_isRecording)
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle)),
+                    const SizedBox(width: 6),
+                    Text('Recording', style: GoogleFonts.inter(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ]),
+              ])),
+          GestureDetector(
+            onTap: () async {
+              if (_isHost) {
+                _showExitSheet();
+              } else {
+                await _leaveRoom();
+                if (mounted) Navigator.pop(context);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('Leave', style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ]),
+    ).animate().fadeIn(duration: 400.ms);
+  }
+
+  void _showExitSheet() {
+    showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (_) => Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF0C0914).withOpacity(0.98),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              border: Border.all(color: const Color(0xFF231D38), width: 1.5),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 40, spreadRadius: 0, offset: const Offset(0, -10))
+              ],
+            ),
+            child: SafeArea(
+                child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Container(
+                        width: 48, height: 5,
+                        margin: const EdgeInsets.only(bottom: 24),
+                        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(3)),
+                      ),
+                      Text('End Space?',
+                          style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
+                      Text('You are the Host. Do you want to end the space for everyone or leave quietly?',
+                          style: GoogleFonts.inter(
+                              color: Colors.white54, fontSize: 14),
+                          textAlign: TextAlign.center),
+                      const SizedBox(height: 32),
+                      GestureDetector(
+                        onTap: () async {
+                          Navigator.pop(context);
+                          await _endRoom();
+                          await _sendSystemCommand('END', '');
+                          if (mounted) {
+                            BolRoomManager.completelyCloseRoom();
+                            if (!_isMinimized) Navigator.pop(context);
+                          }
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [Colors.redAccent.withOpacity(0.15), Colors.redAccent.withOpacity(0.05)]),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.redAccent.withOpacity(0.4)),
+                          ),
+                          child: Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.power_settings_new, color: Colors.redAccent, size: 20),
+                                const SizedBox(width: 8),
+                                Text('End Echo for All', style: GoogleFonts.inter(color: Colors.redAccent, fontSize: 15, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      if (_members.where((m) => m['user_id'] != _myId).isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showAssignHostSheet();
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white.withOpacity(0.1)),
+                            ),
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.directions_walk, color: Colors.white70, size: 20),
+                                  const SizedBox(width: 8),
+                                  Text('Assign Host & Leave', style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          color: Colors.transparent,
+                          child: Center(
+                            child: Text('Cancel', style: GoogleFonts.inter(color: Colors.white54, fontSize: 15, fontWeight: FontWeight.w600)),
+                          ),
+                        ),
+                      ),
+                    ])))));
+  }
+
+  void _showAssignHostSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF13101E),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) {
+        final eligible = _members.where((m) => m['user_id'] != _myId).toList();
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6, maxChildSize: 0.9, minChildSize: 0.4, expand: false,
+          builder: (_, scrollCtrl) => SafeArea(
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('Assign a new host before leaving', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollCtrl,
+                    itemCount: eligible.length,
+                    itemBuilder: (ctx, idx) {
+                      final m = eligible[idx];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: _colorForUser(m['user_id']).withOpacity(0.2),
+                          backgroundImage: m['avatar_url'] != null ? NetworkImage(m['avatar_url'].toString()) : null,
+                          child: m['avatar_url'] == null ? Text((m['user_name'] ?? 'U')[0].toUpperCase(), style: TextStyle(color: _colorForUser(m['user_id']))) : null,
+                        ),
+                        title: Text(m['user_name'] ?? 'User', style: const TextStyle(color: Colors.white)),
+                        trailing: ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: BolRoomColors.cyan, foregroundColor: Colors.black),
+                          child: const Text('Assign & Leave'),
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            await _sb.from('chatrooms').update({'host_id': m['user_id'], 'host_name': m['user_name']}).eq('id', widget.roomId);
+                            await _sendSystemCommand('NEW_HOST', m['user_id']);
+                            await _leaveRoom();
+                            if (mounted) {
+                              BolRoomManager.completelyCloseRoom();
+                              if (!_isMinimized) Navigator.pop(context);
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                )
+              ],
+            ),
+          ),
+        );
+      }
+    );
+  }
+
+  void _showHostSettings() {
+    showModalBottomSheet(
+        context: context,
+        backgroundColor: BolRoomColors.card,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (_) => SafeArea(
+            child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Space Settings',
+                      style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 24),
+                  // Recording toggle
+                  _actionItem(
+                      _isRecording ? 'Stop Recording' : 'Start Recording',
+                      Icons.radio_button_checked,
+                      _isRecording ? Colors.redAccent : const Color(0xFF7856FF),
+                      () {
+                    Navigator.pop(context);
+                    _toggleRecording();
+                  }),
+                  // Pin a post
+                  _actionItem('Pin a Message', Icons.push_pin_outlined,
+                      BolRoomColors.gold, () {
+                    Navigator.pop(context);
+                    showDialog(
+                        context: context,
+                        builder: (ctx) {
+                          return AlertDialog(
+                            backgroundColor: BolRoomColors.card,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20)),
+                            title: Text('Pin a Message',
+                                style: GoogleFonts.poppins(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold)),
+                            content: TextField(
+                                controller: _pinnedCtrl,
+                                style: const TextStyle(color: Colors.white),
+                                maxLines: 3,
+                                decoration: InputDecoration(
+                                    hintText: 'Enter message to pin...',
+                                    hintStyle:
+                                        const TextStyle(color: Colors.white38),
+                                    filled: true,
+                                    fillColor: BolRoomColors.bg,
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide.none))),
+                            actions: [
+                              TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: Text('Cancel',
+                                      style: GoogleFonts.inter(
+                                          color: Colors.white38))),
+                              ElevatedButton(
+                                  onPressed: () {
+                                    Navigator.pop(ctx);
+                                    _setPinnedPost(_pinnedCtrl.text);
+                                    _pinnedCtrl.clear();
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: BolRoomColors.gold,
+                                      foregroundColor: Colors.black,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12))),
+                                  child: Text('Pin',
+                                      style: GoogleFonts.inter(
+                                          fontWeight: FontWeight.bold))),
+                            ],
+                          );
+                        });
+                  }),
+                  // Captions Placeholder
+                  _actionItem('Show Captions', Icons.closed_caption_outlined,
+                      Colors.white70, () {
+                    Navigator.pop(context);
+                    _showToast('Captions enabled (Beta)');
+                  }),
+                  // End space
+                  _actionItem('End Space for All', Icons.stop_circle_outlined,
+                      Colors.redAccent, () {
+                    Navigator.pop(context);
+                    _showExitSheet();
+                  }),
+                ]))));
+  }
+
+  // ── X-STYLE GRID STAGE ──
+  Widget _buildGridStage() {
+    final host = _members.firstWhere((m) => m['user_id'] == widget.hostId, orElse: () => {});
+    final hostName = host['user_name'] ?? widget.hostName;
+    final hostAura = _colorForUser(widget.hostId);
+    
+    final speakers = _members
+        .where((m) =>
+            (m['is_speaker'] == true || m['is_cohost'] == true) &&
+            m['user_id'] != widget.hostId)
+        .toList();
+    final listeners = _members
+        .where((m) =>
+            m['is_speaker'] != true &&
+            m['is_cohost'] != true &&
+            m['user_id'] != widget.hostId)
+        .toList();
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 20),
+          // Speakers Grid (Wrap)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Wrap(
+              spacing: 24, runSpacing: 24,
+              alignment: WrapAlignment.start,
+              children: [
+                // Host
+                _buildSpaceNode(host, hostName, hostAura, isHost: true, isSpeaking: _speakingIdentities.contains(widget.hostId), isMuted: host['is_muted'] == true),
+                // Co-Speakers
+                ...speakers.map((m) {
+                  final uid = m['user_id']?.toString() ?? '';
+                  final isMe = uid == _myId;
+                  final dispName = isMe ? "You" : _firstName(m['user_name'] ?? 'User');
+                  return _buildSpaceNode(m, dispName, _colorForUser(uid), isHost: false, isSpeaking: _speakingIdentities.contains(uid), isMuted: m['is_muted'] == true);
+                }).toList(),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 40),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text("Listeners (${listeners.length})", style: const TextStyle(color: Color(0xFF8E8B99), fontSize: 14, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(height: 16),
+          
+          // Listeners Grid
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Wrap(
+              spacing: 20, runSpacing: 20,
+              alignment: WrapAlignment.start,
+              children: listeners.map((m) {
+                final uid = m['user_id']?.toString() ?? '';
+                final dispName = (uid == _myId) ? "You" : _firstName(m['user_name'] ?? 'User');
+                return GestureDetector(
+                  onTap: () {
+                    if (uid != _myId && (_isHost || _amICohost())) {
+                      _showQuickMicAction(m, false);
+                    }
+                  },
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          _buildGlowingAvatar(Colors.grey.withOpacity(0.2), 30, isPulsing: false),
+                          if (_memberReactions.containsKey(uid))
+                            Positioned(
+                              top: -5, right: -5,
+                              child: Text(_memberReactions[uid]!, style: const TextStyle(fontSize: 16))
+                                  .animate()
+                                  .scale(begin: const Offset(0.3, 0.3), end: const Offset(1, 1), duration: 200.ms)
+                                  .then()
+                                  .fadeOut(delay: 1000.ms, duration: 300.ms),
+                            ),
+                        ]
+                      ),
+                      const SizedBox(height: 6),
+                      SizedBox(width: 60, child: Text(dispName, style: const TextStyle(color: Color(0xFF8E8B99), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center)),
+                    ]
+                  )
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 120), // Bottom padding for floating bar
+        ],
+      )
+    );
+  }
+
+  Widget _buildSpaceNode(Map<String, dynamic> member, String name, Color aura, {required bool isHost, required bool isSpeaking, required bool isMuted}) {
+    final uid = member['user_id']?.toString() ?? '';
+    final isMe = uid == _myId;
+    return GestureDetector(
+      onTap: () {
+        if (!isMe && (_isHost || _amICohost())) {
+          _showQuickMicAction(member, true);
+        }
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              _buildGlowingAvatar(aura, isHost ? 42 : 35, isPulsing: isSpeaking),
+              if (_memberReactions.containsKey(uid))
+                Positioned(
+                  top: -10, right: -10,
+                  child: Text(_memberReactions[uid]!, style: const TextStyle(fontSize: 24))
+                      .animate()
+                      .scale(begin: const Offset(0.3, 0.3), end: const Offset(1, 1), duration: 200.ms)
+                      .then()
+                      .fadeOut(delay: 1000.ms, duration: 300.ms),
+                ),
+              Positioned(
+                bottom: 0, right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(color: isMuted ? Colors.redAccent : const Color(0xFF0C0914), shape: BoxShape.circle),
+                  child: Icon(isMuted ? Icons.mic_off : Icons.mic, color: isMuted ? Colors.white : aura, size: 12),
+                )
+              )
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: 70,
+            child: Text(name, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center)
+          ),
+          if (isHost)
+            Container(
+              margin: const EdgeInsets.only(top: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(color: aura.withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
+              child: Text("Host", style: TextStyle(color: aura, fontSize: 9, fontWeight: FontWeight.bold)),
+            )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGlowingAvatar(Color glowColor, double radius, {bool isPulsing = false}) {
+    return Container(
+      width: radius * 2, height: radius * 2,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: glowColor.withOpacity(isPulsing ? 1.0 : 0.3), width: isPulsing ? 3 : 1),
+        boxShadow: isPulsing ? [
+          BoxShadow(
+            color: glowColor.withOpacity(0.4),
+            blurRadius: 15,
+            spreadRadius: 2,
+          ),
+        ] : [],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(2.0),
+        child: Container(
+          decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF090710)),
+          child: CircleAvatar(
+            backgroundColor: const Color(0xFF13101E),
+            child: Icon(Icons.person, color: Colors.white30, size: radius),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── MEMBER LIST & MANAGEMENT ──
+  void _showMemberList() {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => ValueListenableBuilder(
+        valueListenable: _membersNotify,
+        builder: (ctx, members, _) => ValueListenableBuilder(
+          valueListenable: _micRequestsNotify,
+          builder: (ctx, micRequests, _) => _MemberSheet(
+            members: members,
+            hostId: widget.hostId,
+            myId: _myId,
+            isHost: _isHost,
+            amICohost: _amICohost(),
+            micRequests: micRequests,
+            colorForUser: _colorForUser,
+            speakingIds: _speakingIdentities,
+            onMemberTap: (m) {
+              Navigator.pop(context);
+              _showMemberActions(m);
+            },
+            onMuteAll: () async {
+              HapticFeedback.vibrate();
+              await _sb
+                  .from('chatroom_members')
+                  .update({'is_muted': true})
+                  .eq('room_id', widget.roomId)
+                  .neq('user_id', widget.hostId)
+                  .eq('is_speaker', true);
+              _loadMembers();
+              _showToast('Muted everyone on stage 🔇');
+            },
+            onGrantMic: (uid) async {
+              await _sb
+                  .from('chatroom_members')
+                  .update({
+                    'is_speaker': true,
+                    'is_muted': false,
+                    'mic_requested': false
+                  })
+                  .eq('room_id', widget.roomId)
+                  .eq('user_id', uid);
+              setState(() => _micRequests.remove(uid));
+              _micRequestsNotify.value = Set.from(_micRequests);
+              _loadMembers();
+              _showToast('Mic granted ✅');
+            },
+            onDenyMic: (uid) async {
+              await _sb
+                  .from('chatroom_members')
+                  .update({'mic_requested': false})
+                  .eq('room_id', widget.roomId)
+                  .eq('user_id', uid);
+              setState(() => _micRequests.remove(uid));
+              _micRequestsNotify.value = Set.from(_micRequests);
+              _showToast('Request denied');
+            },
+            onMuteMember: (uid) async {
+              await _sb
+                  .from('chatroom_members')
+                  .update({'is_muted': true})
+                  .eq('room_id', widget.roomId)
+                  .eq('user_id', uid);
+              _loadMembers();
+              _showToast('Member muted 🔇');
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showMemberActions(Map<String, dynamic> member) {
+    final uid = member['user_id']?.toString() ?? '';
+    if (uid == _myId || uid == widget.hostId) return;
+    final name = member['user_name'] ?? 'User';
+    final avatar = member['avatar_url']?.toString();
+    final isSpeaker = member['is_speaker'] == true;
+    final isCohost = member['is_cohost'] == true;
+    final canManage = _isHost || _amICohost();
+
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF111827),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (_) => SafeArea(
+          child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                // Drag handle
+                Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.white12,
+                        borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 20),
+                // Profile header
+                Row(children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(colors: [
+                          const Color(0xFF7856FF).withValues(alpha: 0.3),
+                          Colors.transparent
+                        ])),
+                    clipBehavior: Clip.antiAlias,
+                    child: (avatar != null && avatar.startsWith('http'))
+                        ? Image.network(avatar,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Center(
+                                child: Text(
+                                    name.isNotEmpty
+                                        ? name[0].toUpperCase()
+                                        : '?',
+                                    style: GoogleFonts.poppins(
+                                        color: const Color(0xFF7856FF),
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold))))
+                        : Center(
+                            child: Text(
+                                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                style: GoogleFonts.poppins(
+                                    color: const Color(0xFF7856FF),
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold))),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Text(name,
+                            style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 2),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                              color: (isCohost
+                                      ? BolRoomColors.cyan
+                                      : (isSpeaker
+                                          ? const Color(0xFF7856FF)
+                                          : Colors.white24))
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8)),
+                          child: Text(
+                              isCohost
+                                  ? '🛡️ Co-host'
+                                  : (isSpeaker ? '🎙️ Speaker' : '🎧 Listener'),
+                              style: GoogleFonts.inter(
+                                  color: isCohost
+                                      ? BolRoomColors.cyan
+                                      : (isSpeaker
+                                          ? const Color(0xFF7856FF)
+                                          : Colors.white54),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ])),
+                ]),
+                const SizedBox(height: 24),
+                const Divider(color: Colors.white10, height: 1),
+                const SizedBox(height: 16),
+                // Actions
+                _actionItem(
+                    'View Profile', Icons.person_outline, Colors.white70, () {
+                  Navigator.pop(context);
+                  _showToast('Opening profile...');
+                }),
+                if (canManage && isSpeaker)
+                  Builder(builder: (context) {
+                    final bool isMuted = member['is_muted'] == true;
+                    return _actionItem(isMuted ? 'Unmute Speaker' : 'Mute Speaker', 
+                        isMuted ? Icons.mic_none_outlined : Icons.mic_off_outlined,
+                        isMuted ? BolRoomColors.cyan : Colors.orangeAccent, () async {
+                      Navigator.pop(context);
+                      await _sb
+                          .from('chatroom_members')
+                          .update({'is_muted': !isMuted})
+                          .eq('room_id', widget.roomId)
+                          .eq('user_id', uid);
+                      await _sendSystemCommand(isMuted ? 'UNMUTE' : 'MUTE', uid);
+                      _showToast(isMuted ? 'Unmuted ${_firstName(name)}' : 'Muted ${_firstName(name)}');
+                    });
+                  }),
+                if (canManage && _isHost)
+                  _actionItem(isCohost ? 'Remove Co-Host' : 'Make Co-Host',
+                      Icons.shield_outlined, const Color(0xFF7856FF), () async {
+                    Navigator.pop(context);
+                    if (!isCohost && _cohostCount >= 2) {
+                      _showToast('Max 2 co-hosts allowed');
+                      return;
+                    }
+                    await _sb
+                        .from('chatroom_members')
+                        .update({'is_cohost': !isCohost, 'is_speaker': true})
+                        .eq('room_id', widget.roomId)
+                        .eq('user_id', uid);
+                    _loadMembers();
+                  }),
+                if (canManage)
+                  _actionItem(
+                      isSpeaker ? 'Move to Listener' : 'Invite to Speak',
+                      isSpeaker
+                          ? Icons.hearing_outlined
+                          : Icons.mic_none_outlined,
+                      isSpeaker ? Colors.orange : const Color(0xFF7856FF),
+                      () async {
+                    Navigator.pop(context);
+                    if (!isSpeaker && _speakerCount >= 13) {
+                      _showToast('Max 13 speakers allowed');
+                      return;
+                    }
+                    await _sb
+                        .from('chatroom_members')
+                        .update({
+                          'is_speaker': !isSpeaker,
+                          'is_muted': isSpeaker,
+                          'mic_requested': false
+                        })
+                        .eq('room_id', widget.roomId)
+                        .eq('user_id', uid);
+                    if (isSpeaker) await _sendSystemCommand('REVOKE_MIC', uid);
+                    else await _sendSystemCommand('GRANT_MIC', uid);
+                    _loadMembers();
+                  }),
+                if (canManage)
+                  _actionItem('Remove from Space', Icons.remove_circle_outline,
+                      Colors.redAccent, () async {
+                    Navigator.pop(context);
+                    setState(() {
+                      _bannedUserIds.add(uid);
+                      _members
+                          .removeWhere((m) => m['user_id']?.toString() == uid);
+                    });
+                    await _sb
+                        .from('chatroom_members')
+                        .delete()
+                        .eq('room_id', widget.roomId)
+                        .eq('user_id', uid);
+                    await _sendSystemCommand('KICK', uid);
+                    await _sb.from('chatroom_bans').upsert({
+                      'room_id': widget.roomId,
+                      'user_id': uid,
+                      'banned_by': _myId,
+                      'created_at': DateTime.now().toUtc().toIso8601String()
+                    });
+                  }),
+                _actionItem('Report ${_firstName(name)}', Icons.flag_outlined,
+                    Colors.orangeAccent, () {
+                  Navigator.pop(context);
+                  _showToast('Report submitted. We\'ll review.');
+                }),
+              ]))),
+    );
+  }
+
+  Widget _actionItem(
+          String text, IconData icon, Color color, VoidCallback onTap) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(14)),
+              child: Row(children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 14),
+                Text(text,
+                    style: GoogleFonts.inter(
+                        color: color,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14)),
+                const Spacer(),
+                Icon(Icons.chevron_right,
+                    color: color.withValues(alpha: 0.3), size: 18),
+              ]),
+            ),
+          ),
+        ),
+      );
+
+  // ── REACTIONS & OVERLAYS ──
+  void _showReactionPicker() {
+    final emojis = ['🔥', '❤️', '😂', '👏', '🎉', '💯', '😍', '🤯'];
+    showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (_) => Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                  color: BolRoomColors.card,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: Colors.white12)),
+              child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: emojis
+                      .map((e) => GestureDetector(
+                            onTap: () {
+                              Navigator.pop(context);
+                              _fireReaction(e);
+                            },
+                            child:
+                                Text(e, style: const TextStyle(fontSize: 32)),
+                          ))
+                      .toList()),
+            ));
+  }
+
+  void _fireReaction(String emoji) {
+    final id = _reactionIdCounter++;
+    double startX = MediaQuery.of(context).size.width / 2;
+    double startY = MediaQuery.of(context).size.height * 0.4;
+
+    final r = _FloatingReaction(
+        id: id,
+        emoji: emoji,
+        x: startX - 20 + (math.Random().nextDouble() - 0.5) * 100,
+        y: startY,
+        startTime: DateTime.now());
+    setState(() {
+      _floatingReactions.add(r);
+      // Show emoji on my avatar
+      _memberReactions[_myId] = emoji;
+    });
+    // Broadcast reaction as system message so others see it
+    _sb.from('chatroom_messages').insert({
+      'room_id': widget.roomId,
+      'user_id': _myId,
+      'user_name': _myName,
+      'text': emoji,
+      'is_system': false,
+      'is_reaction': true,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    });
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted)
+        setState(() {
+          _floatingReactions.removeWhere((f) => f.id == id);
+          _memberReactions.remove(_myId);
+        });
+    });
+  }
+
+  Widget _buildFloatingEmoji(_FloatingReaction r) {
+    final elapsed = DateTime.now().difference(r.startTime).inMilliseconds;
+    final p = (elapsed / 1500).clamp(0.0, 1.0);
+    return Positioned(
+        left: r.x,
+        top: r.y - p * 200,
+        child: Opacity(
+            opacity: (1 - p).toDouble(),
+            child:
+                Text(r.emoji, style: TextStyle(fontSize: 32 + (1 - p) * 20))));
+  }
+
+  // ── Inline live chat preview on stage ──
+  Widget _buildLiveChat() {
+    final userMsgs = _messages.where((m) => m['is_system'] != true).toList();
+    if (userMsgs.isEmpty) return const SizedBox.shrink();
+
+    final reversedMsgs = userMsgs.reversed.toList();
+
+    return Positioned(
+      bottom: 12,
+      left: 16,
+      right: 16,
+      child: Container(
+        height: 180, // Bounding box fixed height
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+        ),
+        clipBehavior: Clip.hardEdge,
+        child: ShaderMask(
+          shaderCallback: (Rect bounds) {
+            return LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.transparent, Colors.white, Colors.white],
+              stops: const [0.0, 0.15, 1.0],
+            ).createShader(bounds);
+          },
+          blendMode: BlendMode.dstIn,
+          child: ListView.builder(
+            reverse: true, // Pushes newest messages to bottom & auto-scrolls up
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            itemCount: reversedMsgs.length,
+            itemBuilder: (context, index) {
+              final msg = reversedMsgs[index];
+              final uid = msg['user_id']?.toString() ?? '';
+              final color = _colorForUser(uid);
+              final name = _firstName(msg['user_name'] ?? '?');
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '$name  ',
+                            style: GoogleFonts.inter(
+                              color: color,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          TextSpan(
+                            text: msg['text'] ?? '',
+                            style: GoogleFonts.inter(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatOverlay() {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      top: MediaQuery.of(context).size.height * 0.30,
+      child: GestureDetector(
+        onVerticalDragEnd: (d) {
+          if (d.primaryVelocity != null && d.primaryVelocity! > 300) {
+            setState(() => _showChat = false);
+          }
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0C0F1A).withValues(alpha: 0.99),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border(
+                top: BorderSide(
+                    color: const Color(0xFF7856FF).withValues(alpha: 0.15))),
+          ),
+          child: Column(children: [
+            // Header with drag handle + title + close
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+              child: Column(children: [
+                Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.white12,
+                        borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 12),
+                Row(children: [
+                  const Icon(Icons.chat_bubble,
+                      color: Color(0xFF7856FF), size: 18),
+                  const SizedBox(width: 10),
+                  Text('Chat',
+                      style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFF7856FF).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10)),
+                    child: Text(
+                        '${_messages.where((m) => m['is_system'] != true).length}',
+                        style: GoogleFonts.inter(
+                            color: const Color(0xFF7856FF),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800)),
+                  ),
+                  const Spacer(),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => setState(() => _showChat = false),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.06),
+                            shape: BoxShape.circle),
+                        child: const Icon(Icons.keyboard_arrow_down,
+                            color: Colors.white54, size: 22),
+                      ),
+                    ),
+                  ),
+                ]),
+              ]),
+            ),
+            const Divider(color: Colors.white10, height: 1),
+            Expanded(child: _buildChatList()),
+            _buildChatInput(),
+          ]),
+        ),
+      ),
+    )
+        .animate()
+        .slideY(begin: 1, end: 0, duration: 300.ms, curve: Curves.easeOutCubic);
+  }
+
+  Widget _buildChatList() {
+    return ListView.builder(
+        controller: _scrollCtrl,
+        padding: const EdgeInsets.all(20),
+        itemCount: _messages.length,
+        itemBuilder: (c, i) {
+          final msg = _messages[i];
+          final isSys = msg['is_system'] == true;
+          if (isSys)
+            return Center(
+                child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(msg['text'] ?? '',
+                        style: GoogleFonts.inter(
+                            color: BolRoomColors.cyan.withValues(alpha: 0.5),
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic))));
+          final uid = msg['user_id']?.toString() ?? '';
+          final color = _colorForUser(uid);
+          final sn = msg['user_name'] ?? '?';
+          return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color.withValues(alpha: 0.2)),
+                  clipBehavior: Clip.antiAlias,
+                  child: Center(
+                      child: Text(sn.isNotEmpty ? sn[0].toUpperCase() : '?',
+                          style: TextStyle(
+                              color: color,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold))),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(msg['user_name'] ?? 'User',
+                          style: GoogleFonts.inter(
+                              color: color,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold)),
+                      Text(msg['text'] ?? '',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14)),
+                    ])),
+              ]));
+        });
+  }
+
+  Widget _buildChatInput() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: BolRoomColors.bg,
+          border: Border(
+              top: BorderSide(color: Colors.white.withValues(alpha: 0.05)))),
+      child: Row(children: [
+        Expanded(
+            child: TextField(
+                controller: _msgCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                    hintText: 'Type a message...',
+                    hintStyle: const TextStyle(color: Colors.white24),
+                    filled: true,
+                    fillColor: BolRoomColors.card,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none)))),
+        const SizedBox(width: 12),
+        IconButton(
+            onPressed: () {
+              _sendMessage();
+              setState(() => _chatActive = true);
+              _chatFadeTimer?.cancel();
+              _chatFadeTimer = Timer(const Duration(seconds: 3), () {
+                if (mounted) setState(() => _chatActive = false);
+              });
+            },
+            icon: const Icon(Icons.send, color: BolRoomColors.cyan)),
+      ]),
+    );
+  }
+
+  Widget _buildBottomBar() {
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 24, left: 16, right: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF13101E).withOpacity(0.95),
+          borderRadius: BorderRadius.circular(40),
+          border: Border.all(color: const Color(0xFF231D38)),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20)],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            // Voice Mask Toggle
+            GestureDetector(
+              onTap: () => setState(() => _isVoiceMasked = !_isVoiceMasked),
+              child: Icon(Icons.masks, color: _isVoiceMasked ? const Color(0xFF00E5FF) : Colors.white54, size: 26),
+            ),
+            
+            // React Button
+            GestureDetector(
+              onTap: _showReactionPicker,
+              child: const Icon(Icons.favorite_border, color: Colors.white54, size: 26),
+            ),
+
+            // Mic Toggle (Big center button)
+            GestureDetector(
+              onTap: () {
+                if (_hasMicPermission || _isHost) {
+                  _toggleMute();
+                } else if (!_micRequestSent) {
+                  _requestMic();
+                }
+              },
+              child: Container(
+                width: 54, height: 54,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _micRequestSent ? Colors.amber : ((_hasMicPermission && !_isMuted) ? _colorForUser(_myId) : const Color(0xFF231D38)),
+                  boxShadow: (_hasMicPermission && !_isMuted) ? [BoxShadow(color: _colorForUser(_myId).withOpacity(0.5), blurRadius: 10)] : [],
+                ),
+                child: _micRequestSent ? const Icon(Icons.access_time, color: Colors.white, size: 26) : Icon(
+                  (_hasMicPermission && !_isMuted) ? Icons.mic : Icons.mic_off,
+                  color: Colors.white,
+                  size: 26,
+                ),
+              ),
+            ),
+            
+            // People icon
+            GestureDetector(
+              onTap: _showMemberList,
+              child: Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.people_outline, color: Colors.white54, size: 26),
+                  if (_members.length > 1)
+                    Positioned(
+                      top: -6, right: -10,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(color: Color(0xFF7B2CBF), shape: BoxShape.circle),
+                        child: Text('${_members.length}', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white)),
+                      )
+                    )
+                ]
+              )
+            ),
+
+            // Chat Toggle
+            GestureDetector(
+              onTap: () => setState(() => _showChat = true),
+              child: const Icon(Icons.chat_bubble_outline, color: Colors.white54, size: 26),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _shareSpace() {
+    showModalBottomSheet(
+        context: context,
+        backgroundColor: BolRoomColors.card,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (_) => SafeArea(
+            child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Share Space',
+                      style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 24),
+                  _actionItem('Copy Link', Icons.link_outlined, Colors.white70,
+                      () {
+                    Navigator.pop(context);
+                    Clipboard.setData(ClipboardData(
+                        text: 'https://meetra.app/space/${widget.roomId}'));
+                    _showToast('Link copied! 🔗');
+                  }),
+                  _actionItem('Invite via Direct Message', Icons.mail_outline,
+                      const Color(0xFF7856FF), () {
+                    Navigator.pop(context);
+                    _showToast('Coming soon: Select friends to invite');
+                  }),
+                  _actionItem(
+                      'Share via...', Icons.ios_share_outlined, Colors.white70,
+                      () {
+                    Navigator.pop(context);
+                    _showToast('Opening system share...');
+                  }),
+                ]))));
+  }
+
+  Widget _iconBtn(IconData icon, VoidCallback onTap, {int? count}) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+                shape: BoxShape.circle, color: BolRoomColors.card),
+            child: Stack(alignment: Alignment.center, children: [
+              Icon(icon, color: Colors.white54, size: 22),
+              if (count != null)
+                Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                            color: BolRoomColors.cyan, shape: BoxShape.circle),
+                        child: Text('$count',
+                            style: const TextStyle(
+                                fontSize: 8, fontWeight: FontWeight.bold)))),
+            ])),
+      );
+
+  void _requestMic() {
+    setState(() => _micRequestSent = true);
+    _showToast('Mic request sent 🎙️');
+    // Write mic_requested to DB so host sees it in member list
+    _sb
+        .from('chatroom_members')
+        .update({'mic_requested': true})
+        .eq('room_id', widget.roomId)
+        .eq('user_id', _myId);
+    _sb.from('chatroom_messages').insert({
+      'room_id': widget.roomId,
+      'user_id': _myId,
+      'user_name': _myName,
+      'text': '🎙️ ${_firstName(_myName)} wants to speak',
+      'is_system': true,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PREMIUM MEMBER SHEET — X-Inspired Sectioned Participant View
+// ══════════════════════════════════════════════════════════════════
+class _MemberSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> members;
+  final String hostId, myId;
+  final bool isHost, amICohost;
+  final Set<String> micRequests, speakingIds;
+  final Color Function(String) colorForUser;
+  final void Function(Map<String, dynamic>) onMemberTap;
+  final VoidCallback onMuteAll;
+  final Future<void> Function(String uid) onGrantMic, onDenyMic, onMuteMember;
+
+  const _MemberSheet({
+    required this.members,
+    required this.hostId,
+    required this.myId,
+    required this.isHost,
+    required this.amICohost,
+    required this.micRequests,
+    required this.colorForUser,
+    required this.speakingIds,
+    required this.onMemberTap,
+    required this.onMuteAll,
+    required this.onGrantMic,
+    required this.onDenyMic,
+    required this.onMuteMember,
+  });
+
+  @override
+  State<_MemberSheet> createState() => _MemberSheetState();
+}
+
+class _MemberSheetState extends State<_MemberSheet> {
+  String _search = '';
+
+  List<Map<String, dynamic>> get _filtered {
+    if (_search.isEmpty) return widget.members;
+    final q = _search.toLowerCase();
+    return widget.members
+        .where(
+            (m) => (m['user_name'] ?? '').toString().toLowerCase().contains(q))
+        .toList();
+  }
+
+  List<Map<String, dynamic>> get _onStage {
+    return _filtered.where((m) {
+      final uid = m['user_id']?.toString() ?? '';
+      return uid == widget.hostId ||
+          m['is_cohost'] == true ||
+          m['is_speaker'] == true;
+    }).toList()
+      ..sort((a, b) {
+        if (a['user_id'] == widget.hostId) return -1;
+        if (b['user_id'] == widget.hostId) return 1;
+        if (a['is_cohost'] == true && b['is_cohost'] != true) return -1;
+        return 0;
+      });
+  }
+
+  List<Map<String, dynamic>> get _tunedIn {
+    return _filtered.where((m) {
+      final uid = m['user_id']?.toString() ?? '';
+      return uid != widget.hostId &&
+          m['is_cohost'] != true &&
+          m['is_speaker'] != true;
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> get _requests {
+    return _filtered
+        .where((m) => widget.micRequests.contains(m['user_id']?.toString()))
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canManage = widget.isHost || widget.amICohost;
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (ctx, scroll) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF7B2CBF).withOpacity(0.2),
+                  const Color(0xFF0C0914).withOpacity(0.85),
+                  const Color(0xFF00E5FF).withOpacity(0.05),
+                ],
+              ),
+              border: Border(top: BorderSide(color: Colors.white.withOpacity(0.2), width: 1.5)),
+            ),
+        child: Column(children: [
+          const SizedBox(height: 12),
+          Container(
+              width: 48, height: 6,
+              decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(3))),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(30, 24, 30, 20),
+            child: Row(children: [
+              ShaderMask(
+                shaderCallback: (Rect bounds) => const LinearGradient(
+                  colors: [Colors.white, Color(0xFFE0D4FF)],
+                ).createShader(bounds),
+                child: Text('Orbit Members',
+                    style: GoogleFonts.poppins(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF7B2CBF).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFF7B2CBF).withOpacity(0.5)),
+                    boxShadow: [BoxShadow(color: const Color(0xFF7B2CBF).withOpacity(0.3), blurRadius: 10)]),
+                child: Text('${widget.members.length}',
+                    style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+              ),
+              const Spacer(),
+              if (canManage)
+                GestureDetector(
+                  onTap: widget.onMuteAll,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [Colors.redAccent.withOpacity(0.2), Colors.redAccent.withOpacity(0.05)]),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: Colors.redAccent.withOpacity(0.5))),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.mic_off, color: Colors.redAccent, size: 16),
+                      const SizedBox(width: 6),
+                      Text('Mute All', style: GoogleFonts.inter(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                    ]),
+                  ),
+                ),
+            ]),
+          ),
+          // Search
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
+              ),
+              child: TextField(
+                onChanged: (v) => setState(() => _search = v),
+                style: GoogleFonts.inter(color: Colors.white, fontSize: 15),
+                decoration: InputDecoration(
+                  prefixIcon: const Padding(
+                    padding: EdgeInsets.only(left: 16, right: 12),
+                    child: Icon(Icons.search, color: Colors.white54, size: 22),
+                  ),
+                  suffixIcon: _search.isNotEmpty
+                      ? IconButton(onPressed: () => setState(() => _search = ''), icon: const Icon(Icons.close, color: Colors.white38, size: 20))
+                      : null,
+                  hintText: 'Search the orbit...',
+                  hintStyle: GoogleFonts.inter(color: Colors.white38, fontSize: 15),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 18),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Body
+          Expanded(
+            child: ListView(
+              controller: scroll,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              children: [
+                // Mic Requests Banner
+                if (canManage && _requests.isNotEmpty) ...[
+                  _sectionHeader('Requests to Speak', _requests.length, Colors.amber),
+                  ..._requests.map((m) => _requestTile(m)),
+                  const SizedBox(height: 16),
+                ],
+                // On Stage
+                _sectionHeader('On Stage', _onStage.length, const Color(0xFF00E5FF)),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.03),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  ),
+                  child: Column(children: _onStage.map((m) => _memberTile(m, canManage, isLast: m == _onStage.last)).toList()),
+                ),
+                const SizedBox(height: 24),
+                // Tuned In
+                if (_tunedIn.isNotEmpty) ...[
+                  _sectionHeader('Listening', _tunedIn.length, const Color(0xFF8E8B99)),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.03),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                    ),
+                    child: Column(children: _tunedIn.map((m) => _memberTile(m, canManage, isLast: m == _tunedIn.last)).toList()),
+                  ),
+                ] else if (_search.isEmpty) ...[
+                  const SizedBox(height: 40),
+                  Center(
+                    child: Column(
+                      children: [
+                        const Icon(Icons.headset_off, color: Colors.white12, size: 48),
+                        const SizedBox(height: 12),
+                        Text('No one else is listening right now.', style: GoogleFonts.inter(color: Colors.white38, fontSize: 13)),
+                      ],
+                    )
+                  ),
+                ],
+                const SizedBox(height: 120), // Space for bottom actions
+              ],
+            ),
+          ),
+          // Bottom Actions
+          _buildBottomActionArea(),
+        ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomActionArea() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.3),
+        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
+      ),
+      child: Row(children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: () => _MemberSheetState._showToast('Select friends to invite'),
+            icon: const Icon(Icons.person_add_outlined, size: 20),
+            label: const Text('Invite People'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF7B2CBF),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              textStyle: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        GestureDetector(
+          onTap: () => _MemberSheetState._showToast('Link copied 🔗'),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: const Color(0xFF13101E),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFF231D38))),
+            child: const Icon(Icons.ios_share, color: Colors.white, size: 20),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  static void _showToast(String msg) {
+    // Placeholder
+  }
+
+  Widget _sectionHeader(String title, int count, Color color) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 12),
+      child: Row(children: [
+        Text(title,
+            style: GoogleFonts.inter(
+                color: color,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5)),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+          child: Text('$count', style: GoogleFonts.inter(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+        ),
+      ]),
+    );
+  }
+
+  Widget _requestTile(Map<String, dynamic> m) {
+    final uid = m['user_id']?.toString() ?? '';
+    final name = m['user_name'] ?? 'User';
+    final avatar = m['avatar_url']?.toString();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [Colors.amber.withOpacity(0.1), Colors.amber.withOpacity(0.02)]),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+      ),
+      child: Row(children: [
+        _avatar(name, avatar, Colors.amber, 46),
+        const SizedBox(width: 16),
+        Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(name, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 2),
+          Text('Requested Mic', style: GoogleFonts.inter(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.w600)),
+        ])),
+        // Accept
+        GestureDetector(
+          onTap: () => widget.onGrantMic(uid),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.amber.withOpacity(0.4), blurRadius: 10)]),
+            child: Text('Accept', style: GoogleFonts.inter(color: Colors.black, fontSize: 13, fontWeight: FontWeight.bold)),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Deny
+        GestureDetector(
+          onTap: () => widget.onDenyMic(uid),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.black26, shape: BoxShape.circle, border: Border.all(color: Colors.white24)),
+            child: const Icon(Icons.close, color: Colors.white54, size: 16),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _memberTile(Map<String, dynamic> m, bool canManage, {bool isLast = false}) {
+    final uid = m['user_id']?.toString() ?? '';
+    final name = m['user_name'] ?? '?';
+    final avatar = m['avatar_url']?.toString();
+    final isHost = uid == widget.hostId;
+    final isCohost = m['is_cohost'] == true;
+    final isSpeaker = m['is_speaker'] == true;
+    final isMe = uid == widget.myId;
+    final isSpeaking = widget.speakingIds.contains(uid);
+    final isMuted = m['is_muted'] == true;
+    final color = isHost ? BolRoomColors.gold : (isCohost ? BolRoomColors.cyan : widget.colorForUser(uid));
+
+    String roleLabel = isHost ? 'Host' : (isCohost ? 'Co-host' : (isSpeaker ? 'Speaker' : 'Listener'));
+    Color roleColor = isHost ? BolRoomColors.gold : (isCohost ? BolRoomColors.cyan : (isSpeaker ? const Color(0xFF7856FF) : Colors.white54));
+    
+    return Column(
+      children: [
+        InkWell(
+          onTap: () {
+            if (canManage && !isHost) {
+              _showManageUserSheet(m, isSpeaker);
+            } else {
+              widget.onMemberTap(m);
+            }
+          },
+          borderRadius: BorderRadius.vertical(
+            top: isLast && _onStage.length == 1 ? const Radius.circular(20) : Radius.zero,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Row(children: [
+              // Avatar
+              Stack(children: [
+                Container(
+                  width: 50, height: 50,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: isSpeaking ? color : Colors.transparent, width: 2.5),
+                    boxShadow: isSpeaking ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 10)] : [],
+                  ),
+                  child: _avatar(name, avatar, color, 50),
+                ),
+                if (isSpeaker)
+                  Positioned(
+                      bottom: -2, right: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                            color: isMuted ? Colors.redAccent : color,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFF13101E), width: 2)),
+                        child: Icon(isMuted ? Icons.mic_off : Icons.mic, color: isMuted ? Colors.white : Colors.black, size: 10),
+                      )),
+              ]),
+              const SizedBox(width: 16),
+              // Info
+              Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    Row(
+                      children: [
+                        Flexible(child: Text(isMe ? '$name (You)' : name, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+                        if (isHost) const Padding(padding: EdgeInsets.only(left: 6), child: Icon(Icons.stars, color: BolRoomColors.gold, size: 14)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Text(roleLabel, style: GoogleFonts.inter(color: roleColor, fontSize: 12, fontWeight: FontWeight.w600)),
+                      if (isSpeaking) ...[
+                        const SizedBox(width: 8),
+                        Container(width: 4, height: 4, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                        const SizedBox(width: 4),
+                        Text('Speaking', style: GoogleFonts.inter(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+                      ],
+                    ]),
+                  ])),
+              // Host Actions
+              if (canManage && !isMe && !isHost) ...[
+                if (isSpeaker)
+                  GestureDetector(
+                    onTap: () => widget.onMuteMember(uid),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+                      ),
+                      child: Text('Mute', style: GoogleFonts.inter(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  )
+                else
+                  GestureDetector(
+                    onTap: () => widget.onGrantMic(uid),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7856FF).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFF7856FF).withOpacity(0.5)),
+                      ),
+                      child: Text('Invite', style: GoogleFonts.inter(color: const Color(0xFF7856FF), fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                const SizedBox(width: 12),
+                const Icon(Icons.more_horiz, color: Colors.white38, size: 20),
+              ],
+            ]),
+          ),
+        ),
+        if (!isLast) const Divider(color: Color(0xFF231D38), height: 1, indent: 86),
+      ],
+    );
+  }
+
+  void _showManageUserSheet(Map<String, dynamic> member, bool isSpeaker) {
+    final uid = member['user_id']?.toString() ?? '';
+    final name = member['user_name'] ?? 'User';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0C0914),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  children: [
+                    _avatar(name, member['avatar_url']?.toString(), widget.colorForUser(uid), 40),
+                    const SizedBox(width: 16),
+                    Expanded(child: Text("Manage $name", style: GoogleFonts.poppins(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Divider(color: Color(0xFF231D38), height: 1),
+              
+              if (isSpeaker)
+                ListTile(
+                  leading: const Icon(Icons.mic_off, color: Colors.redAccent),
+                  title: const Text('Move to Listeners', style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    widget.onDenyMic(uid); // Re-using onDenyMic to demote
+                  },
+                )
+              else
+                ListTile(
+                  leading: const Icon(Icons.mic, color: Color(0xFF00E5FF)),
+                  title: const Text('Make Speaker', style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    widget.onGrantMic(uid);
+                  },
+                ),
+              
+              ListTile(
+                leading: const Icon(Icons.shield_outlined, color: Color(0xFF7856FF)),
+                title: const Text('Make Co-host', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  // Update DB for cohost
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_outline, color: Colors.white54),
+                title: const Text('View Profile', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  widget.onMemberTap(member);
+                },
+              ),
+              const Divider(color: Color(0xFF231D38), height: 1),
+              ListTile(
+                leading: const Icon(Icons.block, color: Colors.redAccent),
+                title: const Text('Remove from Space', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  // Implement kick logic
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _avatar(String name, String? url, Color color, double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+          shape: BoxShape.circle, color: color.withOpacity(0.12)),
+      clipBehavior: Clip.antiAlias,
+      child: (url != null && url.startsWith('http'))
+          ? Image.network(url,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _initial(name, color, size))
+          : _initial(name, color, size),
+    );
+  }
+
+  Widget _initial(String name, Color color, double size) {
+    return Center(
+        child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
+            style: GoogleFonts.poppins(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: size * 0.4)));
+  }
+}
+
+class _FloatingReaction {
+  final int id;
+  final String emoji;
+  final double x;
+  final double y;
+  final DateTime startTime;
+  _FloatingReaction(
+      {required this.id,
+      required this.emoji,
+      required this.x,
+      required this.y,
+      required this.startTime});
+}

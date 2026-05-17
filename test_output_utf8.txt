@@ -1,0 +1,159 @@
+﻿00:00 +0: loading C:/Users/Anurag/meetra_app/test_spark.dart
+00:00 +0: Spark Screen test
+══╡ EXCEPTION CAUGHT BY WIDGETS LIBRARY ╞═══════════════════════════════════════════════════════════
+The following _TypeError was thrown building AnimatedBuilder(listenable: ScrollController#59ec3(one
+client, offset 0.0), dirty, state: _AnimatedState#95c9a):
+Null check operator used on a null value
+
+The relevant error-causing widget was:
+  AnimatedBuilder AnimatedBuilder:file:///C:/Users/Anurag/meetra_app/lib/spark_screen.dart:284:14
+
+When the exception was thrown, this was the stack:
+#0      ScrollPosition.maxScrollExtent (package:flutter/src/widgets/scroll_position.dart:239:49)
+#1      _SparkScreenState._buildScrollProgress.<anonymous closure> (package:meetra_app/spark_screen.dart:289:52)
+#2      ListenableBuilder.build (package:flutter/src/widgets/transitions.dart:1149:48)
+#3      _AnimatedState.build (package:flutter/src/widgets/transitions.dart:139:48)
+#4      StatefulElement.build (package:flutter/src/widgets/framework.dart:5931:27)
+#5      ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5817:15)
+#6      StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5982:11)
+#7      Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#8      ComponentElement._firstBuild (package:flutter/src/widgets/framework.dart:5799:5)
+#9      StatefulElement._firstBuild (package:flutter/src/widgets/framework.dart:5973:11)
+#10     ComponentElement.mount (package:flutter/src/widgets/framework.dart:5793:5)
+...     Normal element mounting (7 frames)
+#17     Element.inflateWidget (package:flutter/src/widgets/framework.dart:4587:20)
+#18     MultiChildRenderObjectElement.inflateWidget (package:flutter/src/widgets/framework.dart:7264:36)
+#19     MultiChildRenderObjectElement.mount (package:flutter/src/widgets/framework.dart:7279:32)
+...     Normal element mounting (25 frames)
+#44     Element.inflateWidget (package:flutter/src/widgets/framework.dart:4587:20)
+#45     MultiChildRenderObjectElement.inflateWidget (package:flutter/src/widgets/framework.dart:7264:36)
+#46     MultiChildRenderObjectElement.mount (package:flutter/src/widgets/framework.dart:7279:32)
+...     Normal element mounting (372 frames)
+#418    Element.inflateWidget (package:flutter/src/widgets/framework.dart:4587:20)
+#419    MultiChildRenderObjectElement.inflateWidget (package:flutter/src/widgets/framework.dart:7264:36)
+#420    MultiChildRenderObjectElement.mount (package:flutter/src/widgets/framework.dart:7279:32)
+...     Normal element mounting (467 frames)
+#887    Element.inflateWidget (package:flutter/src/widgets/framework.dart:4587:20)
+#888    Element.updateChild (package:flutter/src/widgets/framework.dart:4053:20)
+#889    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#890    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#891    ProxyElement.update (package:flutter/src/widgets/framework.dart:6149:5)
+#892    _InheritedNotifierElement.update (package:flutter/src/widgets/inherited_notifier.dart:108:11)
+#893    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#894    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#895    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5982:11)
+#896    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#897    StatefulElement.update (package:flutter/src/widgets/framework.dart:6007:5)
+#898    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#899    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#900    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#901    ProxyElement.update (package:flutter/src/widgets/framework.dart:6149:5)
+#902    _InheritedNotifierElement.update (package:flutter/src/widgets/inherited_notifier.dart:108:11)
+#903    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#904    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#905    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5982:11)
+#906    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#907    StatefulElement.update (package:flutter/src/widgets/framework.dart:6007:5)
+#908    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#909    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#910    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5982:11)
+#911    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#912    StatefulElement.update (package:flutter/src/widgets/framework.dart:6007:5)
+#913    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#914    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#915    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#916    ProxyElement.update (package:flutter/src/widgets/framework.dart:6149:5)
+#917    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#918    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#919    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5982:11)
+#920    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#921    StatefulElement.update (package:flutter/src/widgets/framework.dart:6007:5)
+#922    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#923    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#924    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#925    ProxyElement.update (package:flutter/src/widgets/framework.dart:6149:5)
+#926    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#927    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#928    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#929    ProxyElement.update (package:flutter/src/widgets/framework.dart:6149:5)
+#930    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#931    _RawViewElement._updateChild (package:flutter/src/widgets/view.dart:481:16)
+#932    _RawViewElement.update (package:flutter/src/widgets/view.dart:568:5)
+#933    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#934    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#935    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#936    StatelessElement.update (package:flutter/src/widgets/framework.dart:5895:5)
+#937    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#938    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841:16)
+#939    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5982:11)
+#940    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#941    StatefulElement.update (package:flutter/src/widgets/framework.dart:6007:5)
+#942    Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#943    RootElement._rebuild (package:flutter/src/widgets/binding.dart:1822:16)
+#944    RootElement.update (package:flutter/src/widgets/binding.dart:1800:5)
+#945    RootElement.performRebuild (package:flutter/src/widgets/binding.dart:1814:7)
+#946    Element.rebuild (package:flutter/src/widgets/framework.dart:5529:7)
+#947    BuildScope._tryRebuild (package:flutter/src/widgets/framework.dart:2750:15)
+#948    BuildScope._flushDirtyElements (package:flutter/src/widgets/framework.dart:2807:11)
+#949    BuildOwner.buildScope (package:flutter/src/widgets/framework.dart:3111:18)
+#950    AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2131:19)
+#951    RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:495:5)
+#952    SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#953    SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#954    AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:1960:9)
+#957    TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#958    AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:1949:27)
+#959    WidgetTester.pumpWidget.<anonymous closure> (package:flutter_test/src/widget_tester.dart:598:22)
+#962    TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#963    WidgetTester.pumpWidget (package:flutter_test/src/widget_tester.dart:595:27)
+#964    main.<anonymous closure> (file:///C:/Users/Anurag/meetra_app/test_spark.dart:4:91)
+#965    testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:29)
+<asynchronous suspension>
+#966    TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1682:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 5 frames from dart:async and package:stack_trace)
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY RENDERING LIBRARY ╞═════════════════════════════════════════════════════════
+The following assertion was thrown during layout:
+A RenderFlex overflowed by 3779 pixels on the right.
+
+The relevant error-causing widget was:
+  Row Row:file:///C:/Users/Anurag/meetra_app/lib/spark_screen.dart:1247:24
+
+The overflowing RenderFlex has an orientation of Axis.horizontal.
+The edge of the RenderFlex that is overflowing has been marked in the rendering with a yellow and
+black striped pattern. This is usually caused by the contents being too big for the RenderFlex.
+Consider applying a flex factor (e.g. using an Expanded widget) to force the children of the
+RenderFlex to fit within the available space instead of being sized to their natural size.
+This is considered an error condition because it indicates that there is content that cannot be
+seen. If the content is legitimately bigger than the available space, consider clipping it with a
+ClipRect widget before putting it in the flex, or using a scrollable container rather than a Flex,
+like a ListView.
+The specific RenderFlex in question is: RenderFlex#ee59b relayoutBoundary=up1 OVERFLOWING:
+  creator: Row ← OverflowBox ← Transform ← AnimatedBuilder ← Stack ← _ActiveMarquee ← SizedBox ←
+    RepaintBoundary ← IndexedSemantics ← _SelectionKeepAlive ←
+    NotificationListener<KeepAliveNotification> ← KeepAlive ← ⋯
+  parentData: offset=Offset(-816.0, 0.0) (can use size)
+  constraints: BoxConstraints(0.0<=w<=2400.0, 0.0<=h<=36.0)
+  size: Size(2400.0, 36.0)
+  direction: horizontal
+  mainAxisAlignment: start
+  mainAxisSize: max
+  crossAxisAlignment: center
+  textDirection: ltr
+  verticalDirection: down
+  spacing: 0.0
+◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following message was thrown:
+Multiple exceptions (2) were detected during the running of the current test, and at least one was
+unexpected.
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -1: Spark Screen test [E]
+  Test failed. See exception logs above.
+  The test description was: Spark Screen test
+  
+00:01 +0 -1: Some tests failed.

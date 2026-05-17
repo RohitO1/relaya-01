@@ -1,0 +1,59 @@
+name: meetra_app
+description: The Real-World Social Loop.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  card_swiper: ^3.0.1
+  # We use google_fonts to give the app a premium, modern typography look easily.
+  google_fonts: ^8.1.0
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
+  http: ^1.6.0
+  geolocator: ^14.0.2
+  supabase_flutter: ^2.12.2
+  firebase_core: ^4.6.0
+  firebase_messaging: ^16.1.3
+  shared_preferences: ^2.5.5
+  image_picker: ^1.1.2
+  shimmer: ^3.0.0
+  flutter_animate: ^4.5.0
+  intl: any
+  share_plus: ^12.0.2
+  pro_image_editor: ^12.4.4
+  livekit_client: ^2.3.0
+  dart_jsonwebtoken: ^3.4.0
+  permission_handler: ^12.0.1
+  crypto: ^3.0.7
+  app_links: ^7.0.0
+  emoji_picker_flutter: ^4.4.0
+  record: ^6.2.0
+  audioplayers: ^6.6.0
+  path_provider: ^2.1.5
+  image_cropper: ^12.2.1
+
+# Override flutter_webrtc to use our patched version with VoiceMaskBridge.
+# This is the ONLY reliable way to intercept raw PCM audio before Opus encoding.
+# The patch adds a single line: setAudioBufferCallback(new VoiceMaskBridge())
+# in MethodCallHandlerImpl.java before createAudioDeviceModule().
+dependency_overrides:
+  flutter_webrtc:
+    path: plugins/flutter_webrtc_patched
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+  supabase: any
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

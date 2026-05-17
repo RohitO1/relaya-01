@@ -1,0 +1,34 @@
+﻿Analyzing lib...                                                
+
+warning - The declaration '_bg2' isn't referenced - auth_screen.dart:12:7 - unused_element
+warning - The declaration '_orange' isn't referenced - auth_screen.dart:18:7 - unused_element
+warning - The declaration '_glass' isn't referenced - auth_screen.dart:25:7 - unused_element
+   info - Statements in an if should be enclosed in a block - auth_screen.dart:568:40 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - auth_screen.dart:569:16 - curly_braces_in_flow_control_structures
+warning - Unused import: 'messages_screen.dart' - experience_screen.dart:11:8 - unused_import
+warning - The declaration '_buildQuickStats' isn't referenced - experience_screen.dart:230:10 - unused_element
+warning - The declaration '_buildStatChip' isn't referenced - experience_screen.dart:235:10 - unused_element
+warning - A value for optional parameter 'editId' isn't ever given - experience_screen.dart:2171:40 - unused_element_parameter
+warning - Unused import: 'main.dart' - follow_list_screen.dart:3:8 - unused_import
+warning - Unused import: 'management_dashboard.dart' - main.dart:27:8 - unused_import
+warning - Unused import: 'follow_list_screen.dart' - main.dart:28:8 - unused_import
+warning - Unused import: 'settings_screen.dart' - main.dart:29:8 - unused_import
+warning - Unused import: 'package:intl/intl.dart' - main.dart:31:8 - unused_import
+warning - Unused import: 'welcome_screen.dart' - onboarding_screen.dart:10:8 - unused_import
+   info - The import of 'dart:ui' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/material.dart' - profile_screen.dart:2:8 - unnecessary_import
+warning - Unused import: 'package:intl/intl.dart' - profile_screen.dart:6:8 - unused_import
+   info - Statements in an if should be enclosed in a block - spark_screen.dart:171:44 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - spark_screen.dart:172:48 - curly_braces_in_flow_control_structures
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:381:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:382:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:383:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:384:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:385:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:386:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:387:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:388:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:389:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:390:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:391:7 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - splash_screen.dart:392:7 - prefer_const_constructors
+
