@@ -18,7 +18,7 @@ class VoiceMaskPreset {
     required this.id,
     required this.name,
     required this.icon,
-    this.colors = const [Color(0xFF8A2BE2), Color(0xFF00E5FF)],
+    this.colors = const [Color(0xFF8A2BE2), Color(0xFFFF6B00)],
     required this.pitchSemitones,
     required this.formantSemitones,
     required this.description,
@@ -26,114 +26,107 @@ class VoiceMaskPreset {
 
   static const List<VoiceMaskPreset> all = [
     VoiceMaskPreset(
-      id: 'ghost',
-      name: 'Ghost',
-      icon: '👻',
-      colors: [Color(0xFFD4145A), Color(0xFFFBB03B)],
-      pitchSemitones: 3.0,
-      formantSemitones: 1.5,
-      description: 'Ethereal & unrecognizable',
-    ),
-    VoiceMaskPreset(
-      id: 'shadow',
-      name: 'Shadow',
-      icon: '🌑',
-      colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-      pitchSemitones: -5.0,
-      formantSemitones: -3.0,
-      description: 'Dark & gravelly',
-    ),
-    VoiceMaskPreset(
       id: 'robot',
       name: 'Robot',
       icon: '🤖',
       colors: [Color(0xFF00C9FF), Color(0xFF92FE9D)],
       pitchSemitones: 0.0,
       formantSemitones: 0.0,
-      description: 'Metallic & synthetic',
+      description: 'Metallic & synthetic boy',
     ),
     VoiceMaskPreset(
-      id: 'chipmunk',
-      name: 'Speed Up',
-      icon: '⏩',
-      colors: [Color(0xFFFF0844), Color(0xFFFFB199)],
-      pitchSemitones: 8.0,
-      formantSemitones: 6.0,
-      description: 'High-pitched & fun',
+      id: 'alien',
+      name: 'Alien',
+      icon: '👾',
+      colors: [Color(0xFF43E97B), Color(0xFF38F9D7)],
+      pitchSemitones: 5.0,
+      formantSemitones: 0.0,
+      description: 'Warbling otherworldly girl',
     ),
     VoiceMaskPreset(
-      id: 'oldman',
-      name: 'Old Man',
-      icon: '👴',
-      colors: [Color(0xFF89F7FE), Color(0xFF66A6FF)],
-      pitchSemitones: -3.0,
-      formantSemitones: -2.0,
-      description: 'Mature & wise voice',
-    ),
-    VoiceMaskPreset(
-      id: 'titan',
+      id: 'giant',
       name: 'Giant',
-      icon: '🧔',
-      colors: [Color(0xFFF6D365), Color(0xFFFDA085)],
+      icon: '👹',
+      colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
       pitchSemitones: -7.0,
       formantSemitones: -5.0,
       description: 'Massive & commanding',
     ),
     VoiceMaskPreset(
-      id: 'drunk',
-      name: 'Drunk',
-      icon: '🥴',
+      id: 'sage',
+      name: 'Wise Sage',
+      icon: '🧙',
+      colors: [Color(0xFF89F7FE), Color(0xFF66A6FF)],
+      pitchSemitones: -4.0,
+      formantSemitones: -3.0,
+      description: 'Mature & wise old man',
+    ),
+    VoiceMaskPreset(
+      id: 'vader',
+      name: 'Dark Lord',
+      icon: '🥷',
+      colors: [Color(0xFF000000), Color(0xFF434343)],
+      pitchSemitones: -12.0,
+      formantSemitones: -10.0,
+      description: 'Intense heavy breathing bass',
+    ),
+    VoiceMaskPreset(
+      id: 'chipmunk',
+      name: 'Chipmunk',
+      icon: '🐿️',
+      colors: [Color(0xFFf6d365), Color(0xFFfda085)],
+      pitchSemitones: 12.0,
+      formantSemitones: 10.0,
+      description: 'Extremely fast & squeaky',
+    ),
+    VoiceMaskPreset(
+      id: 'ghost',
+      name: 'Poltergeist',
+      icon: '👻',
       colors: [Color(0xFFE2D1C3), Color(0xFFFDFCFB)],
-      pitchSemitones: -1.0,
-      formantSemitones: 0.0,
-      description: 'Slurred & wavy effect',
-    ),
-    VoiceMaskPreset(
-      id: 'alien',
-      name: 'Alien',
-      icon: '👽',
-      colors: [Color(0xFF43E97B), Color(0xFF38F9D7)],
-      pitchSemitones: 5.0,
-      formantSemitones: 0.0,
-      description: 'Warbling & otherworldly',
-    ),
-    VoiceMaskPreset(
-      id: 'shinchan',
-      name: 'Shinchan',
-      icon: '🖍️',
-      colors: [Color(0xFFFF512F), Color(0xFFDD2476)],
-      pitchSemitones: 7.0,
+      pitchSemitones: 6.0,
       formantSemitones: 4.0,
-      description: 'Mischievous & nasal child',
+      description: 'Creepy high-pitched echo',
     ),
     VoiceMaskPreset(
-      id: 'doraemon',
-      name: 'Doraemon',
-      icon: '🔔',
-      colors: [Color(0xFF2193b0), Color(0xFF6dd5ed)],
-      pitchSemitones: 3.0,
-      formantSemitones: -1.0,
-      description: 'Warm robotic companion',
+      id: 'demon',
+      name: 'Demon',
+      icon: '👿',
+      colors: [Color(0xFFFF0844), Color(0xFFFFB199)],
+      pitchSemitones: -8.0,
+      formantSemitones: -6.0,
+      description: 'Terrifying underworld growl',
     ),
     VoiceMaskPreset(
-      id: 'prettywoman',
-      name: 'Shizuka',
-      icon: '✨',
+      id: 'cartoon',
+      name: 'Cartoon',
+      icon: '🤡',
       colors: [Color(0xFFff9a9e), Color(0xFFfecfef)],
-      pitchSemitones: 5.0,
-      formantSemitones: 3.0,
-      description: 'Sweet & elegant girl voice',
+      pitchSemitones: 8.0,
+      formantSemitones: 5.0,
+      description: 'Silly animated character',
+    ),
+    VoiceMaskPreset(
+      id: 'radiodj',
+      name: 'Radio DJ',
+      icon: '🎙️',
+      colors: [Color(0xFF4FACFE), Color(0xFF00F2FE)],
+      pitchSemitones: -2.0,
+      formantSemitones: -1.0,
+      description: 'Deep FM radio broadcaster',
     ),
     VoiceMaskPreset(
       id: 'custom',
       name: 'Custom',
       icon: '🎛️',
-      colors: [Color(0xFF4FACFE), Color(0xFF00F2FE)],
+      colors: [Color(0xFF8A2BE2), Color(0xFFFF6B00)],
       pitchSemitones: 0.0,
       formantSemitones: 0.0,
-      description: 'Your unique voice',
+      description: 'Tune your own voice pitch',
     ),
   ];
+
+
 
   static VoiceMaskPreset? byId(String id) {
     try {
@@ -236,7 +229,9 @@ class VoiceMaskService {
   /// Stop voice masking.
   Future<void> stopMasking() async {
     try {
-      await _channel.invokeMethod('stopCapture');
+      // Instead of stopping the DSP engine completely (which might kill audio hook),
+      // we gracefully bypass it so the original voice plays through naturally.
+      await _channel.invokeMethod('setPreset', {'preset': 'none'});
     } catch (e) {
       debugPrint('VoiceMask: stopMasking error: $e');
     }
@@ -249,6 +244,9 @@ class VoiceMaskService {
     try {
       await _channel.invokeMethod('setPreset', {'preset': presetId});
       _activePreset = presetId;
+      // Keep Dart _isActive in sync with native side.
+      // VoiceMaskPlugin.kt setPreset handler deactivates when preset is 'none'.
+      _isActive = presetId != 'none';
     } catch (e) {
       debugPrint('VoiceMask: setPreset error: $e');
     }
@@ -299,5 +297,7 @@ class VoiceMaskService {
     stopListening();
   }
 }
+
+
 
 

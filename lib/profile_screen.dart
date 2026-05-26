@@ -2,7 +2,6 @@
 // ignore_for_file: unused_field, unused_element
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -15,6 +14,7 @@ import 'dart:async';
 import 'dart:ui'; // For ImageFilter
 import 'services/theme_service.dart';
 import 'services/location_service.dart';
+import 'services/profile_completion_service.dart';
 import 'widgets/location_picker_sheet.dart';
 // import 'follow_list_screen.dart'; // removed unused
 import 'auth_screen.dart';
@@ -30,24 +30,24 @@ import 'hosted_joined_screens.dart';
 // ----------------------------------------------------
 class ProfileColors {
   static const bgPrimary = Color(0xFF000000);
-  static const bgSecondary = Color(0xFF111827);
-  static const bgTertiary = Color(0xFF1A1F2E);
-  static const bgCard = Color(0xFF1A1F2E);
-  static const bgGlass = Color(0xCC0A0E17);
-  static const cyan = Color(0xFF00E5CC);
-  static const purple = Color(0xFFA855F7);
-  static const blue = Color(0xFF3B82F6);
-  static const green = Color(0xFF22C55E);
-  static const red = Color(0xFFEF4444);
-  static const pink = Color(0xFFEC4899);
-  static const orange = Color(0xFFF97316);
+  static const bgSecondary = Color(0xFF000000);
+  static const bgTertiary = Color(0xFF000000);
+  static const bgCard = Color(0xFF000000);
+  static const bgGlass = Color(0xCC000000);
+  static const cyan = Color(0xFFFF6B00);
+  static const purple = Color(0xFFFF7E40);
+  static const blue = Color(0xFF4E8BFF);
+  static const green = Color(0xFF4ADE80);
+  static const red = Color(0xFFFF3D5A);
+  static const pink = Color(0xFFFF3D00);
+  static const orange = Color(0xFFFF6B00);
   static const teal = Color(0xFF14B8A6);
   static const amber = Color(0xFFF4A926); // kept for backward compat in dashboard
   static const coral = Color(0xFFE8735A); // kept for backward compat in dashboard
-  static const violet = Color(0xFFA855F7); // alias
-  static const textPrimary = Color(0xFFF1F5F9);
-  static const textSecondary = Color(0xFF94A3B8);
-  static const textMuted = Color(0xFF64748B);
+  static const violet = Color(0xFFFF7E40); // alias
+  static const textPrimary = Color(0xFFFFFFFF);
+  static const textSecondary = Color(0xFF9E9E9E);
+  static const textMuted = Color(0xFF616161);
   static const borderSubtle = Color(0x14FFFFFF);
   static const borderLight = Color(0x1EFFFFFF);
   static final glass = Colors.white.withValues(alpha: 0.05);
@@ -61,7 +61,7 @@ const LinearGradient mainGradient = LinearGradient(
 );
 
 const LinearGradient neonGradient = LinearGradient(
-  colors: [Color(0xFF00E5CC), Color(0xFFA855F7), Color(0xFFEC4899)],
+  colors: [Color(0xFFFF6B00), Color(0xFFFF8A00), Color(0xFFFFC107)],
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
 );
@@ -103,6 +103,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   String _mediaQuality = 'High';
   String _mapsApp = 'Google Maps';
   bool _isPublic = true;
+  String _navTransition = 'Slide';
 
   // BolRoom Anonymity
   bool _bolroomAnonymous = false;
@@ -177,6 +178,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           _ageMax = prefs.getDouble('age_range_max') ?? 35.0;
           _mediaQuality = prefs.getString('media_quality') ?? 'High';
           _mapsApp = prefs.getString('maps_app') ?? 'Google Maps';
+          _navTransition = prefs.getString('nav_transition') ?? 'Slide';
 
           _loadingProfile = false;
         });
@@ -238,20 +240,35 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   void _onEditProfile() async {
+    final bio = _profile?['bio'] as String?;
+    final interests = _profile?['interests'] as List<dynamic>?;
+    final traits = _profile?['personality_traits'] as List<dynamic>?;
+
+    final wasIncomplete = (bio == null || bio.trim().isEmpty) ||
+        (interests == null || interests.isEmpty) ||
+        (traits == null || traits.isEmpty);
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => EditProfileScreen(initialProfile: _profile ?? {})),
     );
     if (result == true) {
       _loadProfile(); // Refresh profile data
+      
+      if (wasIncomplete) {
+        final nowComplete = await ProfileCompletionService.isProfileComplete();
+        if (nowComplete && mounted) {
+          ProfileCompletionService.showCompletionSuccessPopup(context);
+        }
+      }
     }
   }
 
   void _onShareProfile() {
-    final name = _profile?['name'] ?? 'Meetra User';
+    final name = _profile?['name'] ?? 'Relaya User';
     final username = _profile?['username'] ?? '';
     final url = 'https://meetra.app/profile/$username';
-    Share.share('Check out $name on Meetra!\n$url');
+    Share.share('Check out $name on Relaya!\n$url');
   }
 
   @override
@@ -282,17 +299,6 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       endDrawer: _buildSettingsPanel(),
       body: Stack(
         children: [
-          // Animated Ambient Background
-          AnimatedBuilder(
-            animation: _orbController,
-            builder: (context, _) {
-              return CustomPaint(
-                painter: _AmbientOrbPainter(_orbController.value),
-                size: Size.infinite,
-              );
-            },
-          ),
-
           SafeArea(
             bottom: false,
             child: Column(
@@ -414,224 +420,215 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Avatar & Details Row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Avatar
-                  Stack(
-                    alignment: Alignment.center,
-                    clipBehavior: Clip.none,
+              // 1. Centered Avatar with premium neon-orange ring
+              Container(
+                width: 106,
+                height: 106,
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFFFF6B00),
+                    width: 3,
+                  ),
+                ),
+                child: avatarUrl.isNotEmpty 
+                  ? CircleAvatar(
+                      backgroundImage: _buildSafeImageProvider(avatarUrl),
+                      backgroundColor: Colors.transparent,
+                    )
+                  : Container(
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFF1E1E1E),
+                      ),
+                      child: Center(
+                        child: Text(
+                          initials,
+                          style: GoogleFonts.inter(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFFFF6B00),
+                          ),
+                        ),
+                      ),
+                    ),
+              ),
+              const SizedBox(height: 16),
+
+              // 2. Centered Name
+              Text(
+                name,
+                style: GoogleFonts.inter(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+
+              // 3. Centered Username
+              Text(
+                '@${username.toLowerCase()}',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: Colors.white54,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // 4. Centered Location with Pin Icon
+              ValueListenableBuilder<String>(
+                valueListenable: locationService.activeLocationNotifier,
+                builder: (context, activeLoc, _) {
+                  final displayLoc = (activeLoc.isNotEmpty && isMe) ? activeLoc : location;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 100, height: 100,
-                        padding: const EdgeInsets.all(3),
-                        decoration: const BoxDecoration(shape: BoxShape.circle,
-                          gradient: SweepGradient(colors: [ProfileColors.cyan, ProfileColors.purple, ProfileColors.pink, ProfileColors.cyan])
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(shape: BoxShape.circle, color: ProfileColors.bgPrimary),
-                          child: avatarUrl.isNotEmpty 
-                            ? CircleAvatar(backgroundImage: _buildSafeImageProvider(avatarUrl))
-                            : Container(
-                                decoration: const BoxDecoration(shape: BoxShape.circle, color: ProfileColors.bgSecondary),
-                                child: Center(child: Text(initials, style: GoogleFonts.plusJakartaSans(fontSize: 32, fontWeight: FontWeight.bold, color: ProfileColors.cyan))),
-                              ),
-                        ),
+                      const Icon(
+                        Icons.location_on,
+                        color: Color(0xFFFF6B00),
+                        size: 14,
                       ),
-                      // Online indicator
-                      Positioned(
-                        bottom: 4, right: 4,
-                        child: Container(
-                          width: 16, height: 16,
-                          decoration: BoxDecoration(color: ProfileColors.green, shape: BoxShape.circle, border: Border.all(color: ProfileColors.bgPrimary, width: 2)),
-                        ),
-                      ),
-                      // Level Badge
-                      Positioned(
-                        top: -4, right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(colors: [ProfileColors.pink, ProfileColors.orange]),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: ProfileColors.bgPrimary, width: 2),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('👑', style: TextStyle(fontSize: 10)),
-                              const SizedBox(width: 2),
-                              Text('42', style: GoogleFonts.plusJakartaSans(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white)),
-                            ],
-                          ),
+                      const SizedBox(width: 4),
+                      Text(
+                        displayLoc.isEmpty ? 'New York, NY' : displayLoc,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: Colors.white54,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(width: 20),
-                  
-                  // Details
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(name, style: GoogleFonts.plusJakartaSans(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white)),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Text('@$username', style: GoogleFonts.inter(fontSize: 14, color: ProfileColors.textSecondary)),
-                            const SizedBox(width: 6),
-                            Container(
-                              width: 16, height: 16,
-                              decoration: const BoxDecoration(shape: BoxShape.circle, color: ProfileColors.blue),
-                              child: const Icon(Icons.check, size: 10, color: Colors.white),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        ValueListenableBuilder<String>(
-                          valueListenable: locationService.activeLocationNotifier,
-                          builder: (context, activeLoc, _) {
-                            final displayLoc = (activeLoc.isNotEmpty && isMe) ? activeLoc : location;
-                            return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: ProfileColors.cyan.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: ProfileColors.cyan.withValues(alpha: 0.3)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: ProfileColors.cyan, shape: BoxShape.circle)),
-                                  const SizedBox(width: 6),
-                                  Text(displayLoc, style: GoogleFonts.inter(fontSize: 12, color: ProfileColors.cyan, fontWeight: FontWeight.w500)),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  );
+                },
               ),
-              const SizedBox(height: 24),
-              
-              // Bio
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text('"$bio"', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 14, fontStyle: FontStyle.italic, color: ProfileColors.textSecondary, height: 1.5)),
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-              // Actions
-              if (isMe)
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: _onEditProfile,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            gradient: const LinearGradient(colors: [ProfileColors.cyan, ProfileColors.purple]),
-                          ),
-                          alignment: Alignment.center,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.edit, size: 16, color: Colors.white),
-                              const SizedBox(width: 8),
-                              Text('Edit Profile', style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
-                            ],
-                          ),
-                        ),
-                      ),
+              // 5. Centered Bio
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  bio.isEmpty ? 'Explorer. Creator. Always curious. Living in the moment.' : bio,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // 6. Centered Capsule Outline Button
+              GestureDetector(
+                onTap: isMe ? _onEditProfile : () {},
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white24,
+                      width: 1,
                     ),
-                    const SizedBox(width: 12),
-                    GestureDetector(
-                      onTap: _onShareProfile,
-                      child: Container(
-                        width: 50, height: 50,
-                        decoration: BoxDecoration(
-                          color: ProfileColors.glass,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: ProfileColors.gborder),
-                        ),
-                        child: const Icon(Icons.arrow_upward, color: Colors.white, size: 20),
-                      ),
+                  ),
+                  child: Text(
+                    isMe ? 'Edit Profile' : 'Message',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
                     ),
-                  ],
-                )
-              else
-                Row(
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+
+              // 7. Large Centered Stats Card Container
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F0F0F),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () async {
-                          HapticFeedback.heavyImpact();
-                          final targetId = widget.userId ?? '';
-                          if (targetId.isNotEmpty) {
-                            try {
-                              await Supabase.instance.client.from('swipes').insert({
-                                'swiper_id': _myUid,
-                                'swiped_id': targetId,
-                                'liked': true,
-                              });
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Knocked! They will be notified. 🚪👋')),
-                                );
-                              }
-                            } catch (e) {
-                              // Ignore
-                            }
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            gradient: const LinearGradient(colors: [Color(0xFF00E5FF), Color(0xFF3B82F6)]),
-                            boxShadow: [
-                              BoxShadow(color: const Color(0xFF00E5FF).withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 6)),
-                            ],
-                          ),
-                          alignment: Alignment.center,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.waving_hand, size: 18, color: Colors.white),
-                              const SizedBox(width: 8),
-                              Text('Knock', style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
-                            ],
-                          ),
-                        ),
-                      ),
+                    _buildNewStatColumn(
+                      icon: Icons.flash_on,
+                      val: '24',
+                      label: 'RUSH-INS',
+                      iconColor: const Color(0xFFFF6B00),
+                    ),
+                    _buildNewStatColumn(
+                      icon: Icons.calendar_today_outlined,
+                      val: '18',
+                      label: 'ACTIVITIES',
+                      iconColor: const Color(0xFF4E8BFF),
+                    ),
+                    _buildNewStatColumn(
+                      icon: Icons.people_outline,
+                      val: '156',
+                      label: 'CONNECTIONS',
+                      iconColor: const Color(0xFFFFD54F),
+                    ),
+                    _buildNewStatColumn(
+                      icon: Icons.emoji_events_outlined,
+                      val: '98%',
+                      label: 'RELIABILITY',
+                      iconColor: const Color(0xFFFF8A00),
                     ),
                   ],
                 ),
-              const SizedBox(height: 24),
-
-              // Quick Badges
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _buildBadgeCard('⚡', '847', 'SPARK SCORE', ProfileColors.orange),
-                  _buildBadgeCard('🏃', '63', 'RUSH-INS', ProfileColors.cyan),
-                  _buildBadgeCard('👑', 'Lv 42', 'COMPANION', ProfileColors.cyan),
-                  _buildBadgeCard('🎭', '31', 'EVENTS', ProfileColors.cyan),
-                ],
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildNewStatColumn({
+    required IconData icon,
+    required String val,
+    required String label,
+    required Color iconColor,
+  }) {
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: iconColor, size: 18),
+          const SizedBox(height: 6),
+          Text(
+            val,
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 8,
+              fontWeight: FontWeight.w800,
+              color: Colors.white38,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -879,13 +876,13 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                         onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coming soon!')))),
                       _buildDashItem(Icons.qr_code_2, 'violet', 'QR Code', 'Share your profile via QR',
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const QRCodeScreen()))),
-                      _buildDashItem(Icons.share, 'green', 'Invite Friends', 'Invite contacts to join Meetra',
+                      _buildDashItem(Icons.share, 'green', 'Invite Friends', 'Invite contacts to join Relaya',
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InviteFriendsScreen()))),
                       const Divider(color: ProfileColors.borderSubtle, height: 40),
 
                       // ── SECTION 5: SYSTEM ADMINISTRATION ──
                       _buildSectionTitle('⚡ SYSTEM ADMIN'),
-                      _buildDashItem(Icons.admin_panel_settings, 'red', 'Super Admin Panel', 'Supreme power over the Meetra ecosystem',
+                      _buildDashItem(Icons.admin_panel_settings, 'red', 'Super Admin Panel', 'Supreme power over the Relaya ecosystem',
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboardScreen()))),
                       const SizedBox(height: 30),
                     ],
@@ -1382,6 +1379,57 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     );
   }
 
+  void _showNavTransitionSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: ProfileColors.bgSecondary,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Navigation Style', style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: ProfileColors.textPrimary)),
+              const SizedBox(height: 8),
+              Text('Customize how you swipe between pages.', style: GoogleFonts.inter(fontSize: 13, color: ProfileColors.textMuted)),
+              const SizedBox(height: 24),
+              ...['Slide', 'Fade', 'Scale', '3D Flip'].map((style) {
+                final isSelected = _navTransition == style;
+                return GestureDetector(
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    setState(() => _navTransition = style);
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString('nav_transition', style);
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Navigation set to $style'), backgroundColor: ProfileColors.cyan, duration: const Duration(seconds: 1)));
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: ProfileColors.glass,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: isSelected ? ProfileColors.cyan : ProfileColors.borderSubtle, width: isSelected ? 2 : 1),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(style, style: GoogleFonts.inter(fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, color: isSelected ? Colors.white : ProfileColors.textSecondary)),
+                        if (isSelected) const Icon(Icons.check_circle, color: ProfileColors.cyan),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // ============== 5. SETTINGS PANEL (RIGHT DRAWER) ==============
   Widget _buildSettingsPanel() {
     return Drawer(
@@ -1440,6 +1488,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       );
                     }
                   ),
+                  _buildSettingsRow(Icons.swipe_outlined, 'Navigation Transition', 
+                    valueText: _navTransition, 
+                    valueColor: ProfileColors.cyan, 
+                    hasArrow: true, 
+                    onTap: _showNavTransitionSheet
+                  ),
                   // Discovery Location — unified search picker (opens real search sheet)
                   ValueListenableBuilder<String>(
                     valueListenable: locationService.activeLocationNotifier,
@@ -1448,7 +1502,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                         Icons.explore_outlined,
                         'Discovery Location',
                         valueText: activeLoc.isEmpty ? 'Tap to set' : activeLoc,
-                        valueColor: const Color(0xFF00E5CC),
+                        valueColor: const Color(0xFFFF6B00),
                         hasArrow: true,
                         onTap: () => showLocationSearchSheet(context),
                       );
@@ -1908,7 +1962,7 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
                     ],
                   ),
                 ),
-                if (_isMapDarkMode) Container(color: const Color(0xFF4A00E0).withValues(alpha: 0.1)),
+                if (_isMapDarkMode) Container(color: const Color(0xFFFF5C00).withValues(alpha: 0.1)),
                 
                 // Search Input
                 Positioned(

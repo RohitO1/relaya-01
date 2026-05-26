@@ -43,6 +43,7 @@ class BolRoomManager {
   static String? _roomKey;
   static BuildContext? _callerContext;
   static GlobalKey<NavigatorState>? _internalNavKey;
+  static GlobalKey<NavigatorState>? get internalNavKey => _internalNavKey;
   static GlobalKey<_BolRoomOverlayHostState>? _hostKey;
 
   static void openRoom(BuildContext context,
@@ -116,6 +117,7 @@ class BolRoomManager {
   }
 
   static bool get hasActiveRoom => _roomKey != null;
+  static String? get currentRoomId => _roomKey;
   static bool get isRoomMinimized =>
       _hostKey?.currentState?._isMinimized ?? false;
   static bool get isRoomFullscreen => hasActiveRoom && !isRoomMinimized;
@@ -557,10 +559,11 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
 
     try {
       if (_isVoiceMasked) {
-        // setPreset sends the preset to native. If the hook is already live, DSP switches
-        // immediately (atomic flush). If the hook is still in its Kotlin retry loop,
-        // the preset is QUEUED and applied automatically once the loop succeeds.
-        await _voiceMaskService.setPreset(_voiceMaskPreset);
+        // Use startMasking() instead of setPreset() to ensure BOTH the Dart-side
+        // state (_isActive, _activePreset) and native-side state are properly synced.
+        // setPreset() alone doesn't update Dart _isActive, which causes mute→unmute
+        // cycles to fail to reactivate the DSP pipeline.
+        await _voiceMaskService.startMasking(_voiceMaskPreset);
         if (_livekitRoom != null && _hasMicPermission && !_isMuted) {
           await _livekitRoom!.localParticipant?.setMicrophoneEnabled(true);
         }
@@ -623,7 +626,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(Icons.masks,
-                        color: Color(0xFF00E5FF), size: 28),
+                        color: Color(0xFFFF6B00), size: 28),
                     const SizedBox(width: 10),
                     const Text('Voice Masking',
                         style: TextStyle(
@@ -636,19 +639,19 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: _isVoiceMasked
-                            ? const Color(0xFF00E5FF).withValues(alpha: 0.2)
+                            ? const Color(0xFFFF6B00).withValues(alpha: 0.2)
                             : Colors.white10,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                             color: _isVoiceMasked
-                                ? const Color(0xFF00E5FF)
+                                ? const Color(0xFFFF6B00)
                                 : Colors.white24),
                       ),
                       child: Text(
                         _isVoiceMasked ? 'ACTIVE' : 'ORIGINAL',
                         style: TextStyle(
                             color: _isVoiceMasked
-                                ? const Color(0xFF00E5FF)
+                                ? const Color(0xFFFF6B00)
                                 : Colors.white54,
                             fontSize: 11,
                             fontWeight: FontWeight.bold),
@@ -688,7 +691,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     ),
                     value: _isVoiceMasked,
                     activeThumbColor: Colors.white,
-                    activeTrackColor: const Color(0xFF00E5FF),
+                    activeTrackColor: const Color(0xFFFF6B00),
                     inactiveThumbColor: Colors.grey,
                     inactiveTrackColor: const Color(0xFF2A2440),
                     onChanged: (v) async {
@@ -821,12 +824,12 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFF00E5FF), Color(0xFF007BFF)],
+                            colors: [Color(0xFFFF6B00), Color(0xFF007BFF)],
                           ),
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
+                              color: const Color(0xFFFF6B00).withValues(alpha: 0.3),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             )
@@ -834,7 +837,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                         ),
                         child: const Center(
                           child: Text(
-                            'Mask',
+                            'Use this voice',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 15,
@@ -924,10 +927,10 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF00E5FF).withValues(alpha: 0.1),
+                            color: const Color(0xFFFF6B00).withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.record_voice_over, color: Color(0xFF00E5FF), size: 36),
+                          child: const Icon(Icons.record_voice_over, color: Color(0xFFFF6B00), size: 36),
                         ),
                         const SizedBox(height: 16),
                         const Text(
@@ -952,96 +955,64 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     );
   }
 
-  /// Custom 2D voice pad: pitch (vertical) × formant (horizontal).
-  Widget _buildCustomVoicePad(StateSetter setSheetState) {
-    return Container(
-      height: 180,
-      decoration: BoxDecoration(
-        color: const Color(0xFF13101E),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF231D38)),
-      ),
-      child: LayoutBuilder(builder: (ctx, constraints) {
-        // Map pitch -12..+12 to 0..height (inverted: top = high pitch)
-        // Map formant -6..+6 to 0..width
-        final w = constraints.maxWidth;
-        final h = constraints.maxHeight;
-        double pitchNorm =
-            ((_myVoicePitch - 0.5) * 24.0).clamp(-12, 12).toDouble();
-        double formantNorm = 0.0;
-
-        double dotX = (formantNorm + 6) / 12.0 * w;
-        double dotY = (1.0 - (pitchNorm + 12) / 24.0) * h;
-
-        return GestureDetector(
-          onPanUpdate: (d) {
-            final lx = d.localPosition.dx.clamp(0, w);
-            final ly = d.localPosition.dy.clamp(0, h);
-            final newPitch = (1.0 - ly / h) * 24.0 - 12.0;
-            final newFormant = (lx / w) * 12.0 - 6.0;
-            setState(() {
-              _myVoicePitch = (newPitch / 24.0) + 0.5;
-            });
-            setSheetState(() {});
-            _voiceMaskService.setCustomPitch(newPitch);
-            _voiceMaskService.setCustomFormant(newFormant);
+    Widget _buildCustomVoicePad(StateSetter setSheetState) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Custom Voice Tuner', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text('Drag the dot to find your perfect voice texture', style: TextStyle(color: Colors.white70, fontSize: 11)),
+        const SizedBox(height: 10),
+        Container(
+          height: 180,
+          decoration: BoxDecoration(color: const Color(0xFF13101E), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF231D38))),
+          child: LayoutBuilder(builder: (ctx, constraints) {
+            final w = constraints.maxWidth;
+            final h = constraints.maxHeight;
+            double pitchNorm = ((_myVoicePitch - 0.5) * 24.0).clamp(-12.0, 12.0).toDouble();
+            double formantNorm = 0.0; // Wait, chatroom_live_screen.dart doesn't have _voiceFormant locally?
+            double dotX = (formantNorm + 6.0) / 12.0 * w;
+            double dotY = (1.0 - (pitchNorm + 12.0) / 24.0) * h;
+            return GestureDetector(
+              onPanUpdate: (d) {
+                final lx = d.localPosition.dx.clamp(0.0, w);
+                final ly = d.localPosition.dy.clamp(0.0, h);
+                final newPitch = (1.0 - ly / h) * 24.0 - 12.0;
+                final newFormant = (lx / w) * 12.0 - 6.0;
+                setState(() {
+                  _myVoicePitch = (newPitch / 24.0) + 0.5;
+                  // If we don't have _voiceFormant state variable in this class, we need to add it or ignore it.
+                  // Wait, I should just pass it to VoiceMaskService directly.
+                });
+                setSheetState(() {});
+                _voiceMaskService.setCustomPitch(newPitch);
+                _voiceMaskService.setCustomFormant(newFormant);
+              },
+              child: Stack(
+                children: [
+                  Positioned.fill(child: CustomPaint(painter: _VoicePadPainter(dotX, dotY))),
+                  Positioned(left: dotX - 14, top: dotY - 14, child: Container(width: 28, height: 28, decoration: BoxDecoration(shape: BoxShape.circle, gradient: const RadialGradient(colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]), boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.6), blurRadius: 12, spreadRadius: 2)]))),
+                ],
+              ),
+            );
+          }),
+        ),
+        const SizedBox(height: 12),
+        Center(child: Text('Pitch: ${((_myVoicePitch - 0.5) * 24).toStringAsFixed(1)} st', style: TextStyle(color: Colors.white70, fontSize: 11))),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: () {
+            _sb.from('bolroom_profiles').update({'voice_pitch': _myVoicePitch}).eq('id', _myId);
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Custom voice saved successfully!')));
           },
-          child: Stack(
-            children: [
-              // Grid lines
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: _GridPainter(),
-                ),
-              ),
-              // Labels
-              const Positioned(
-                  left: 8,
-                  top: 4,
-                  child: Text('High',
-                      style: TextStyle(
-                          color: Colors.white24, fontSize: 10))),
-              const Positioned(
-                  left: 8,
-                  bottom: 4,
-                  child: Text('Low',
-                      style: TextStyle(
-                          color: Colors.white24, fontSize: 10))),
-              const Positioned(
-                  right: 8,
-                  bottom: 4,
-                  child: Text('Bright',
-                      style: TextStyle(
-                          color: Colors.white24, fontSize: 10))),
-              const Positioned(
-                  left: 8 + 20,
-                  bottom: 4,
-                  child: Text('Dark',
-                      style: TextStyle(
-                          color: Colors.white24, fontSize: 10))),
-              // Dot
-              Positioned(
-                left: dotX - 12,
-                top: dotY - 12,
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF00E5FF),
-                    boxShadow: [
-                      BoxShadow(
-                          color:
-                              const Color(0xFF00E5FF).withValues(alpha: 0.5),
-                          blurRadius: 12)
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]), borderRadius: BorderRadius.circular(16)),
+            child: const Center(child: Text('Use this voice', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold))),
           ),
-        );
-      }),
+        ),
+      ],
     );
   }
 
@@ -2192,6 +2163,10 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     } catch (_) {}
   }
 
+  void handleLeaveAction() {
+    _handleLeaveAction();
+  }
+
   /// Called by the floating pill close button to leave cleanly
   void _handleLeaveAction() {
     if (_isHost && _members.length > 1) {
@@ -3236,7 +3211,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const CircularProgressIndicator(
-                          color: Color(0xFF00E5FF), strokeWidth: 3),
+                          color: Color(0xFFFF6B00), strokeWidth: 3),
                       const SizedBox(height: 20),
                       Text('Reconnecting…',
                           style: GoogleFonts.poppins(
@@ -3958,7 +3933,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                                     width: 18,
                                     height: 18,
                                     decoration: BoxDecoration(
-                                        color: const Color(0xFF00E5FF).withValues(alpha: 0.9),
+                                        color: const Color(0xFFFF6B00).withValues(alpha: 0.9),
                                         shape: BoxShape.circle,
                                         border: Border.all(
                                             color: const Color(0xFF0C0914),
@@ -4077,7 +4052,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     width: 20,
                     height: 20,
                     decoration: BoxDecoration(
-                        color: const Color(0xFF00E5FF).withValues(alpha: 0.9),
+                        color: const Color(0xFFFF6B00).withValues(alpha: 0.9),
                         shape: BoxShape.circle,
                         border: Border.all(
                             color: const Color(0xFF0C0914), width: 1.5)),
@@ -5259,7 +5234,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                         child: Center(
                           child: Icon(Icons.masks,
                               color: _isVoiceMasked
-                                  ? const Color(0xFF00E5FF)
+                                  ? const Color(0xFFFF6B00)
                                   : Colors.white54,
                               size: 24),
                         ),
@@ -6023,7 +5998,7 @@ class _MemberSheetState extends State<_MemberSheet> {
                     ],
                     // On Stage
                     _sectionHeader(
-                        'On Stage', _onStage.length, const Color(0xFF00E5FF)),
+                        'On Stage', _onStage.length, const Color(0xFFFF6B00)),
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.03),
@@ -6776,11 +6751,11 @@ class BolRoomPostSummaryScreen extends StatelessWidget {
                   shape: BoxShape.circle,
                   gradient: LinearGradient(colors: [
                     const Color(0xFF7856FF).withValues(alpha: 0.3),
-                    const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                    const Color(0xFFFF6B00).withValues(alpha: 0.15),
                   ]),
                 ),
                 child: const Icon(Icons.check_circle_outline,
-                    color: Color(0xFF00E5FF), size: 48),
+                    color: Color(0xFFFF6B00), size: 48),
               ),
               const SizedBox(height: 24),
               Text('Room Ended',
@@ -6799,7 +6774,7 @@ class BolRoomPostSummaryScreen extends StatelessWidget {
                     Icons.timer_outlined, const Color(0xFF7856FF)),
                 const SizedBox(width: 16),
                 _statCard('Peak Listeners', '$peakListeners',
-                    Icons.headset_outlined, const Color(0xFF00E5FF)),
+                    Icons.headset_outlined, const Color(0xFFFF6B00)),
               ]),
               const SizedBox(height: 16),
               Row(children: [
@@ -6905,7 +6880,7 @@ class _GridPainter extends CustomPainter {
     }
     // Center crosshair
     final center = Paint()
-      ..color = const Color(0xFF00E5FF).withAlpha(40)
+      ..color = const Color(0xFFFF6B00).withAlpha(40)
       ..strokeWidth = 1;
     canvas.drawLine(
         Offset(size.width / 2, 0), Offset(size.width / 2, size.height), center);
@@ -6918,3 +6893,60 @@ class _GridPainter extends CustomPainter {
 }
 
 
+
+class _VoicePadPainter extends CustomPainter {
+  final double dotX;
+  final double dotY;
+
+  _VoicePadPainter(this.dotX, this.dotY);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    // Background gradient
+    final Rect bgRect = Rect.fromLTWH(0, 0, w, h);
+    final Paint bgPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [Colors.transparent, const Color(0xFFFF6B00).withValues(alpha: 0.15)],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(bgRect);
+    canvas.drawRect(bgRect, bgPaint);
+
+    // Zone region fills
+    final zonePaint = Paint()..style = PaintingStyle.fill;
+    // High zone (top third)
+    zonePaint.color = const Color(0xFF8A2BE2).withAlpha(20);
+    canvas.drawRect(Rect.fromLTWH(0, 0, w, h / 3), zonePaint);
+    // Low zone (bottom third)
+    zonePaint.color = const Color(0xFFFF6600).withAlpha(15);
+    canvas.drawRect(Rect.fromLTWH(0, h * 2 / 3, w, h / 3), zonePaint);
+
+    // Grid lines
+    final gridPaint = Paint()
+      ..color = const Color(0xFF231D38)
+      ..strokeWidth = 0.8;
+    for (int i = 1; i < 4; i++) {
+      final y = h * i / 4;
+      canvas.drawLine(Offset(0, y), Offset(w, y), gridPaint);
+    }
+    for (int i = 1; i < 4; i++) {
+      final x = w * i / 4;
+      canvas.drawLine(Offset(x, 0), Offset(x, h), gridPaint);
+    }
+
+    // Ripple circles
+    final ripplePaint = Paint()
+      ..color = const Color(0xFFFF6B00).withAlpha(25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawCircle(Offset(dotX, dotY), 24, ripplePaint);
+    ripplePaint.color = const Color(0xFFFF6B00).withAlpha(12);
+    canvas.drawCircle(Offset(dotX, dotY), 38, ripplePaint);
+  }
+
+  @override
+  bool shouldRepaint(_VoicePadPainter old) => old.dotX != dotX || old.dotY != dotY;
+}

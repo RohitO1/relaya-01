@@ -61,6 +61,11 @@ class _BolroomShellState extends State<BolroomShell> {
       if (roomState != null && roomState.handleBack()) {
         return true;
       }
+      // 1b: Check if the internal navigator has any open dialogs/bottom sheets
+      if (BolRoomManager.internalNavKey?.currentState?.canPop() == true) {
+        BolRoomManager.internalNavKey!.currentState!.pop();
+        return true;
+      }
       // 1c: Nothing internal — minimize the room to floating bubble
       BolRoomManager.minimizeRoomIfOpen();
       return true;

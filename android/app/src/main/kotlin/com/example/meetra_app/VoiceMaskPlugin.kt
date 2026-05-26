@@ -113,7 +113,14 @@ class VoiceMaskPlugin : FlutterPlugin, MethodCallHandler {
             "setPreset" -> {
                 val presetId = call.argument<String>("preset") ?: "none"
                 dsp.switchPreset(VoiceMaskPreset.byId(presetId))
-                android.util.Log.i("VoiceMask", "Preset switched: $presetId")
+                if (presetId == "none") {
+                    isActive = false
+                    com.cloudwebrtc.webrtc.VoiceMaskCallbackRegistry.setActive(false)
+                } else {
+                    isActive = true
+                    com.cloudwebrtc.webrtc.VoiceMaskCallbackRegistry.setActive(true)
+                }
+                android.util.Log.i("VoiceMask", "Preset switched: $presetId | active=$isActive")
                 result.success(true)
             }
 
@@ -131,6 +138,11 @@ class VoiceMaskPlugin : FlutterPlugin, MethodCallHandler {
                     buf.put(bytes)
                     buf.rewind()
                     val numFrames = bytes.size / 2
+                    
+                    // The Flutter loopback test records at 44100 Hz.
+                    // We MUST configure the DSP for 44.1kHz so that its windowSize and hannWindow are built.
+                    dsp.configure(44100)
+                    
                     dsp.processBuffer(1, numFrames, buf)
                     buf.rewind()
                     val out = ByteArray(bytes.size)

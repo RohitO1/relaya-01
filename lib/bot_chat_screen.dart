@@ -195,7 +195,7 @@ class _BotChatScreenState extends State<BotChatScreen> {
             bottom: -50, left: -100,
             child: ImageFiltered(
               imageFilter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
-              child: Container(width: 350, height: 350, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF00E5FF).withValues(alpha: 0.15))),
+              child: Container(width: 350, height: 350, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFF6B00).withValues(alpha: 0.15))),
             ),
           ),
           
@@ -219,7 +219,7 @@ class _BotChatScreenState extends State<BotChatScreen> {
                       Container(
                         width: 44, height: 44,
                         decoration: BoxDecoration(
-                          gradient: const SweepGradient(colors: [Color(0xFF00E5FF), Color(0xFFFF0055), Color(0xFF8B5CF6), Color(0xFF00E5FF)]),
+                          gradient: const SweepGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF0055), Color(0xFFFF7E40), Color(0xFFFF6B00)]),
                           shape: BoxShape.circle,
                           boxShadow: [BoxShadow(color: const Color(0xFFFF0055).withValues(alpha: 0.3), blurRadius: 10)],
                         ),
@@ -237,7 +237,7 @@ class _BotChatScreenState extends State<BotChatScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('Meetra AI', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-                            Text('Hugging Face Intelligence', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 11, fontWeight: FontWeight.w600)),
+                            Text('Hugging Face Intelligence', style: TextStyle(color: Color(0xFFFF6B00), fontSize: 11, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
@@ -345,7 +345,7 @@ class _BotChatScreenState extends State<BotChatScreen> {
                           margin: const EdgeInsets.all(6),
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(colors: [Color(0xFFFF0055), Color(0xFF8B5CF6)]),
+                            gradient: const LinearGradient(colors: [Color(0xFFFF0055), Color(0xFFFF7E40)]),
                             shape: BoxShape.circle,
                             boxShadow: [BoxShadow(color: const Color(0xFFFF0055).withValues(alpha: 0.4), blurRadius: 8)],
                           ),
@@ -384,7 +384,7 @@ class _BotChatScreenState extends State<BotChatScreen> {
         Container(
           width: 24, height: 24,
           decoration: const BoxDecoration(
-            gradient: LinearGradient(colors: [Color(0xFF00E5FF), Color(0xFFFF0055)]),
+            gradient: LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF0055)]),
             shape: BoxShape.circle,
           ),
           child: const Icon(Icons.smart_toy, color: Colors.white, size: 12),
@@ -394,9 +394,9 @@ class _BotChatScreenState extends State<BotChatScreen> {
           constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [const Color(0xFF00E5FF).withValues(alpha: 0.1), const Color(0xFFFF0055).withValues(alpha: 0.05)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            gradient: LinearGradient(colors: [const Color(0xFFFF6B00).withValues(alpha: 0.1), const Color(0xFFFF0055).withValues(alpha: 0.05)], begin: Alignment.topLeft, end: Alignment.bottomRight),
             borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24), bottomLeft: Radius.circular(6), bottomRight: Radius.circular(24)),
-            border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3)),
+            border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3)),
           ),
           child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.5)),
         ),

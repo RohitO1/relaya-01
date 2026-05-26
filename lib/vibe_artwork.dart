@@ -304,7 +304,7 @@ class _MusicPainter extends CustomPainter {
     canvas.save();
     canvas.translate(cx + 18, cy + 5);
     canvas.rotate(math.sin(t * 2 * math.pi) * 0.06);
-    p.color = const Color(0xFF7C3AED);
+    p.color = const Color(0xFFFF5C00);
     // Instrument shape
     final instPath = Path()
       ..moveTo(-8, -25)
@@ -564,7 +564,7 @@ class _GamingPainter extends CustomPainter {
     p.color = const Color(0xFF5B21B6).withValues(alpha: 0.15 + screenGlow * 0.1);
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(cx + 22, cy - 15), width: 38, height: 28), const Radius.circular(4)), p);
     // Screen content
-    p.color = const Color(0xFF7C3AED).withValues(alpha: 0.4 + screenGlow * 0.3);
+    p.color = const Color(0xFFFF5C00).withValues(alpha: 0.4 + screenGlow * 0.3);
     canvas.drawRect(Rect.fromLTWH(cx + 5, cy - 27, 32, 22), p);
     // Pixel art on screen
     p.color = const Color(0xFF60A5FA).withValues(alpha: 0.6);
@@ -1114,7 +1114,7 @@ class _DatingPainter extends CustomPainter {
     final p = Paint()..style = PaintingStyle.fill;
 
     // Female (left) — pink
-    _drawPerson(canvas, size.width * 0.28, size.height * 0.48, const Color(0xFFEC4899), true, t);
+    _drawPerson(canvas, size.width * 0.28, size.height * 0.48, const Color(0xFFFF3D00), true, t);
     // Male (right) — blue/indigo
     _drawPerson(canvas, size.width * 0.72, size.height * 0.48, const Color(0xFF6366F1), false, t);
 

@@ -61,9 +61,12 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
     });
   }
 
-  void _selectLocation(String name, double lat, double lng) {
-    locationService.setLocation(name, lat: lat, lng: lng);
+  void _selectLocation(String name, double lat, double lng, {String? district, String? state}) {
+    locationService.setLocation(name, lat: lat, lng: lng, district: district, state: state);
     
+    final finalDistrict = district ?? (name.split(',').first.trim());
+    final finalState = state ?? (name.split(',').length > 1 ? name.split(',')[1].trim() : '');
+
     // Also save coordinates to Supabase profiles for radius-based rush-in targeting
     final uid = Supabase.instance.client.auth.currentUser?.id;
     if (uid != null) {
@@ -71,8 +74,8 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
         'lat': lat,
         'lng': lng,
         'city': name,
-        'district': name.split(',').first.trim(),
-        'state': name.split(',').length > 1 ? name.split(',')[1].trim() : '',
+        'district': finalDistrict,
+        'state': finalState,
       }).eq('id', uid).then((_) {
         debugPrint('Profile location updated: $name ($lat, $lng)');
       }).catchError((e) {
@@ -88,7 +91,7 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
           const SizedBox(width: 8),
           Expanded(child: Text('Location set to $name', style: const TextStyle(fontWeight: FontWeight.w600))),
         ]),
-        backgroundColor: const Color(0xFF00E5CC),
+        backgroundColor: const Color(0xFFFF6B00),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -128,16 +131,20 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
 
       // Reverse geocode to get a human-readable name
       String locationName = 'My Location';
+      String? gpsDistrict;
+      String? gpsState;
       try {
         final results = await locationService.searchLocations(
           '${position.latitude},${position.longitude}',
         );
         if (results.isNotEmpty) {
           locationName = results.first['name'] ?? 'My Location';
+          gpsDistrict = results.first['district'];
+          gpsState = results.first['state'];
         }
       } catch (_) {}
 
-      _selectLocation(locationName, position.latitude, position.longitude);
+      _selectLocation(locationName, position.latitude, position.longitude, district: gpsDistrict, state: gpsState);
     } catch (e) {
       if (mounted) {
         setState(() => _fetchingGps = false);
@@ -179,7 +186,7 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFF00E5CC), Color(0xFF3B82F6)]),
+                    gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF3B82F6)]),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.explore, color: Colors.white, size: 20),
@@ -191,7 +198,7 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
                     children: [
                       Text('Discovery Location', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
                       if (currentLoc.isNotEmpty)
-                        Text('Currently: $currentLoc', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF00E5CC))),
+                        Text('Currently: $currentLoc', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFFF6B00))),
                     ],
                   ),
                 ),
@@ -222,7 +229,7 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.search, color: Color(0xFF00E5CC), size: 20),
+                  const Icon(Icons.search, color: Color(0xFFFF6B00), size: 20),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
@@ -237,7 +244,7 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
                     ),
                   ),
                   if (_searching)
-                    const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00E5CC))),
+                    const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF6B00))),
                   if (_searchCtrl.text.isNotEmpty && !_searching)
                     GestureDetector(
                       onTap: () { _searchCtrl.clear(); setState(() => _results = []); },
@@ -259,20 +266,20 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [const Color(0xFF00E5CC).withValues(alpha: 0.1), const Color(0xFF3B82F6).withValues(alpha: 0.1)],
+                    colors: [const Color(0xFFFF6B00).withValues(alpha: 0.1), const Color(0xFF3B82F6).withValues(alpha: 0.1)],
                   ),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF00E5CC).withValues(alpha: 0.3)),
+                  border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: [
                     _fetchingGps
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00E5CC)))
-                        : const Icon(Icons.my_location, color: Color(0xFF00E5CC), size: 20),
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF6B00)))
+                        : const Icon(Icons.my_location, color: Color(0xFFFF6B00), size: 20),
                     const SizedBox(width: 12),
-                    Text('Use My Current Location', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF00E5CC))),
+                    Text('Use My Current Location', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFFFF6B00))),
                     const Spacer(),
-                    const Icon(Icons.arrow_forward_ios, color: Color(0xFF00E5CC), size: 14),
+                    const Icon(Icons.arrow_forward_ios, color: Color(0xFFFF6B00), size: 14),
                   ],
                 ),
               ),
@@ -311,15 +318,15 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
           leading: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF00E5CC).withValues(alpha: 0.1),
+              color: const Color(0xFFFF6B00).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.location_on, color: Color(0xFF00E5CC), size: 18),
+            child: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 18),
           ),
           title: Text(r['name'] ?? '', style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
           subtitle: Text(r['full_name'] ?? '', style: GoogleFonts.inter(color: Colors.white38, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
           trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
-          onTap: () => _selectLocation(r['name'], r['lat'], r['lng']),
+          onTap: () => _selectLocation(r['name'], r['lat'], r['lng'], district: r['district'], state: r['state']),
         );
       },
     );
@@ -352,24 +359,24 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
                   margin: const EdgeInsets.only(bottom: 6),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
-                    color: isActive ? const Color(0xFF00E5CC).withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.03),
+                    color: isActive ? const Color(0xFFFF6B00).withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.03),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: isActive ? const Color(0xFF00E5CC).withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.06)),
+                    border: Border.all(color: isActive ? const Color(0xFFFF6B00).withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.06)),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.location_city, size: 18, color: isActive ? const Color(0xFF00E5CC) : Colors.white38),
+                      Icon(Icons.location_city, size: 18, color: isActive ? const Color(0xFFFF6B00) : Colors.white38),
                       const SizedBox(width: 12),
-                      Text(city['name'], style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: isActive ? const Color(0xFF00E5CC) : Colors.white70)),
+                      Text(city['name'], style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: isActive ? const Color(0xFFFF6B00) : Colors.white70)),
                       const Spacer(),
                       if (isActive)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF00E5CC).withValues(alpha: 0.2),
+                            color: const Color(0xFFFF6B00).withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text('ACTIVE', style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w900, color: const Color(0xFF00E5CC))),
+                          child: Text('ACTIVE', style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w900, color: const Color(0xFFFF6B00))),
                         )
                       else
                         const Icon(Icons.arrow_forward_ios, color: Colors.white12, size: 14),

@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"name": "meetra_app",
+			"path": "../../meetra_app"
+		}
+	],
+	"settings": {
+		"deno.enable": true,
+		"deno.enablePaths": [
+			"supabase/functions"
+		],
+		"deno.lint": true,
+		"deno.unstable": true
+	}
+}

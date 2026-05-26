@@ -19,8 +19,8 @@ class BolRoomColors {
   static const searchBg = Color(0xFF151121);
   static const searchBorder = Color(0xFF262136);
   static const accent = Color(0xFFFF2D78);
-  static const cyan = Color(0xFF00F0FF);
-  static const purple = Color(0xFF9D4EDD);
+  static const cyan = Color(0xFFFFC107);
+  static const purple = Color(0xFFFF7E40);
   static const textPrimary = Colors.white;
   static const textSecondary = Color(0xFFA19EAD);
   
@@ -161,8 +161,65 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
 
   void _joinRoom(Map<String, dynamic> room) {
     HapticFeedback.lightImpact();
+    final newRoomId = room['id'].toString();
+
+    if (BolRoomManager.hasActiveRoom) {
+      final currentRoomId = BolRoomManager.currentRoomId;
+      if (currentRoomId == newRoomId) {
+        BolRoomManager.maximizeRoom(context);
+        return;
+      }
+      
+      // Different room, show dialog
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF13101E),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: const BorderSide(color: Color(0xFF231D38))),
+          title: const Text('Already in a Room',
+              style: TextStyle(color: Colors.white)),
+          content: const Text(
+              'You are currently in an active BolRoom. Do you want to leave the current room and join this new one, or stay with the existing one?',
+              style: TextStyle(color: Colors.white70)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Stay', style: TextStyle(color: Colors.white54)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                final state = BolRoomManager.roomStateKey?.currentState;
+                if (state != null) {
+                  state.handleLeaveAction();
+                } else {
+                  BolRoomManager.completelyCloseRoom();
+                }
+                
+                // Wait briefly for UI to close then open new one
+                Future.delayed(const Duration(milliseconds: 300), () {
+                  BolRoomManager.openRoom(context,
+                    roomId: newRoomId,
+                    roomName: room['name'] ?? 'Untitled',
+                    topic: room['topic'] ?? 'General',
+                    hostId: room['host_id']?.toString() ?? '',
+                    hostName: room['host_name'] ?? 'Host',
+                  );
+                });
+              },
+              child: const Text('Leave & Join',
+                  style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     BolRoomManager.openRoom(context,
-      roomId: room['id'].toString(), roomName: room['name'] ?? 'Untitled', topic: room['topic'] ?? 'General',
+      roomId: newRoomId, roomName: room['name'] ?? 'Untitled', topic: room['topic'] ?? 'General',
       hostId: room['host_id']?.toString() ?? '', hostName: room['host_name'] ?? 'Host',
     );
   }
@@ -548,7 +605,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF00E5CC), shape: BoxShape.circle)),
+                            Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFFFF6B00), shape: BoxShape.circle)),
                             const SizedBox(width: 6),
                             Flexible(child: Text('${room['listener_count'] ?? 0} listening • ${_getTopic(room['topic'])}', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
                             const SizedBox(width: 6),
@@ -581,7 +638,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
       children: [
         const SizedBox(height: 8),
         Row(children: [
-          const Icon(Icons.schedule, color: Color(0xFF9D4EDD), size: 18),
+          const Icon(Icons.schedule, color: Color(0xFFFF7E40), size: 18),
           const SizedBox(width: 8),
           Text('Scheduled', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
         ]),
@@ -601,14 +658,14 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
             decoration: BoxDecoration(
               color: BolRoomColors.searchBg,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFF9D4EDD).withValues(alpha: 0.15)),
+              border: Border.all(color: const Color(0xFFFF7E40).withValues(alpha: 0.15)),
             ),
             child: Column(children: [
               Row(children: [
                 Container(
                   width: 48, height: 48,
-                  decoration: BoxDecoration(color: const Color(0xFF9D4EDD).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.calendar_today, color: Color(0xFF9D4EDD), size: 22),
+                  decoration: BoxDecoration(color: const Color(0xFFFF7E40).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(16)),
+                  child: const Icon(Icons.calendar_today, color: Color(0xFFFF7E40), size: 22),
                 ),
                 const SizedBox(width: 14),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -620,7 +677,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
                   onTap: () => _showToast('Reminder set! 🔔'),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(color: const Color(0xFF9D4EDD), borderRadius: BorderRadius.circular(20)),
+                    decoration: BoxDecoration(color: const Color(0xFFFF7E40), borderRadius: BorderRadius.circular(20)),
                     child: Text('Remind me', style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
                   ),
                 ),
@@ -803,7 +860,7 @@ class _CreateRoomModalState extends State<_CreateRoomModal> {
         else {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('Space scheduled for ${DateFormat('MMM d, h:mm a').format(_scheduledAt!)}'),
-            backgroundColor: const Color(0xFF9D4EDD),
+            backgroundColor: const Color(0xFFFF7E40),
           ));
         }
       }
@@ -817,10 +874,10 @@ class _CreateRoomModalState extends State<_CreateRoomModal> {
   Future<void> _pickScheduleTime() async {
     final now = DateTime.now();
     final date = await showDatePicker(context: context, initialDate: now.add(const Duration(hours: 1)), firstDate: now, lastDate: now.add(const Duration(days: 30)),
-      builder: (ctx, child) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFF9D4EDD))), child: child!));
+      builder: (ctx, child) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFFFF7E40))), child: child!));
     if (date == null || !mounted) return;
     final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
-      builder: (ctx, child) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFF9D4EDD))), child: child!));
+      builder: (ctx, child) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFFFF7E40))), child: child!));
     if (time == null || !mounted) return;
     setState(() => _scheduledAt = DateTime(date.year, date.month, date.day, time.hour, time.minute));
   }
@@ -900,16 +957,16 @@ class _CreateRoomModalState extends State<_CreateRoomModal> {
         // ── SCHEDULE TOGGLE ──
         Row(children: [
           Expanded(child: Text('Schedule for later', style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600))),
-          Switch(value: _isScheduled, onChanged: (v) => setState(() { _isScheduled = v; if (v && _scheduledAt == null) _pickScheduleTime(); }), activeTrackColor: const Color(0xFF9D4EDD)),
+          Switch(value: _isScheduled, onChanged: (v) => setState(() { _isScheduled = v; if (v && _scheduledAt == null) _pickScheduleTime(); }), activeTrackColor: const Color(0xFFFF7E40)),
         ]),
         if (_isScheduled) ...[const SizedBox(height: 8),
           GestureDetector(onTap: _pickScheduleTime, child: Container(
-            padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: const Color(0xFF9D4EDD).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF9D4EDD).withValues(alpha: 0.3))),
+            padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: const Color(0xFFFF7E40).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFFF7E40).withValues(alpha: 0.3))),
             child: Row(children: [
-              const Icon(Icons.calendar_today, color: Color(0xFF9D4EDD), size: 18),
+              const Icon(Icons.calendar_today, color: Color(0xFFFF7E40), size: 18),
               const SizedBox(width: 12),
               Text(_scheduledAt != null ? DateFormat('MMM d, y  h:mm a').format(_scheduledAt!) : 'Tap to choose time',
-                style: GoogleFonts.inter(color: const Color(0xFF9D4EDD), fontWeight: FontWeight.w600)),
+                style: GoogleFonts.inter(color: const Color(0xFFFF7E40), fontWeight: FontWeight.w600)),
             ]),
           )),
         ],
@@ -918,8 +975,8 @@ class _CreateRoomModalState extends State<_CreateRoomModal> {
           style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, padding: EdgeInsets.zero, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
           onPressed: _creating ? null : _create,
           child: Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(colors: _isScheduled ? [const Color(0xFF9D4EDD), const Color(0xFF5B2DBF)] : [BolRoomColors.accent, BolRoomColors.purple]),
-            boxShadow: [BoxShadow(color: (_isScheduled ? const Color(0xFF9D4EDD) : BolRoomColors.accent).withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))]),
+            gradient: LinearGradient(colors: _isScheduled ? [const Color(0xFFFF7E40), const Color(0xFF5B2DBF)] : [BolRoomColors.accent, BolRoomColors.purple]),
+            boxShadow: [BoxShadow(color: (_isScheduled ? const Color(0xFFFF7E40) : BolRoomColors.accent).withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))]),
             alignment: Alignment.center,
             child: _creating ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
               : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -939,11 +996,11 @@ class _CreateRoomModalState extends State<_CreateRoomModal> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF9D4EDD).withValues(alpha: 0.15) : BolRoomColors.searchBg,
+          color: selected ? const Color(0xFFFF7E40).withValues(alpha: 0.15) : BolRoomColors.searchBg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: selected ? const Color(0xFF9D4EDD) : BolRoomColors.searchBorder, width: 1.5),
+          border: Border.all(color: selected ? const Color(0xFFFF7E40) : BolRoomColors.searchBorder, width: 1.5),
         ),
-        child: Text(label, style: GoogleFonts.inter(color: selected ? const Color(0xFF9D4EDD) : BolRoomColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        child: Text(label, style: GoogleFonts.inter(color: selected ? const Color(0xFFFF7E40) : BolRoomColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -1067,5 +1124,7 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
     return '${diff.inDays}d';
   }
 }
+
+
 
 

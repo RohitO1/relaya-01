@@ -5,10 +5,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'widgets/touch_scale.dart';
 import 'messages_screen.dart';
 import 'services/notification_service.dart';
-import 'main.dart'; // For CosmicBackgroundPainter
 
 // Reuse NotificationType from service if possible, or redefine for UI
-enum AppNotificationType { match, nearbyActivity, approval, rejection, message, system }
+enum AppNotificationType { 
+  match, nearbyActivity, approval, rejection, message, system,
+  bolroomMessage, bolroomSystem, bolroomFollower, bolroomChatroom
+}
 
 class NotificationModel {
   final String id;
@@ -35,7 +37,9 @@ class NotificationModel {
 }
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  final bool isBolroomMode;
+
+  const NotificationsScreen({super.key, this.isBolroomMode = false});
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
@@ -43,8 +47,25 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   String _activeFilter = 'All';
-  final List<String> _filters = ['All', 'Matches', 'Nearby', 'Updates', 'Chats'];
+  late final List<String> _filters;
   final String _currentUserId = Supabase.instance.client.auth.currentUser?.id ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isBolroomMode) {
+      _filters = ['All', 'Rooms', 'Followers', 'Messages'];
+    } else {
+      _filters = ['All', 'Matches', 'Nearby', 'Updates', 'Chats'];
+    }
+    
+    // Automatically mark all unseen notifications as seen when opening the screen
+    Future.microtask(() async {
+      if (_currentUserId.isNotEmpty) {
+        await NotificationService.markAllAsRead(_currentUserId);
+      }
+    });
+  }
 
   AppNotificationType _mapType(String type) {
     switch (type) {
@@ -53,6 +74,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'approval': return AppNotificationType.approval;
       case 'rejection': return AppNotificationType.rejection;
       case 'message': return AppNotificationType.message;
+      case 'bolroom_message': return AppNotificationType.bolroomMessage;
+      case 'bolroom_system': return AppNotificationType.bolroomSystem;
+      case 'bolroom_follower': return AppNotificationType.bolroomFollower;
+      case 'bolroom_chatroom': return AppNotificationType.bolroomChatroom;
       default: return AppNotificationType.system;
     }
   }
@@ -99,14 +124,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   List<NotificationModel> _filterItems(List<NotificationModel> items) {
+    // 1. Filter by mode (Meetra vs Bolroom)
+    items = items.where((n) {
+      bool isBolroomType = (n.type == AppNotificationType.bolroomMessage ||
+          n.type == AppNotificationType.bolroomSystem ||
+          n.type == AppNotificationType.bolroomFollower ||
+          n.type == AppNotificationType.bolroomChatroom);
+      return widget.isBolroomMode ? isBolroomType : !isBolroomType;
+    }).toList();
+
+    // 2. Filter by active category
     if (_activeFilter == 'All') return items;
     return items.where((n) {
-      switch (_activeFilter) {
-        case 'Matches': return n.type == AppNotificationType.match;
-        case 'Nearby': return n.type == AppNotificationType.nearbyActivity;
-        case 'Updates': return n.type == AppNotificationType.approval || n.type == AppNotificationType.rejection;
-        case 'Chats': return n.type == AppNotificationType.message;
-        default: return true;
+      if (widget.isBolroomMode) {
+        switch (_activeFilter) {
+          case 'Rooms': return n.type == AppNotificationType.bolroomChatroom;
+          case 'Followers': return n.type == AppNotificationType.bolroomFollower;
+          case 'Messages': return n.type == AppNotificationType.bolroomMessage;
+          default: return true;
+        }
+      } else {
+        switch (_activeFilter) {
+          case 'Matches': return n.type == AppNotificationType.match;
+          case 'Nearby': return n.type == AppNotificationType.nearbyActivity;
+          case 'Updates': return n.type == AppNotificationType.approval || n.type == AppNotificationType.rejection;
+          case 'Chats': return n.type == AppNotificationType.message;
+          default: return true;
+        }
       }
     }).toList();
   }
@@ -114,7 +158,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF030305),
+      backgroundColor: const Color(0xFF0A0A0F),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -126,7 +170,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title: const Text('Notifications', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.done_all, color: Color(0xFF00E5FF), size: 22),
+            icon: const Icon(Icons.done_all, color: Color(0xFFFF6B00), size: 22),
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
               await NotificationService.markAllAsRead(_currentUserId);
@@ -137,17 +181,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ],
       ),
-      body: Stack(
+      body: Column(
         children: [
-          Positioned.fill(
-            child: CustomPaint(
-              painter: CosmicBackgroundPainter(0.5),
-            ),
-          ),
-          Column(
-            children: [
-              _buildFilters(),
-          const Divider(height: 1, color: Colors.white10),
+          _buildFilters(),
+          const Divider(height: 1, color: Color(0xFF1E1E24)),
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: Supabase.instance.client
@@ -168,8 +205,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               },
             ),
           ),
-        ],
-      ),
         ],
       ),
     );
@@ -196,15 +231,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF00E5FF).withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.05),
+                  color: isSelected ? const Color(0xFFFF6B00) : const Color(0xFF16161D),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: isSelected ? const Color(0xFF00E5FF) : Colors.transparent),
+                  border: Border.all(color: isSelected ? const Color(0xFFFF6B00) : const Color(0xFF27272A)),
                 ),
                 child: Center(
                   child: Text(
                     filter,
                     style: TextStyle(
-                      color: isSelected ? const Color(0xFF00E5FF) : Colors.white54,
+                      color: isSelected ? Colors.white : Colors.white70,
                       fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                       fontSize: 14,
                     ),
@@ -278,7 +313,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         break;
       case AppNotificationType.nearbyActivity:
         icon = Icons.location_on;
-        iconColor = const Color(0xFF00E5FF);
+        iconColor = const Color(0xFFFF6B00);
         break;
       case AppNotificationType.approval:
         icon = Icons.check_circle;
@@ -290,96 +325,149 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         break;
       case AppNotificationType.message:
         icon = Icons.chat_bubble;
-        iconColor = const Color(0xFF8B5CF6);
+        iconColor = const Color(0xFFFF7E40);
         break;
       case AppNotificationType.system:
         icon = Icons.notifications;
         iconColor = const Color(0xFF3B82F6);
         break;
+      case AppNotificationType.bolroomMessage:
+        icon = Icons.chat_bubble;
+        iconColor = const Color(0xFFB983FF);
+        break;
+      case AppNotificationType.bolroomSystem:
+        icon = Icons.settings_system_daydream;
+        iconColor = const Color(0xFFFF6B00);
+        break;
+      case AppNotificationType.bolroomFollower:
+        icon = Icons.person_add;
+        iconColor = const Color(0xFFFF00FF);
+        break;
+      case AppNotificationType.bolroomChatroom:
+        icon = Icons.headset_mic;
+        iconColor = const Color(0xFFB983FF);
+        break;
     }
 
-    return GestureDetector(
-      onTap: () async {
-        if (notif.isUnread) {
-          await NotificationService.markAsRead(notif.id);
-        }
-        
-        // Handle navigation based on type
-        if (!mounted) return;
-        if (notif.type == AppNotificationType.message || notif.type == AppNotificationType.match) {
-           Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen()));
-        }
+    return Dismissible(
+      key: Key(notif.id),
+      direction: DismissDirection.horizontal,
+      onDismissed: (direction) {
+        NotificationService.deleteNotification(notif.id);
       },
-      child: Container(
+      background: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: notif.isUnread ? Colors.white.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.03),
+          color: const Color(0xFFEF4444).withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: notif.isUnread ? iconColor.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.08)),
-          boxShadow: notif.isUnread ? [BoxShadow(color: iconColor.withValues(alpha: 0.15), blurRadius: 15)] : null,
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (notif.avatarUrl != null)
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: iconColor.withValues(alpha: 0.5), width: 1.5),
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: const Icon(Icons.delete_outline, color: Colors.white, size: 28),
+      ),
+      secondaryBackground: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEF4444).withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: const Icon(Icons.delete_outline, color: Colors.white, size: 28),
+      ),
+      child: GestureDetector(
+        onTap: () async {
+          if (notif.isUnread) {
+            await NotificationService.markAsRead(notif.id);
+          }
+          
+          // Handle navigation based on type
+          if (!mounted) return;
+          if (notif.type == AppNotificationType.message || notif.type == AppNotificationType.match) {
+             Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen()));
+          }
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: notif.isUnread ? const Color(0xFF16161D) : const Color(0xFF0F0F14),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: notif.isUnread ? const Color(0xFF27272A) : const Color(0xFF1C1C22),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (notif.avatarUrl != null)
+                CircleAvatar(
+                  backgroundImage: NetworkImage(notif.avatarUrl!),
+                  radius: 18,
+                )
+              else
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: iconColor, size: 18),
                 ),
-                child: CircleAvatar(backgroundImage: NetworkImage(notif.avatarUrl!), radius: 24),
-              )
-            else
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: iconColor, size: 22),
-              ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          notif.title, 
-                          style: TextStyle(
-                            color: Colors.white, 
-                            fontWeight: notif.isUnread ? FontWeight.w800 : FontWeight.w600, 
-                            fontSize: 15,
-                            letterSpacing: -0.2
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              if (notif.isUnread) ...[
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFFF6B00),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  notif.title, 
+                                  style: TextStyle(
+                                    color: Colors.white, 
+                                    fontWeight: notif.isUnread ? FontWeight.w700 : FontWeight.w500, 
+                                    fontSize: 14,
+                                    letterSpacing: -0.2
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      Text(notif.timeText, style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    notif.body,
-                    style: TextStyle(color: notif.isUnread ? Colors.white70 : Colors.white54, fontSize: 13, height: 1.4),
-                  ),
-                  if (notif.isUnread) 
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
-                        child: Text('NEW', style: TextStyle(color: iconColor, fontSize: 8, fontWeight: FontWeight.bold)),
+                        Text(notif.timeText, style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      notif.body,
+                      style: TextStyle(
+                        color: notif.isUnread ? Colors.white.withOpacity(0.9) : Colors.white54,
+                        fontSize: 13,
+                        height: 1.4,
                       ),
                     ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

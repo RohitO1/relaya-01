@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import 'bolroom_theme.dart';
+import '../services/notification_service.dart';
 
 /// ============================================================
 /// Community Detail Screen — Chat inside a community
@@ -120,6 +121,26 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
         'text': text,
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });
+      
+      // Notify other members
+      for (var m in _members) {
+        final memberId = m['user_id']?.toString();
+        if (memberId != null && memberId != _myId) {
+          try {
+            NotificationService.sendNotification(
+              userId: memberId,
+              type: NotificationType.message,
+              title: 'New Message in ${widget.community['name'] ?? 'Community'}',
+              body: '$_myAnonName: $text',
+              payload: {
+                'community_id': _communityId,
+                'sender_id': _myId,
+                'bolroom_community': true,
+              },
+            );
+          } catch (_) {}
+        }
+      }
     } catch (e) {
       debugPrint('Send: $e');
     }

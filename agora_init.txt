@@ -1,0 +1,122 @@
+    Future<void> _initAgora() async {
+    if (kIsWeb) return;
+    if (!BolRoomConfig.isVoiceEnabled) return;
+
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      _showToast('Microphone permission denied.');
+      return;
+    }
+
+    _showToast('Connecting to Agora...');
+
+    try {
+      _engine = createAgoraRtcEngine();
+      await _engine!.initialize(const RtcEngineContext(
+        appId: BolRoomConfig.agoraAppId,
+        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+      ));
+
+      _engine!.registerEventHandler(
+        RtcEngineEventHandler(
+          onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+            debugPrint('Agora: connected');
+            if (mounted) setState(() => _voiceReady = true);
+            
+            _engine?.setEnableSpeakerphone(true);
+            
+            if (_isVoiceMasked) {
+              _applyAgoraVoiceMask(_voiceMaskPreset);
+            }
+          },
+          onLeaveChannel: (RtcConnection connection, RtcStats stats) {
+            debugPrint('Agora: disconnected');
+            if (mounted) {
+              setState(() => _voiceReady = false);
+            }
+          },
+          onAudioVolumeIndication: (RtcConnection connection, List<AudioVolumeInfo> speakers, int speakerNumber, int totalVolume) {
+            if (!mounted) return;
+            Set<String> newSpeakers = {};
+            for (var speaker in speakers) {
+              if (speaker.volume != null && speaker.volume! > 5) { // Threshold
+                // uid 0 is local user
+                if (speaker.uid == 0) {
+                  newSpeakers.add(_myId);
+                } else {
+                  // We need a mapping from Agora Int UID to String UID.
+                  // For now, let's keep it simple.
+                  // (In production, use RtcEngine token with userAccount or send map via Realtime)
+                }
+              }
+            }
+            setState(() {
+              _speakingIdentities = newSpeakers;
+            });
+          }
+        ),
+      );
+
+      await _engine!.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
+      await _engine!.enableAudio();
+      
+      // We use uid: 0 to let Agora auto-assign an integer UID
+      await _engine!.joinChannel(
+        token: '', // Testing Mode: App ID allows empty token
+        channelId: 'bolroom-${widget.roomId}',
+        uid: 0,
+        options: const ChannelMediaOptions(
+          autoSubscribeAudio: true,
+          publishMicrophoneTrack: true,
+          clientRoleType: ClientRoleType.clientRoleBroadcaster,
+        ),
+      );
+
+      await _engine!.muteLocalAudioStream(_isMuted);
+
+    } catch (e, st) {
+      debugPrint('Agora connect error: $e\n$st');
+      _showToast('Voice failed: $e');
+    }
+  }
+
+  void _applyAgoraVoiceMask(String preset) {
+    if (_engine == null) return;
+    
+    // Convert our string presets to Agora's built-in AudioEffectPreset
+    AudioEffectPreset effect = AudioEffectPreset.roomAcoustics3dVoice;
+    
+    switch (preset) {
+      case 'ghost':
+        effect = AudioEffectPreset.voiceChangerEffectUncle;
+        break;
+      case 'robot':
+        effect = AudioEffectPreset.voiceChangerEffectBoy;
+        break;
+      case 'alien':
+        effect = AudioEffectPreset.voiceChangerEffectGirl;
+        break;
+      case 'monster':
+        effect = AudioEffectPreset.voiceChangerEffectHulk;
+        break;
+      case 'baby':
+        effect = AudioEffectPreset.voiceChangerEffectPigKing;
+        break;
+      case 'echo':
+        effect = AudioEffectPreset.roomAcousticsEthereal;
+        break;
+      case 'demon':
+        effect = AudioEffectPreset.voiceChangerEffectOldman;
+        break;
+      case 'chipmunk':
+        effect = AudioEffectPreset.voiceChangerEffectSister;
+        break;
+      case 'shinchan':
+        effect = AudioEffectPreset.voiceChangerEffectBoy; // closest approximation
+        break;
+      default:
+        effect = AudioEffectPreset.roomAcoustics3dVoice; // off/default
+    }
+    
+    _engine!.setAudioEffectPreset(effect);
+  }

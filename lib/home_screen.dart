@@ -1,7 +1,6 @@
 // ignore_for_file: duplicate_ignore, unused_element, unused_local_variable, deprecated_member_use, use_build_context_synchronously, curly_braces_in_flow_control_structures, unnecessary_brace_in_string_interps, avoid_print, unused_field, prefer_final_fields
 // ignore_for_file: avoid_print, unused_element, unused_field, use_build_context_synchronously, prefer_const_constructors, prefer_const_literals_to_create_immutables
 
-import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -16,37 +15,39 @@ import 'services/location_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'image_upload_service.dart';
 import 'widgets/location_picker_sheet.dart';
-import 'widgets/app_header_actions.dart';
 import 'bolroom/bolroom_shell.dart';
+import 'communities_screen.dart';
+import 'main.dart';
+import 'notifications_screen.dart';
 // ==========================================
 // COLORS & CONSTANTS
 // ==========================================
 class HomeColors {
   // Deep dark base inspired by the reference image
-  static const bg = Color(0xFF06070B);   // rich dark ink
-  static const bg2 = Color(0xFF0A0C14);  // near-black
+  static const bg = Color(0xFF000000);   // pure black
+  static const bg2 = Color(0xFF0A0C12);  // near-black
   static const card = Color(0xFF10121A); // card surface — dark luxury slate
   static const cardH = Color(0xFF171A26); // card hover / elevated
   // Neon accent palette
-  static const cyan = Color(0xFF00E5CC);    // bright cyan
-  static const purple = Color(0xFF9D4EDD);  // vivid purple
-  static const pink = Color(0xFFFF2E97);    // hot magenta-pink
-  static const orange = Color(0xFFFF6B35);  // warm neon orange
+  static const cyan = Color(0xFFFF6B00);    // brand orange
+  static const purple = Color(0xFFFF7E40);  // warm amber
+  static const pink = Color(0xFFFF3D00);    // deep orange-red
+  static const orange = Color(0xFFFF6B00);  // vibrant brand orange
   static const blue = Color(0xFF4E8BFF);    // bright blue
-  static const green = Color(0xFF00E676);   // neon green
+  static const green = Color(0xFF4ADE80);   // neon green
   static const yellow = Color(0xFFFFC107);  // amber glow
   static const red = Color(0xFFFF3D5A);     // coral red
   // Text hierarchy
-  static const txt = Color(0xFFF0F4FF);     // bright white-blue
-  static const txt2 = Color(0xFF93A2C4);    // muted periwinkle
-  static const muted = Color(0xFF4B5A7D);   // deep muted blue
+  static const txt = Color(0xFFFFFFFF);     // pure white
+  static const txt2 = Color(0xFF9E9E9E);    // muted grey
+  static const muted = Color(0xFF616161);   // deep muted
   // Glass surfaces and buttons
-  static const glass = Color(0xFF141722);   // dark slate buttons
-  static const gb = Color(0x12FFFFFF);      // softer frosted glass border
+  static const glass = Color(0xFF0C0E14);   // dark obsidian buttons
+  static const gb = Color(0x0AFFFFFF);      // softer frosted glass border
   // Extra: glow colors for ambient FX
-  static const glowCyan = Color(0x2000E5CC);
-  static const glowPurple = Color(0x209D4EDD);
-  static const glowMagenta = Color(0x20FF2E97);
+  static const glowCyan = Color(0x20FF6B00);
+  static const glowPurple = Color(0x20FF7E40);
+  static const glowMagenta = Color(0x20FF3D00);
 }
 
 const _kInterests = [
@@ -141,6 +142,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     locationService.activeLocationNotifier.removeListener(_onLocationChanged);
     _scrollCtrl.dispose();
+    for (final notifier in _carouselPageMap.values) {
+      notifier.dispose();
+    }
     super.dispose();
   }
 
@@ -166,38 +170,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // ==========================================
   // DATA LOADING
   // ==========================================
-  Future<void> _loadFeed() async {
+    Future<void> _loadFeed() async {
     setState(() => _loadingPosts = true);
     try {
       final uid = _sb.auth.currentUser?.id;
       
       // Load following ids
       if (uid != null) {
-        final followsReq = await _sb.from('requests')
-            .select('target_id')
-            .eq('sender_id', uid)
-            .eq('target_type', 'follow')
-            .eq('status', 'approved');
-        final ids = (followsReq as List).map((r) => r['target_id'].toString()).toSet();
-        if (mounted) setState(() => _followingIds = ids);
+        try {
+          final followsReq = await _sb.from('requests')
+              .select('target_id')
+              .eq('sender_id', uid)
+              .eq('target_type', 'follow')
+              .eq('status', 'approved');
+          final ids = (followsReq as List? ?? [])
+              .map((r) => r['target_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet();
+          if (mounted) setState(() => _followingIds = ids);
+        } catch (e) {
+          debugPrint('loadFeed following error: $e');
+        }
       }
 
-      // posts table: id, user_id, content, image_url, created_at, district, state
-      // Join with profiles to get user display name + avatar
-      // Filter by user's current district for location-aware feed
-      final currentDistrict = locationService.activeLocation.split(',').first.trim();
+      // Build base query
       var postQuery = _sb.from('posts')
           .select('*, profiles!posts_user_id_fkey(name, avatar_url)');
+
+      List<dynamic> rows = [];
+      
+      final currentDistrict = locationService.activeDistrict;
       if (currentDistrict.isNotEmpty) {
         postQuery = postQuery.ilike('district', '%$currentDistrict%');
       }
-      final rows = await postQuery
-          .order('created_at', ascending: false)
-          .limit(50);
+      
+      if (_activeFilter == 'Trending') {
+        rows = await postQuery.order('created_at', ascending: false).limit(50);
+      } else {
+        // Near Me / default local feed
+        rows = await postQuery.order('created_at', ascending: false).limit(50);
+      }
+
       // Flatten the join so each post map has user_name and avatar_url at top level
-      final flatRows = (rows as List).map((r) {
+      final flatRows = (rows).map((r) {
         final m = Map<String, dynamic>.from(r);
-        final profile = m['profiles'] as Map?;
+        final profile = m['profiles'] is Map ? m['profiles'] as Map : null;
         m['user_name'] = profile?['name'] ?? 'User';
         m['avatar_url'] = profile?['avatar_url'] ?? '';
         m.remove('profiles');
@@ -205,32 +222,40 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }).toList();
 
       final hiddenRows = uid != null
-          ? await _sb.from('hidden_feed').select('rush_in_id').eq('user_id', uid)
+          ? await _sb.from('hidden_feed').select().eq('user_id', uid)
           : [];
-      final hiddenIds = (hiddenRows).map((r) => r['rush_in_id']?.toString() ?? '').toSet();
+      final hiddenIds = (hiddenRows as List? ?? [])
+          .map((r) {
+            final m = r as Map?;
+            return (m?['post_id'] ?? m?['rush_in_id'] ?? '').toString();
+          })
+          .where((id) => id.isNotEmpty)
+          .toSet();
 
       final postsRows = flatRows
           .where((p) => !hiddenIds.contains(p['id']?.toString()))
           .toList();
           
-      // Sort: Followed users first, then by date
-      postsRows.sort((a, b) {
-        final aUserId = a['user_id']?.toString() ?? '';
-        final bUserId = b['user_id']?.toString() ?? '';
-        final aFollows = _followingIds.contains(aUserId) || aUserId == uid;
-        final bFollows = _followingIds.contains(bUserId) || bUserId == uid;
-        
-        if (aFollows && !bFollows) return -1;
-        if (!aFollows && bFollows) return 1;
-        
-        // Secondary sort by date
-        final aDate = a['created_at'] != null ? DateTime.tryParse(a['created_at']) : null;
-        final bDate = b['created_at'] != null ? DateTime.tryParse(b['created_at']) : null;
-        if (aDate == null && bDate == null) return 0;
-        if (aDate == null) return 1;
-        if (bDate == null) return -1;
-        return bDate.compareTo(aDate); // Descending
-      });
+      // Sort: Followed users first, then by date (unless Trending)
+      if (_activeFilter != 'Trending') {
+        postsRows.sort((a, b) {
+          final aUserId = a['user_id']?.toString() ?? '';
+          final bUserId = b['user_id']?.toString() ?? '';
+          final aFollows = _followingIds.contains(aUserId) || aUserId == uid;
+          final bFollows = _followingIds.contains(bUserId) || bUserId == uid;
+          
+          if (aFollows && !bFollows) return -1;
+          if (!aFollows && bFollows) return 1;
+          
+          // Secondary sort by date
+          final aDate = a['created_at'] != null ? DateTime.tryParse(a['created_at']) : null;
+          final bDate = b['created_at'] != null ? DateTime.tryParse(b['created_at']) : null;
+          if (aDate == null && bDate == null) return 0;
+          if (aDate == null) return 1;
+          if (bDate == null) return -1;
+          return bDate.compareTo(aDate); // Descending
+        });
+      }
 
       if (mounted) {
         setState(() {
@@ -239,7 +264,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _loadingPosts = false;
         });
         // Load interactions
-        final ids = postsRows.map((p) => p['id'].toString()).toList();
+        final ids = postsRows
+            .map((p) => p['id']?.toString() ?? '')
+            .where((id) => id.isNotEmpty)
+            .toList();
         _fetchPostInteractions(ids);
       }
     } catch (e) {
@@ -254,9 +282,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       final likesRows = await _sb.from('post_likes').select('post_id, user_id').inFilter('post_id', postIds);
       final likesByPost = <String, List<String>>{};
-      for (final r in (likesRows as List)) {
-        final pid = r['post_id'] as String;
-        likesByPost.putIfAbsent(pid, () => []).add(r['user_id'] as String);
+      for (final r in likesRows) {
+        final pid = r['post_id']?.toString() ?? '';
+        final userId = r['user_id']?.toString() ?? '';
+        if (pid.isNotEmpty && userId.isNotEmpty) {
+          likesByPost.putIfAbsent(pid, () => []).add(userId);
+        }
       }
 
       final commentsRows = await _sb
@@ -265,9 +296,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           .inFilter('post_id', postIds)
           .order('created_at', ascending: false);
       final commentsByPost = <String, List<Map<String, dynamic>>>{};
-      for (final r in (commentsRows as List)) {
-        final pid = r['post_id'] as String;
-        commentsByPost.putIfAbsent(pid, () => []).add(Map<String, dynamic>.from(r));
+      for (final r in commentsRows) {
+        final pid = r['post_id']?.toString() ?? '';
+        if (pid.isNotEmpty) {
+          commentsByPost.putIfAbsent(pid, () => []).add(Map<String, dynamic>.from(r));
+        }
       }
 
       if (mounted) {
@@ -454,12 +487,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // Filtered posts
   List<Map<String, dynamic>> get _filteredPosts {
-    if (_activeFilter == null) return _posts;
-    return _posts.where((p) {
-      final tags = (p['tags'] as List?)?.cast<String>() ?? [];
-      final interest = p['interest']?.toString().toLowerCase() ?? '';
-      return interest == _activeFilter || tags.any((t) => t.toLowerCase().contains(_activeFilter!));
-    }).toList();
+    if (_activeFilter == 'Trending') {
+      final list = List<Map<String, dynamic>>.from(_posts);
+      list.sort((a, b) {
+        final aId = a['id'].toString();
+        final bId = b['id'].toString();
+        final aLikes = _likeCounts[aId] ?? 0;
+        final aComments = _commentCounts[aId] ?? 0;
+        final bLikes = _likeCounts[bId] ?? 0;
+        final bComments = _commentCounts[bId] ?? 0;
+        return (bLikes + bComments).compareTo(aLikes + aComments);
+      });
+      return list;
+    }
+    return _posts;
   }
 
   // ==========================================
@@ -472,7 +513,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       body: Stack(
         children: [
           // Ambient bg — futuristic 3D glow orbs
-          const _AmbientBackground(),
+          const Positioned.fill(child: _AmbientBackground()),
 
           // Main content
           CustomScrollView(
@@ -485,7 +526,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               // Filter bar
               SliverPersistentHeader(pinned: true, delegate: _FilterBarDelegate(
                 activeFilter: _activeFilter,
-                onFilterChanged: (f) => setState(() => _activeFilter = f),
+                onFilterChanged: (f) {
+                  setState(() {
+                    _activeFilter = (f == 'Near Me') ? null : f;
+                  });
+                  _loadFeed();
+                },
                 onLocationTap: () => _showLocationFilter(),
               )),
               // Feed
@@ -529,59 +575,67 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // HEADER
   // ==========================================
   Widget _buildHeader() {
-    final hour = DateTime.now().hour;
-    String greeting, emoji;
-    if (hour < 6) { greeting = 'Good Night'; emoji = '🌙'; }
-    else if (hour < 12) { greeting = 'Good Morning'; emoji = '☀️'; }
-    else if (hour < 17) { greeting = 'Good Afternoon'; emoji = '☀️'; }
-    else if (hour < 21) { greeting = 'Good Evening'; emoji = '🌅'; }
-    else { greeting = 'Good Night'; emoji = '🌙'; }
-
-    return ClipRect(
-        child: Container(
-          padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 10, left: 16, right: 16, bottom: 14),
-          decoration: BoxDecoration(
-            color: HomeColors.bg, // solid black, no gradient/translucency
+    return Container(
+      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 16, left: 20, right: 20, bottom: 8),
+      color: Colors.black,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'RELAYA',
+            style: GoogleFonts.inter(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              fontStyle: FontStyle.italic,
+              letterSpacing: 1.0,
+            ),
           ),
-          child: Row(
-            children: [
-              // Meetra M Logo (custom painted, gradient, thick rounded)
-              SizedBox(width: 42, height: 42, child: CustomPaint(painter: _MeetraMLogoPainter())),
-              const SizedBox(width: 10),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('$emoji $greeting', style: GoogleFonts.inter(fontSize: 10, color: HomeColors.txt2, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 1),
-                  // Wordmark — futuristic gradient
-                  ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Color(0xFF9D4EDD), Color(0xFFFF2E97), Color(0xFF00F0FF)],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ).createShader(bounds),
-                    child: Text(
-                      'Meetra',
-                      style: GoogleFonts.boogaloo(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.white,
-                        letterSpacing: 0.5,
-                        height: 1.0,
-                      ),
-                    ),
+          // Notification Icon
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: Supabase.instance.client
+                .from('notifications')
+                .stream(primaryKey: ['id'])
+                .eq('user_id', Supabase.instance.client.auth.currentUser?.id ?? '')
+                .map((items) => items.where((item) => item['is_read'] == false).toList()),
+            builder: (context, snapshot) {
+              final unreadCount = snapshot.data?.length ?? 0;
+              final hasUnread = unreadCount > 0;
+              
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+                },
+                child: SizedBox(
+                  width: 38,
+                  height: 38,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      const Icon(Icons.notifications_none, color: Colors.white, size: 28),
+                      if (hasUnread)
+                        Positioned(
+                          top: 4,
+                          right: 6,
+                          child: Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF3B30), // iOS red style
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.black, width: 2),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                ],
-              )),
-              const AppHeaderActions(
-                containerColor: Color(0xFF161A25),
-                iconColor: Color(0xFFF0F4FF),
-                borderColor: Color(0x1AFFFFFF),
-              ),
-            ],
+                ),
+              );
+            },
           ),
-        ),
-    ).animate().fadeIn(duration: 400.ms);
+        ],
+      ),
+    );
   }
 
   Widget _buildHeaderBtn(IconData icon, VoidCallback onTap, {bool hasNotif = false}) {
@@ -618,9 +672,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return const EchoNexusBanner();
   }
 
-  // ==========================================
-  // POST CARD
-  // ==========================================
   Widget _buildPostCard(Map<String, dynamic> post) {
     final postId = post['id'].toString();
     final userName = post['user_name'] ?? post['author_name'] ?? 'User';
@@ -727,11 +778,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: _buildPostText(content),
           ),
 
-          // Images
-          if (allImages.isNotEmpty) Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-            child: _buildImageGrid(allImages),
-          ),
+          // Images — 1:1 Instagram-style
+          if (allImages.isNotEmpty)
+            _buildPostImageCarousel(postId, allImages),
 
           // Tags
           if (tags.isNotEmpty) Padding(
@@ -813,63 +862,83 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildImageGrid(List<String> images) {
-    final count = images.length;
-    if (count == 1) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: _buildImageItem(images[0], height: 200),
-      );
-    }
-    if (count == 2) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Row(children: images.map((img) => Expanded(child: Padding(
-          padding: EdgeInsets.only(right: img == images.last ? 0 : 2),
-          child: _buildImageItem(img, height: 140),
-        ))).toList()),
-      );
-    }
-    // 3+
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: SizedBox(
-        height: 200,
-        child: Row(children: [
-          Expanded(child: _buildImageItem(images[0], height: 200)),
-          const SizedBox(width: 2),
-          Expanded(child: Column(children: [
-            Expanded(child: _buildImageItem(images.length > 1 ? images[1] : images[0])),
-            const SizedBox(height: 2),
-            Expanded(child: Stack(children: [
-              _buildImageItem(images.length > 2 ? images[2] : images[0]),
-              if (count > 3) Container(
-                color: Colors.black54,
-                child: Center(child: Text('+${count - 3}', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white))),
+  // Instagram-style 1:1 post image carousel
+  final Map<String, ValueNotifier<int>> _carouselPageMap = {};
+
+  Widget _buildPostImageCarousel(String postId, List<String> images) {
+    _carouselPageMap.putIfAbsent(postId, () => ValueNotifier<int>(0));
+    final pageNotifier = _carouselPageMap[postId]!;
+    final controller = PageController();
+
+    return Column(
+      children: [
+        // 1:1 square image area (full card width, no padding)
+        AspectRatio(
+          aspectRatio: 1.0,
+          child: PageView.builder(
+            controller: controller,
+            itemCount: images.length,
+            onPageChanged: (i) => pageNotifier.value = i,
+            itemBuilder: (_, i) => _buildSquareImageItem(images[i]),
+          ),
+        ),
+        // Dot indicators for multi-image posts
+        if (images.length > 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: ValueListenableBuilder<int>(
+              valueListenable: pageNotifier,
+              builder: (_, currentPage, __) => Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(images.length, (i) {
+                  final isActive = i == currentPage;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: isActive ? 16 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(3),
+                      color: isActive
+                          ? HomeColors.cyan
+                          : HomeColors.muted.withValues(alpha: 0.4),
+                    ),
+                  );
+                }),
               ),
-            ])),
-          ])),
-        ]),
-      ),
+            ),
+          ),
+      ],
     );
   }
 
-  Widget _buildImageItem(String url, {double? height}) {
+  Widget _buildSquareImageItem(String url) {
     Widget imageWidget = Center(child: Icon(Icons.image, color: HomeColors.muted, size: 30));
-    
+
     if (url.startsWith('http')) {
-      imageWidget = Image.network(url, fit: BoxFit.cover, width: double.infinity, height: height,
-          errorBuilder: (_, __, ___) => Center(child: Icon(Icons.image, color: HomeColors.muted, size: 30)));
+      imageWidget = Image.network(
+        url,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, __, ___) =>
+            Center(child: Icon(Icons.broken_image_outlined, color: HomeColors.muted, size: 36)),
+      );
     } else if (url.startsWith('data:image')) {
       try {
         final b64 = url.split(',').last;
-        imageWidget = Image.memory(base64Decode(b64), fit: BoxFit.cover, width: double.infinity, height: height,
-            errorBuilder: (_, __, ___) => Center(child: Icon(Icons.image, color: HomeColors.muted, size: 30)));
+        imageWidget = Image.memory(
+          base64Decode(b64),
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          errorBuilder: (_, __, ___) =>
+              Center(child: Icon(Icons.broken_image_outlined, color: HomeColors.muted, size: 36)),
+        );
       } catch (_) {}
     }
 
     return Container(
-      height: height,
       color: HomeColors.bg2,
       child: imageWidget,
     );
@@ -1121,13 +1190,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(14),
-                              child: Image.network(
+                              child: AspectRatio(aspectRatio: 1.0, child: Image.network(
                                 uploadedImageUrl!,
                                 width: double.infinity,
-                                height: 180,
+
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(height: 180, color: HomeColors.card, child: const Center(child: Icon(Icons.broken_image, color: Colors.white24))),
-                              ),
+                                errorBuilder: (_, __, ___) => Container(color: HomeColors.card, child: const Center(child: Icon(Icons.broken_image, color: Colors.white24))),
+                              )),
                             ),
                             Positioned(top: 8, right: 8,
                               child: GestureDetector(
@@ -1187,34 +1256,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 child: Icon(Icons.image, color: uploadedImageUrl != null ? HomeColors.cyan : HomeColors.txt2, size: 16),
                               ),
                             ),
-                            GestureDetector(
-                              onTap: () {
-                                if (locationService.activeLocation.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Set a location in Settings to tag your posts!'), backgroundColor: Colors.amber));
-                                  return;
-                                }
-                                setSheet(() => attachLocation = !attachLocation);
-                              },
-                              child: Container(
-                                height: 34,
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                margin: const EdgeInsets.only(right: 8),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  color: attachLocation ? HomeColors.cyan.withValues(alpha: 0.15) : HomeColors.glass,
-                                  border: Border.all(color: attachLocation ? HomeColors.cyan : HomeColors.gb),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.location_on, color: attachLocation ? HomeColors.cyan : HomeColors.txt2, size: 16),
-                                    if (attachLocation) ...[
+                            // Live location text
+                            Builder(
+                              builder: (ctx) {
+                                final profileDistrict = (_myProfile?['district'] ?? '').toString().trim();
+                                final profileState = (_myProfile?['state'] ?? '').toString().trim();
+                                final svcDistrict = locationService.activeDistrict.trim();
+                                final svcState = locationService.activeState.trim();
+                                final String dist = profileDistrict.isNotEmpty ? profileDistrict : svcDistrict;
+                                final String st = profileState.isNotEmpty ? profileState : svcState;
+                                if (dist.isEmpty && st.isEmpty) return const SizedBox.shrink();
+                                final displayText = [dist, st].where((s) => s.isNotEmpty).join(', ');
+                                return GestureDetector(
+                                  onTap: () => showLocationSearchSheet(context),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.location_on, color: HomeColors.cyan, size: 14),
                                       const SizedBox(width: 4),
-                                      Text(locationService.activeLocation, style: GoogleFonts.inter(fontSize: 11, color: HomeColors.cyan, fontWeight: FontWeight.bold)),
-                                    ]
-                                  ],
-                                ),
-                              ),
+                                      Text(displayText, style: GoogleFonts.inter(fontSize: 11, color: HomeColors.cyan, fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
                             const Spacer(),
                             GestureDetector(
@@ -1228,9 +1292,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 setSheet(() => isPosting = true);
                                 try {
                                   // Auto-attach location metadata to every post
-                                  final locParts = locationService.activeLocation.split(',');
-                                  final postDistrict = locParts.isNotEmpty ? locParts.first.trim() : '';
-                                  final postState = locParts.length > 1 ? locParts[1].trim() : '';
+                                  final svcDist = locationService.activeDistrict.trim();
+                                  final svcSt = locationService.activeState.trim();
+                                  final profDist = (_myProfile?['district'] ?? '').toString().trim();
+                                  final profSt = (_myProfile?['state'] ?? '').toString().trim();
+                                  final postDistrict = svcDist.isNotEmpty ? svcDist : profDist;
+                                  final postState = svcSt.isNotEmpty ? svcSt : profSt;
                                   final postData = <String, dynamic>{
                                     'user_id': uid,
                                     'content': textCtrl.text.trim(),
@@ -1514,70 +1581,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildCommunitiesList() {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      children: [
-        _buildCommunityCard('🏔️', 'Pune Trekkers', 'Weekend adventures with fellow hikers', 24),
-        _buildCommunityCard('🎵', 'Open Mic Fam', 'Singers, poets & performers unite', 15),
-        _buildCommunityCard('☕', 'Night Owls Coffee Club', 'Late night café explorers', 8),
-        const SizedBox(height: 8),
-        GestureDetector(
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Communities coming soon!'), duration: Duration(seconds: 1))),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              color: HomeColors.cyan.withValues(alpha: 0.05),
-              border: Border.all(color: HomeColors.cyan.withValues(alpha: 0.3), style: BorderStyle.solid),
-            ),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.add_circle_outline, color: HomeColors.cyan, size: 16),
-              const SizedBox(width: 8),
-              Text('Create New Community', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: HomeColors.cyan)),
-            ]),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(children: [
-            Icon(Icons.info_outline, size: 12, color: HomeColors.muted),
-            const SizedBox(width: 4),
-            Expanded(child: Text('You can only join communities where at least one member has been part of your journey through any section of the app.', style: GoogleFonts.inter(fontSize: 10, color: HomeColors.muted, height: 1.4))),
-          ]),
-        ),
-      ],
-    );
+    // Use the real CommunitiesListWidget that reads from text_camps in Supabase.
+    // This ensures communities are completely separate from direct messages.
+    return const CommunitiesListWidget();
   }
 
-  Widget _buildCommunityCard(String emoji, String name, String desc, int members) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: HomeColors.card,
-        border: Border.all(color: HomeColors.gb),
-      ),
-      child: Row(children: [
-        Container(
-          width: 44, height: 44,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: HomeColors.glass),
-          child: Center(child: Text(emoji, style: TextStyle(fontSize: 20))),
-        ),
-        const SizedBox(width: 10),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: HomeColors.txt)),
-          Text(desc, style: GoogleFonts.inter(fontSize: 10, color: HomeColors.muted)),
-          const SizedBox(height: 3),
-          Row(children: [
-            Icon(Icons.people, size: 10, color: HomeColors.cyan),
-            const SizedBox(width: 4),
-            Text('$members members', style: GoogleFonts.inter(fontSize: 10, color: HomeColors.cyan)),
-          ]),
-        ])),
-      ]),
-    );
-  }
+
 
   // ==========================================
   // SUBSCRIPTION MODAL
@@ -1744,8 +1753,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             width: 72, height: 72,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(colors: [Color(0xFF9D4EDD), Color(0xFF4E8BFF)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-              boxShadow: [BoxShadow(color: const Color(0xFF9D4EDD).withValues(alpha: 0.3), blurRadius: 24)],
+              gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+              boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 24)],
             ),
             child: const Center(child: Icon(Icons.auto_awesome, color: Colors.white, size: 30)),
           ),
@@ -1774,61 +1783,81 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
   });
 
   @override
-  double get maxExtent => 56;
+  double get maxExtent => 50;
   @override
-  double get minExtent => 56;
+  double get minExtent => 50;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      color: HomeColors.bg,
+    return SizedBox(
+      height: 50,
       child: Container(
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.04))),
-        ),
-        child: SizedBox(
-          height: 56,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            children: [
-              _buildChip(context, Icons.local_fire_department, 'For You', activeFilter == null, () => onFilterChanged(null)),
-              _buildChip(context, Icons.location_on, 'Nearby', false, onLocationTap, hasArrow: true),
-              ..._kInterests.map((i) => _buildChip(
-                context,
-                i['icon'] as IconData,
-                i['label'] as String,
-                activeFilter == i['key'],
-                () => onFilterChanged(activeFilter == i['key'] ? null : i['key'] as String),
-              )),
-            ],
-          ),
+        color: Colors.black,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            ValueListenableBuilder<String>(
+              valueListenable: locationService.activeDistrictNotifier,
+              builder: (context, district, _) {
+                return Text(
+                  district.isNotEmpty ? '$district Posts' : 'Nearby Posts',
+                  style: GoogleFonts.inter(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
+                  ),
+                );
+              },
+            ),
+            Row(
+              children: [
+                _buildFilterChip('Near Me', activeFilter == 'Near Me' || activeFilter == null, () => onFilterChanged('Near Me')),
+                const SizedBox(width: 6),
+                _buildFilterChip('Trending', activeFilter == 'Trending', () => onFilterChanged('Trending')),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: onLocationTap,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E1E1E),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white24, width: 1),
+                    ),
+                    child: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 16),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildChip(BuildContext context, IconData icon, String label, bool active, VoidCallback onTap, {bool hasArrow = false}) {
+  Widget _buildFilterChip(String label, bool isActive, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(right: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          gradient: active
-              ? const LinearGradient(colors: [Color(0xFF00E5CC), Color(0xFF4E8BFF)], begin: Alignment.topLeft, end: Alignment.bottomRight)
-              : null,
-          color: active ? null : HomeColors.glass,
-          border: Border.all(color: active ? Colors.transparent : Colors.white.withValues(alpha: 0.04)),
-          boxShadow: active ? [BoxShadow(color: const Color(0xFF00E5CC).withValues(alpha: 0.25), blurRadius: 10)] : null,
+          color: isActive ? const Color(0xFF1E1E1E) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isActive ? Colors.white24 : Colors.white12,
+            width: 1,
+          ),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 11, color: active ? Colors.black : HomeColors.txt2),
-          const SizedBox(width: 5),
-          Text(label, style: GoogleFonts.inter(fontSize: 11, fontWeight: active ? FontWeight.w700 : FontWeight.w500, color: active ? Colors.black : HomeColors.txt2)),
-          if (hasArrow) ...[const SizedBox(width: 2), Icon(Icons.keyboard_arrow_down, size: 10, color: HomeColors.txt2)],
-        ]),
+        child: Text(
+          label,
+          style: GoogleFonts.inter(
+            color: isActive ? Colors.white : Colors.white54,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }
@@ -1954,11 +1983,11 @@ class _MeetraMLogoPainter extends CustomPainter {
       Offset(x0, h / 2),
       Offset(x4, h / 2),
       [
-        const Color(0xFF9D4EDD), // vivid purple
-        const Color(0xFFBB4FE0), // violet-pink
-        const Color(0xFFFF2E97), // hot magenta
-        const Color(0xFFFF2E97), // magenta (hold)
-        const Color(0xFF00F0FF), // electric cyan
+        const Color(0xFFFF6B00), // brand orange
+        const Color(0xFFFF7E40), // warm amber
+        const Color(0xFFFF8A00), // rich orange
+        const Color(0xFFFF8A00), // orange (hold)
+        const Color(0xFFFFC107), // amber glow
       ],
       [0.0, 0.2, 0.45, 0.55, 1.0],
     );
@@ -1978,306 +2007,228 @@ class _MeetraMLogoPainter extends CustomPainter {
 // ==========================================
 // BOLROOM ORBITAL BANNER
 // ==========================================
-class EchoNexusBanner extends StatefulWidget {
+class EchoNexusBanner extends StatelessWidget {
   const EchoNexusBanner({super.key});
 
   @override
-  State<EchoNexusBanner> createState() => _EchoNexusBannerState();
-}
-
-class _EchoNexusBannerState extends State<EchoNexusBanner> with TickerProviderStateMixin {
-  late AnimationController _pulseCtrl;
-  late AnimationController _orbitCtrl;
-  late AnimationController _orbit2Ctrl;
-  late AnimationController _waveCtrl;
-  late AnimationController _glowCtrl;
-
-  // Anonymous profile data for orbiting avatars
-  static const _outerAvatars = [
-    {'initial': 'A', 'c1': Color(0xFF00E5CC), 'c2': Color(0xFF4E8BFF)},
-    {'initial': 'K', 'c1': Color(0xFF9D4EDD), 'c2': Color(0xFFFF2E97)},
-    {'initial': 'S', 'c1': Color(0xFFFF6B35), 'c2': Color(0xFFFFC107)},
-    {'initial': 'R', 'c1': Color(0xFF00E676), 'c2': Color(0xFF00E5CC)},
-    {'initial': 'M', 'c1': Color(0xFF4E8BFF), 'c2': Color(0xFF9D4EDD)},
-  ];
-  static const _innerAvatars = [
-    {'initial': 'P', 'c1': Color(0xFFFF2E97), 'c2': Color(0xFFFF6B35)},
-    {'initial': 'D', 'c1': Color(0xFF00E5CC), 'c2': Color(0xFF00E676)},
-    {'initial': 'V', 'c1': Color(0xFFFFC107), 'c2': Color(0xFF4E8BFF)},
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2500))..repeat(reverse: true);
-    _orbitCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 18))..repeat();
-    _orbit2Ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
-    _waveCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))..repeat(reverse: true);
-    _glowCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _pulseCtrl.dispose();
-    _orbitCtrl.dispose();
-    _orbit2Ctrl.dispose();
-    _waveCtrl.dispose();
-    _glowCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BolroomShell())),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        width: double.infinity,
-        height: 210,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(26),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF0C0E18), Color(0xFF060810)],
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      width: double.infinity,
+      height: 380,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.6),
+            blurRadius: 30,
+            offset: const Offset(0, 12),
           ),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 30, offset: const Offset(0, 12)),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(26),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Ambient glow blobs
-              AnimatedBuilder(
-                animation: _glowCtrl,
-                builder: (_, __) => Stack(children: [
-                  Positioned(left: -40, top: -40, child: Container(
-                    width: 140, height: 140,
-                    decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
-                      BoxShadow(color: const Color(0xFF9D4EDD).withValues(alpha: 0.15 + _glowCtrl.value * 0.1), blurRadius: 90),
-                    ]),
-                  )),
-                  Positioned(right: -40, bottom: -40, child: Container(
-                    width: 140, height: 140,
-                    decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
-                      BoxShadow(color: const Color(0xFF00E5CC).withValues(alpha: 0.15 + _glowCtrl.value * 0.1), blurRadius: 90),
-                    ]),
-                  )),
-                ]),
-              ),
-
-              // Subtle grid
-              Positioned.fill(child: CustomPaint(painter: _GridBackgroundPainter())),
-
-              // DUAL ORBIT SYSTEM
-              AnimatedBuilder(
-                animation: Listenable.merge([_orbitCtrl, _orbit2Ctrl]),
-                builder: (_, __) {
-                  final a1 = _orbitCtrl.value * 2 * math.pi;
-                  final a2 = -_orbit2Ctrl.value * 2 * math.pi; // counter-rotate
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Outer dashed ring
-                      Transform.rotate(
-                        angle: a1 * 0.3,
-                        child: CustomPaint(size: const Size(180, 180), painter: _DashedRingPainter(color: Colors.white.withValues(alpha: 0.06))),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Image.asset(
+                'assets/images/bolrooms_hero.png',
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFF161622),
+                          Color(0xFF0C0C12),
+                          Colors.black,
+                        ],
                       ),
-                      // Inner dashed ring
-                      Transform.rotate(
-                        angle: -a2 * 0.4,
-                        child: CustomPaint(size: const Size(110, 110), painter: _DashedRingPainter(color: Colors.white.withValues(alpha: 0.08))),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.contactless_outlined,
+                        color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                        size: 80,
                       ),
-                      // Outer orbit profiles (5 avatars, radius 80)
-                      ...List.generate(_outerAvatars.length, (i) {
-                        final theta = a1 + (i * 2 * math.pi / _outerAvatars.length);
-                        final av = _outerAvatars[i];
-                        return Transform.translate(
-                          offset: Offset(80 * math.cos(theta), 80 * math.sin(theta)),
-                          child: _buildOrbitAvatar(av['initial'] as String, av['c1'] as Color, av['c2'] as Color, 30),
-                        );
-                      }),
-                      // Inner orbit profiles (3 avatars, radius 48, counter-rotate)
-                      ...List.generate(_innerAvatars.length, (i) {
-                        final theta = a2 + (i * 2 * math.pi / _innerAvatars.length);
-                        final av = _innerAvatars[i];
-                        return Transform.translate(
-                          offset: Offset(48 * math.cos(theta), 48 * math.sin(theta)),
-                          child: _buildOrbitAvatar(av['initial'] as String, av['c1'] as Color, av['c2'] as Color, 24),
-                        );
-                      }),
-                    ],
+                    ),
                   );
                 },
               ),
-
-              // CENTER GLOWING ORB — triple ring pulse
-              ScaleTransition(
-                scale: Tween<double>(begin: 0.93, end: 1.07).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOutSine)),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Outermost glow
-                    Container(width: 88, height: 88, decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(colors: [
-                        const Color(0xFF00E5CC).withValues(alpha: 0.25),
-                        Colors.transparent,
-                      ]),
-                    )),
-                    // Mid ring
-                    Container(width: 72, height: 72, decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const RadialGradient(colors: [Color(0xFF00E5CC), Color(0xFF0C0E18)], stops: [0.15, 1.0]),
-                      boxShadow: [
-                        BoxShadow(color: const Color(0xFF00E5CC).withValues(alpha: 0.5), blurRadius: 35),
-                        BoxShadow(color: const Color(0xFF00E5CC).withValues(alpha: 0.2), blurRadius: 70),
-                      ],
-                    )),
-                    // Inner dark core
-                    Container(width: 50, height: 50, decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF0C0E18),
-                      border: Border.all(color: const Color(0xFF00E5CC).withValues(alpha: 0.6), width: 1.5),
-                    ), child: const Center(child: Icon(Icons.graphic_eq, color: Color(0xFF00E5CC), size: 24))),
-                  ],
+            ),
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.2),
+                      Colors.black.withValues(alpha: 0.4),
+                      Colors.black.withValues(alpha: 0.85),
+                      Colors.black,
+                    ],
+                    stops: const [0.0, 0.4, 0.75, 1.0],
+                  ),
                 ),
               ),
-
-              // TEXT OVERLAYS — Top
-              Positioned(
-                top: 16, left: 20, right: 20,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('BOLROOM', style: GoogleFonts.michroma(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 2.5)),
-                      const SizedBox(height: 3),
-                      Text('LIVE ANONYMOUS AUDIO', style: GoogleFonts.inter(color: const Color(0xFF00E5CC), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                    ]),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.contactless_outlined,
+                            color: Color(0xFFFF6B00),
+                            size: 26,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'BOLROOMS',
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              fontStyle: FontStyle.normal,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
                       ),
-                      child: Row(children: [
-                        Container(width: 6, height: 6, decoration: BoxDecoration(
-                          color: const Color(0xFF00E676), shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(color: const Color(0xFF00E676).withValues(alpha: 0.6), blurRadius: 6)],
-                        )),
-                        const SizedBox(width: 6),
-                        Text('DROP IN', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                      ]),
-                    ),
-                  ],
-                ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E0E08),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(0xFFFF3D00).withValues(alpha: 0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          'ANONYMOUS',
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFFFF3D00),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: Text(
+                          'Enter a world where identity fades and real connections form.',
+                          style: GoogleFonts.inter(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildActionButton(
+                            context,
+                            icon: Icons.headset_mic_outlined,
+                            label: 'Voicerooms',
+                            iconColor: const Color(0xFFFF6B00),
+                          ),
+                          _buildActionButton(
+                            context,
+                            icon: Icons.groups_outlined,
+                            label: 'Communities',
+                            iconColor: const Color(0xFF4E8BFF),
+                          ),
+                          _buildActionButton(
+                            context,
+                            icon: Icons.chat_bubble_outline,
+                            label: 'Messages',
+                            iconColor: const Color(0xFFFFD54F),
+                          ),
+                          _buildActionButton(
+                            context,
+                            icon: Icons.person_outline,
+                            label: 'Profile',
+                            iconColor: const Color(0xFFF48FB1),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-              // Bottom wave + stats
-              Positioned(
-                bottom: 14, left: 20, right: 20,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      _buildWaveBar(8, color: HomeColors.purple),
-                      _buildWaveBar(14, color: HomeColors.cyan),
-                      _buildWaveBar(10, color: HomeColors.pink),
-                      _buildWaveBar(18, color: HomeColors.blue),
-                      _buildWaveBar(12, color: HomeColors.green),
-                      _buildWaveBar(16, color: HomeColors.cyan),
-                      _buildWaveBar(9, color: HomeColors.purple),
-                    ]),
-                    Text('8.4K TUNED IN', style: GoogleFonts.michroma(color: HomeColors.txt2, fontSize: 7, letterSpacing: 1.5, fontWeight: FontWeight.bold)),
-                  ],
+  Widget _buildActionButton(BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color iconColor,
+  }) {
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        height: 60,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E).withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 1,
+          ),
+        ),
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            if (label == 'Voicerooms') {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const BolroomShell()));
+            } else if (label == 'Communities') {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const CommunitiesStandaloneScreen()));
+            } else if (label == 'Messages') {
+              MainDashboard.switchTab(context, 3);
+            } else if (label == 'Profile') {
+              MainDashboard.switchTab(context, 4);
+            }
+          },
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: iconColor, size: 20),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
         ),
-      ).animate().fadeIn(duration: 600.ms, delay: 100.ms).slideY(begin: 0.04, end: 0),
-    );
-  }
-
-  Widget _buildOrbitAvatar(String initial, Color c1, Color c2, double size) {
-    return Container(
-      width: size, height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c1, c2]),
-        border: Border.all(color: const Color(0xFF0C0E18), width: 2),
-        boxShadow: [BoxShadow(color: c1.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 2))],
       ),
-      child: Center(child: Text(initial, style: GoogleFonts.inter(color: Colors.white, fontSize: size * 0.38, fontWeight: FontWeight.w700))),
-    );
-  }
-
-  Widget _buildWaveBar(double height, {Color? color}) {
-    return AnimatedBuilder(
-      animation: _waveCtrl,
-      builder: (_, __) {
-        final offset = (height % 4) * 0.4;
-        final val = math.sin((_waveCtrl.value * math.pi * 2) + offset).abs();
-        final h = height + (val * 7);
-        return Container(
-          margin: const EdgeInsets.only(right: 2.5),
-          width: 3, height: h,
-          decoration: BoxDecoration(
-            color: color ?? Colors.white.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(2),
-            boxShadow: [BoxShadow(color: (color ?? Colors.white).withValues(alpha: 0.5), blurRadius: 5)],
-          ),
-        );
-      },
     );
   }
 }
-
-// Dashed ring painter for orbit tracks
-class _DashedRingPainter extends CustomPainter {
-  final Color color;
-  _DashedRingPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color..strokeWidth = 1.2..style = PaintingStyle.stroke;
-    final r = size.width / 2;
-    final center = Offset(r, r);
-    const dashAngle = math.pi / 18;
-    const spaceAngle = math.pi / 22;
-    double startAngle = 0;
-    while (startAngle < math.pi * 2) {
-      canvas.drawArc(Rect.fromCircle(center: center, radius: r), startAngle, dashAngle, false, paint);
-      startAngle += dashAngle + spaceAngle;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-// Grid background for banner
-class _GridBackgroundPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white.withValues(alpha: 0.02)..strokeWidth = 0.5;
-    for (double i = 0; i < size.width; i += 22) {
-      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
-    }
-    for (double i = 0; i < size.height; i += 22) {
-      canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-

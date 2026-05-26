@@ -10,40 +10,45 @@ import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'services/location_service.dart';
+import 'services/notification_service.dart';
 import 'package:http/http.dart' as http;
-import 'widgets/app_header_actions.dart';
+
 import 'rush_in_consumer_detail_view.dart';
+import 'host_activity_screen.dart';
+import 'services/profile_completion_service.dart';
+import 'spark_detail_screen.dart';
 
 // ==========================================
 // COLORS & CONSTANTS
 // ==========================================
 class SparkColors {
   // Deep dark base inspired by the reference image
-  static const bg = Color(0xFF06070B);   // rich dark ink
-  static const bg2 = Color(0xFF0A0C14);  // near-black
-  static const card = Color(0xFF10121A); // card surface - dark luxury slate
+  static const bg = Color(0xFF000000);   // pure black
+  static const bg2 = Color(0xFF0A0C12);  // near-black
+  static const card = Color(0xFF0A0C12); // card surface
   static const cardH = Color(0xFF171A26); // card hover / elevated
   // Neon accent palette
-  static const cyan = Color(0xFF00E5CC);    // bright cyan
-  static const purple = Color(0xFF9D4EDD);  // vivid purple
-  static const pink = Color(0xFFFF2E97);    // hot magenta-pink
-  static const orange = Color(0xFFFF6B35);  // warm neon orange
+  static const cyan = Color(0xFFFF6B00);    // brand orange
+  static const purple = Color(0xFFFF7E40);  // warm amber
+  static const pink = Color(0xFFFF3D00);    // deep orange-red
+  static const orange = Color(0xFFFF6B00);  // vibrant brand orange
+  static const coral = Color(0xFFFF6B57);   // coral
   static const blue = Color(0xFF4E8BFF);    // bright blue
-  static const green = Color(0xFF00E676);   // neon green
+  static const green = Color(0xFF4ADE80);   // neon green
   static const yellow = Color(0xFFFFC107);  // amber glow
   static const red = Color(0xFFFF3D5A);     // coral red
   // Text hierarchy
-  static const txt = Color(0xFFF0F4FF);     // bright white-blue
-  static const txt2 = Color(0xFF93A2C4);    // muted periwinkle
-  static const muted = Color(0xFF4B5A7D);   // deep muted blue
+  static const txt = Color(0xFFFFFFFF);     // pure white
+  static const txt2 = Color(0xFF9E9E9E);    // muted grey
+  static const muted = Color(0xFF616161);   // deep muted
   
-  static const glass = Color(0xFF141722);
+  static const glass = Color(0xFF0C0E14);
   static final gborder = Colors.white.withValues(alpha: 0.08);
 
   // Activity-specific premium palette
-  static const actPrimary = Color(0xFF00E5CC);
-  static const actSecondary = Color(0xFF2962FF);
-  static const actAccent = Color(0xFF00E676);
+  static const actPrimary = Color(0xFFFF5C00); // deep orange
+  static const actSecondary = Color(0xFFFF7E40);
+  static const actAccent = Color(0xFFFF3D00); // red-orange
 }
 
 // ==========================================
@@ -70,6 +75,9 @@ class SparkItem {
   final List<String>? members;
   final bool isApproved;
   final bool hasRequested;
+  final bool isAnonymous;
+  final String? imageUrl;
+  final String? hostId;
 
   SparkItem({
     required this.id, required this.type, required this.title, required this.desc,
@@ -78,6 +86,9 @@ class SparkItem {
     this.time, this.location, this.hostAvatar, this.hostColor, this.members,
     this.isApproved = false,
     this.hasRequested = false,
+    this.isAnonymous = false,
+    this.imageUrl,
+    this.hostId,
   });
 
   bool get isFull {
@@ -112,7 +123,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   
   // State
   String _activeTab = 'rush'; // 'rush' or 'act'
-  String _activeView = 'list'; // 'list' or 'map'
+  String _activeView = 'map'; // 'list' or 'map'
   String _searchQuery = '';
   Set<String> _selectedCategories = {};
   String _sortBy = 'Nearest';
@@ -130,6 +141,12 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   // Overlays
   OverlayEntry? _toastEntry;
+  
+  // FAB State
+  bool _isFabExpanded = false;
+
+  RealtimeChannel? _activitiesChannel;
+  RealtimeChannel? _requestsChannel;
 
   @override
   void initState() {
@@ -138,10 +155,39 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     _fetchMyDashboardData();
     // Listen to coordinate updates specifically
     locationService.coordinatesUpdateNotifier.addListener(_fetchActivities);
+
+    // Supabase Realtime subscriptions for instant updates
+    _activitiesChannel = Supabase.instance.client
+        .channel('public:activities_spark')
+        .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'activities',
+            callback: (payload) {
+              if (mounted) _refreshAll();
+            })
+        .subscribe();
+
+    _requestsChannel = Supabase.instance.client
+        .channel('public:requests_spark')
+        .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'requests',
+            callback: (payload) {
+              if (mounted) _refreshAll();
+            })
+        .subscribe();
   }
 
   @override
   void dispose() {
+    if (_activitiesChannel != null) {
+      Supabase.instance.client.removeChannel(_activitiesChannel!);
+    }
+    if (_requestsChannel != null) {
+      Supabase.instance.client.removeChannel(_requestsChannel!);
+    }
     locationService.coordinatesUpdateNotifier.removeListener(_fetchActivities);
     _scrollController.dispose();
     _toastEntry?.remove();
@@ -167,8 +213,10 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
       // Map profiles manually due to missing database foreign key join
       final Set<String> userIds = {};
+      final List<String> allActivityIds = [];
       for (final r in rows as List) {
         if (r['user_id'] != null) userIds.add(r['user_id'].toString());
+        if (r['id'] != null) allActivityIds.add(r['id'].toString());
       }
       final Map<String, dynamic> profilesMap = {};
       if (userIds.isNotEmpty) {
@@ -176,6 +224,18 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
           final pRows = await sb.from('profiles').select('id, name, avatar_url').inFilter('id', userIds.toList());
           for (final p in pRows as List) {
             profilesMap[p['id'].toString()] = p;
+          }
+        } catch (_) {}
+      }
+
+      // Batch fetch requests to prevent N+1 query
+      final Map<String, List<Map<String, dynamic>>> requestsMap = {};
+      if (allActivityIds.isNotEmpty) {
+        try {
+          final allReqs = await sb.from('requests').select('target_id, status, sender_id').inFilter('target_id', allActivityIds);
+          for (final req in allReqs as List) {
+            final tId = req['target_id']?.toString() ?? '';
+            requestsMap.putIfAbsent(tId, () => []).add(req as Map<String, dynamic>);
           }
         } catch (_) {}
       }
@@ -203,7 +263,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         final profile = profilesMap[creatorId] as Map?;
         final hostName = profile?['name'] ?? 'Someone';
         final hostAvatarUrl = profile?['avatar_url'] ?? '';
-        final isRushIn = row['is_rush_in'] == true;
+        final isRushIn = row['is_rush_in'] == true || (row['description']?.toString().contains('[is_rush_in:true]') ?? false);
         final limit = row['participant_limit'] ?? 4;
         
         final lat = double.tryParse(row['lat']?.toString() ?? '') ?? 0.0;
@@ -238,8 +298,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         bool isApproved = false;
         bool hasRequested = false;
         try {
-          final reqs = await sb.from('requests').select('status, sender_id').eq('target_id', id);
-          for (final r in (reqs as List)) {
+          final reqs = requestsMap[id] ?? [];
+          for (final r in reqs) {
             if (r['status'] == 'approved') {
               joined++;
               if (r['sender_id'] == uid) isApproved = true;
@@ -250,6 +310,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
             }
           }
         } catch (_) {}
+
+        final isAnonymous = row['is_anonymous'] == true;
 
         // Hide it from the spark feed completely if the user has requested to join or is approved.
         // They can manage their pending/approved items from the dashboard.
@@ -292,6 +354,9 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
           members: [],
           isApproved: isApproved || (uid == row['user_id']),
           hasRequested: hasRequested,
+          isAnonymous: isAnonymous,
+          imageUrl: row['image_url']?.toString(),
+          hostId: row['user_id']?.toString(),
         );
 
         // Also update the global store for detail sheets
@@ -327,23 +392,38 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
       final hosted = await sb.from('activities').select('*').eq('user_id', uid).eq('is_active', true).order('created_at', ascending: false);
       final hostedRush = <Map<String, dynamic>>[];
       final hostedAct = <Map<String, dynamic>>[];
-      for (final row in (hosted as List)) {
-        // Count participants
-        int joinedCount = 0; int pendingCount = 0;
+
+      // Batch fetch requests for hosted activities
+      final List<String> hostedIds = (hosted as List).map((h) => h['id'].toString()).toList();
+      final Map<String, List<Map<String, dynamic>>> hostedReqsMap = {};
+      
+      if (hostedIds.isNotEmpty) {
         try {
-          final reqs = await sb.from('requests').select('status').eq('target_id', row['id'].toString());
-          for (final r in (reqs as List)) {
-            if (r['status'] == 'approved') {
-              joinedCount++;
-            } else if (r['status'] == 'pending') {
-              pendingCount++;
-            }
+          final allHostedReqs = await sb.from('requests').select('target_id, status').inFilter('target_id', hostedIds);
+          for (final req in (allHostedReqs as List)) {
+            final targetId = req['target_id']?.toString() ?? '';
+            hostedReqsMap.putIfAbsent(targetId, () => []).add(req as Map<String, dynamic>);
           }
         } catch (_) {}
+      }
+
+      for (final row in hosted) {
+        int joinedCount = 0; int pendingCount = 0;
+        final targetId = row['id'].toString();
+        final reqs = hostedReqsMap[targetId] ?? [];
+        
+        for (final r in reqs) {
+          if (r['status'] == 'approved') {
+            joinedCount++;
+          } else if (r['status'] == 'pending') {
+            pendingCount++;
+          }
+        }
+
         final enriched = Map<String, dynamic>.from(row);
         enriched['_joinedCount'] = joinedCount;
         enriched['_pendingCount'] = pendingCount;
-        if (row['is_rush_in'] == true) {
+        if (row['is_rush_in'] == true || (row['description']?.toString().contains('[is_rush_in:true]') ?? false)) {
           hostedRush.add(enriched);
         } else {
           hostedAct.add(enriched);
@@ -354,21 +434,34 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
       final myReqs = await sb.from('requests').select('target_id, status').eq('sender_id', uid);
       final joinedRush = <Map<String, dynamic>>[];
       final joinedAct = <Map<String, dynamic>>[];
-      for (final req in (myReqs as List)) {
-        final targetId = req['target_id']?.toString() ?? '';
-        if (targetId.isEmpty) continue;
+
+      final List<String> joinedTargetIds = (myReqs as List).map((r) => r['target_id']?.toString() ?? '').where((id) => id.isNotEmpty).toList();
+
+      if (joinedTargetIds.isNotEmpty) {
         try {
-          final actRows = await sb.from('activities').select('*').eq('id', targetId).eq('is_active', true).limit(1);
-          if ((actRows as List).isNotEmpty) {
-            final enriched = Map<String, dynamic>.from(actRows[0]);
-            enriched['_myStatus'] = req['status'];
-            // Resolve host name
-            final hostId = enriched['user_id']?.toString() ?? '';
-            try {
-              final pRows = await sb.from('profiles').select('name').eq('id', hostId).limit(1);
-              enriched['_hostName'] = (pRows as List).isNotEmpty ? pRows[0]['name'] : 'Someone';
-            } catch (_) { enriched['_hostName'] = 'Someone'; }
-            if (enriched['is_rush_in'] == true) {
+          final joinedActRows = await sb.from('activities').select('*').inFilter('id', joinedTargetIds).eq('is_active', true);
+          
+          final List<String> hostIds = (joinedActRows as List).map((r) => r['user_id']?.toString() ?? '').where((id) => id.isNotEmpty).toSet().toList();
+          final Map<String, String> hostNameMap = {};
+          
+          if (hostIds.isNotEmpty) {
+            final hostProfiles = await sb.from('profiles').select('id, name').inFilter('id', hostIds);
+            for (final p in (hostProfiles as List)) {
+              hostNameMap[p['id'].toString()] = p['name']?.toString() ?? 'Someone';
+            }
+          }
+
+          final reqStatusMap = {for (var r in myReqs) r['target_id'].toString(): r['status']};
+
+          for (final row in joinedActRows) {
+            final enriched = Map<String, dynamic>.from(row);
+            final targetId = row['id'].toString();
+            enriched['_myStatus'] = reqStatusMap[targetId];
+            
+            final hostId = row['user_id']?.toString() ?? '';
+            enriched['_hostName'] = hostNameMap[hostId] ?? 'Someone';
+            
+            if (enriched['is_rush_in'] == true || (enriched['description']?.toString().contains('[is_rush_in:true]') ?? false)) {
               joinedRush.add(enriched);
             } else {
               joinedAct.add(enriched);
@@ -418,12 +511,15 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   // --- Overlay Triggers ---
   void _showDetailSheet(SparkItem item) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.6),
-      builder: (context) => _SparkDetailSheet(item: item, onJoin: _handleJoin, onHide: _handleHide),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SparkDetailScreen(
+          item: item,
+          onJoin: _handleJoin,
+          onHide: _handleHide,
+        ),
+      ),
     );
   }
 
@@ -509,7 +605,6 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
       backgroundColor: SparkColors.bg,
       body: Stack(
         children: [
-          const _AmbientBackground(),
           
           SafeArea(
             bottom: false,
@@ -528,29 +623,67 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
           // Progress Bar (Mock at top)
           _buildScrollProgress(),
 
-          // FAB
-          Positioned(
-            bottom: 24,
-            right: 20,
-            child: GestureDetector(
-              onTap: _showCreateModal,
-              child: Container(
-                width: 54, height: 54,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: _activeTab == 'act' 
-                      ? [SparkColors.actPrimary, SparkColors.actAccent] 
-                      : [SparkColors.orange, SparkColors.yellow], 
-                    begin: Alignment.topLeft, end: Alignment.bottomRight),
-                  border: Border.all(color: SparkColors.bg, width: 3),
-                  boxShadow: [BoxShadow(
-                    color: (_activeTab == 'act' ? SparkColors.actPrimary : SparkColors.orange).withValues(alpha: 0.4), 
-                    blurRadius: 20, offset: const Offset(0, 4))],
-                ),
-                child: const Icon(Icons.add, color: Colors.black, size: 28),
-              ),
-            ).animate().slideY(begin: 1, end: 0, duration: 400.ms, curve: Curves.easeOutBack),
+          // Custom Expandable FAB
+          _buildFloatingActionButtons(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingActionButtons() {
+    return Positioned(
+      bottom: 24, right: 24,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (_isFabExpanded) ...[
+            FloatingActionButton.extended(
+              heroTag: 'createActivity',
+              backgroundColor: const Color(0xFFFF6B00),
+              onPressed: () {
+                ProfileCompletionService.requireCompleteProfile(context, onComplete: () {
+                  setState(() => _isFabExpanded = false);
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => HostActivityScreen(
+                      initialLocation: locationService.activeLat != null && locationService.activeLng != null
+                        ? LatLng(locationService.activeLat!, locationService.activeLng!)
+                        : const LatLng(0, 0),
+                      initialIsRushIn: false,
+                    ),
+                  )).then((_) => _refreshAll());
+                });
+              },
+              icon: const Icon(Icons.event, color: Colors.black),
+              label: Text('Activity', style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.bold)),
+            ).animate().slideY(begin: 1, end: 0).fadeIn(),
+            const SizedBox(height: 12),
+            FloatingActionButton.extended(
+              heroTag: 'createRushIn',
+              backgroundColor: const Color(0xFFFF007F),
+              onPressed: () {
+                ProfileCompletionService.requireCompleteProfile(context, onComplete: () {
+                  setState(() => _isFabExpanded = false);
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => HostActivityScreen(
+                      initialLocation: locationService.activeLat != null && locationService.activeLng != null
+                        ? LatLng(locationService.activeLat!, locationService.activeLng!)
+                        : const LatLng(0, 0),
+                      initialIsRushIn: true,
+                    ),
+                  )).then((_) => _refreshAll());
+                });
+              },
+              icon: const Icon(Icons.flash_on, color: Colors.white),
+              label: Text('Rush-In', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)),
+            ).animate().slideY(begin: 1, end: 0).fadeIn(),
+            const SizedBox(height: 16),
+          ],
+          FloatingActionButton(
+            heroTag: 'mainFabToggle',
+            backgroundColor: _isFabExpanded ? SparkColors.cardH : SparkColors.orange,
+            onPressed: () => setState(() => _isFabExpanded = !_isFabExpanded),
+            child: Icon(_isFabExpanded ? Icons.close : Icons.add, color: _isFabExpanded ? Colors.white : Colors.black),
           ),
         ],
       ),
@@ -598,176 +731,547 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xCC0A0E17), // 80% opacity
-        border: Border(bottom: BorderSide(color: SparkColors.glass)),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          GestureDetector(
+            onTap: widget.onBack,
+            child: Row(
+              children: [
+                const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 22),
+                const SizedBox(width: 8),
+                Text(
+                  'SPARK',
+                  style: GoogleFonts.inter(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    fontStyle: FontStyle.italic,
+                    color: Colors.white,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () => setState(() => _activeView = _activeView == 'list' ? 'map' : 'list'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+              child: Row(
+                children: [
+                  Icon(_activeView == 'list' ? Icons.map_outlined : Icons.list_rounded, color: Colors.white70, size: 16),
+                  const SizedBox(width: 6),
+                  Text(_activeView == 'list' ? 'Map View' : 'List View', style: GoogleFonts.inter(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+    );
+  }
+
+  // --- LIST VIEW COMPONENTS ---
+  Widget _buildListView() {
+    final list = _activeTab == 'rush' ? _rushIns : _activities;
+    final filteredList = list.where((e) => e.title.toLowerCase().contains(_searchQuery)).toList();
+    
+    final remainingItems = filteredList;
+
+    return ListView(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(vertical: 16).copyWith(bottom: 120),
+      children: [
+        _buildSearchBar('Search sparks...'),
+        const SizedBox(height: 8),
+        _buildTabSwitcher(),
+        const SizedBox(height: 24),
+        _buildDashboardOverview(),
+        const SizedBox(height: 28),
+
+        // HAPPENING NOW Section Header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Text(
+                'Happening Now',
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               GestureDetector(
-                onTap: widget.onBack,
+                onTap: () {},
+                child: Text(
+                  'See all',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFFFF6B00),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        if (remainingItems.isEmpty)
+          // Render a few beautiful mock list items to make the screen alive and premium!
+          Column(
+            children: [
+              _buildListTile(SparkItem(
+                id: 'mock_item_1',
+                type: _activeTab,
+                title: _activeTab == 'rush' ? 'Neon Art Gallery Crawl' : 'Rooftop DJ Set',
+                desc: 'Exploring local art spots in Soho.',
+                tags: ['Art'],
+                slots: '6/10',
+                lat: 0.0, lng: 0.0,
+                waitlist: 0,
+                host: 'Maya V.',
+                location: 'Soho, Manhattan',
+              )),
+              _buildListTile(SparkItem(
+                id: 'mock_item_2',
+                type: _activeTab,
+                title: _activeTab == 'rush' ? 'Midnight Run Crew' : 'Sunset Yoga Sessions',
+                desc: 'A quick run across the Brooklyn Bridge.',
+                tags: ['Fitness'],
+                slots: '3/8',
+                lat: 0.0, lng: 0.0,
+                waitlist: 0,
+                host: 'Dan K.',
+                location: 'Dumbo, Brooklyn',
+              )),
+            ],
+          )
+        else
+          Column(
+            children: remainingItems.map((item) => _buildListTile(item)).toList(),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildTabSwitcher() {
+    final isRush = _activeTab == 'rush';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _setTab('rush'),
+              child: Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isRush ? const Color(0xFFFF6B00) : Colors.black.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isRush ? const Color(0xFFFF6B00) : Colors.white.withValues(alpha: 0.15),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.bolt,
+                      color: isRush ? Colors.black : Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Rush-in',
+                      style: GoogleFonts.inter(
+                        color: isRush ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _setTab('act'),
+              child: Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: !isRush ? const Color(0xFFFF6B00) : Colors.black.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: !isRush ? const Color(0xFFFF6B00) : Colors.white.withValues(alpha: 0.15),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.calendar_today,
+                      color: !isRush ? Colors.black : Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Activities',
+                      style: GoogleFonts.inter(
+                        color: !isRush ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCardImageWidget(String url, {double? width, double? height, BoxFit fit = BoxFit.cover}) {
+    if (url.startsWith('data:')) {
+      try {
+        final bytes = base64Decode(url.split(',').last);
+        return Image.memory(
+          bytes,
+          width: width,
+          height: height,
+          fit: fit,
+          errorBuilder: (_, __, ___) => Container(width: width, height: height, color: const Color(0xFF1a1a2e)),
+        );
+      } catch (_) {
+        return Container(width: width, height: height, color: const Color(0xFF1a1a2e));
+      }
+    }
+    return Image.network(
+      url,
+      width: width,
+      height: height,
+      fit: fit,
+      errorBuilder: (_, __, ___) => Container(width: width, height: height, color: const Color(0xFF1a1a2e)),
+    );
+  }
+
+  Widget _buildFeaturedEvent(SparkItem item) {
+    final imageId = item.id.hashCode.abs() % 100;
+    final imageUrl = (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+        ? item.imageUrl!
+        : 'https://picsum.photos/seed/${imageId + 5}/800/600';
+    return GestureDetector(
+      onTap: () => _showDetailSheet(item),
+      child: Container(
+        height: 240,
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.5),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _buildCardImageWidget(imageUrl, fit: BoxFit.cover),
+              // Gradient overlay
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.2),
+                      Colors.black.withValues(alpha: 0.85),
+                    ],
+                  ),
+                ),
+              ),
+              // Live status & Time remaining
+              Positioned(
+                top: 16,
+                left: 16,
                 child: Row(
                   children: [
-                    ShaderMask(
-                      shaderCallback: (r) => const LinearGradient(colors: [SparkColors.orange, SparkColors.yellow]).createShader(r),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF6B00),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'LIVE NOW',
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                      ),
                       child: Text(
-                        'SPARK',
-                        style: GoogleFonts.boogaloo(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w400,
+                        item.timer ?? '2h left',
+                        style: GoogleFonts.inter(
                           color: Colors.white,
-                          letterSpacing: 1.5,
-                          height: 1.0,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const Row(
-                children: [
-                  AppHeaderActions(),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _headerBtn(IconData icon) {
-    return Container(
-      width: 38, height: 38,
-      decoration: BoxDecoration(
-        color: SparkColors.glass,
-        border: Border.all(color: SparkColors.gborder),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(icon, color: SparkColors.txt2, size: 18),
-    );
-  }
-
-  // --- LIST VIEW COMPONENTS ---
-  Widget _buildListView() {
-    return ListView(
-      controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16).copyWith(bottom: 120),
-      children: [
-        _buildSparkTitle(),
-        const SizedBox(height: 16),
-        _buildTabSwitcher(),
-        const SizedBox(height: 16),
-        _buildViewToggleBar(),
-        const SizedBox(height: 16),
-        if (_activeTab == 'rush') ...[
-          _buildSearchBar('Search rush-ins by interest...'),
-          _buildSectionHeader('Active Rush-ins', Icons.bolt, SparkColors.orange),
-          ..._buildRushInCards(),
-        ] else ...[
-          _buildSearchBar('Search activities...'),
-          _buildActCategoryScroll(),
-          _buildSectionHeader('Upcoming Activities', Icons.calendar_today, SparkColors.actPrimary),
-          ..._buildActivityCards(),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildSparkTitle() {
-    return const SizedBox.shrink();
-  }
-
-
-  Widget _buildTabSwitcher() {
-    return Container(
-      height: 46,
-      decoration: BoxDecoration(
-        color: SparkColors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: SparkColors.gborder),
-      ),
-      child: Stack(
-        children: [
-          // Top subtle border line equivalent
-          Positioned(
-            top: 0, left: 0, right: 0, height: 1,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [Colors.transparent, SparkColors.orange.withValues(alpha: 0.3), Colors.transparent]),
-              ),
-            ),
-          ),
-          // Animated slider
-          AnimatedAlign(
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.fastLinearToSlowEaseIn,
-            alignment: _activeTab == 'rush' ? Alignment.centerLeft : Alignment.centerRight,
-            child: FractionallySizedBox(
-              widthFactor: 0.5,
-              child: Container(
-                margin: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: _activeTab == 'act' 
-                    ? [SparkColors.actPrimary.withValues(alpha: 0.2), SparkColors.actAccent.withValues(alpha: 0.15)]
-                    : [SparkColors.orange.withValues(alpha: 0.2), SparkColors.yellow.withValues(alpha: 0.15)]),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: (_activeTab == 'act' ? SparkColors.actPrimary : SparkColors.orange).withValues(alpha: 0.3)),
-                  boxShadow: [BoxShadow(color: (_activeTab == 'act' ? SparkColors.actPrimary : SparkColors.orange).withValues(alpha: 0.1), blurRadius: 20)],
-                ),
-              ),
-            ),
-          ),
-          // Buttons
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _setTab('rush'),
-                  behavior: HitTestBehavior.opaque,
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+              // Title & details overlay
+              Positioned(
+                bottom: 20,
+                left: 20,
+                right: 20,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title.toUpperCase(),
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
                       children: [
-                        Icon(Icons.bolt, color: _activeTab == 'rush' ? SparkColors.orange : SparkColors.muted, size: 14),
-                        const SizedBox(width: 6),
-                        Text('Rush-in', style: TextStyle(color: _activeTab == 'rush' ? SparkColors.orange : SparkColors.muted, fontSize: 13, fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: SparkColors.purple.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.privacy_tip, color: SparkColors.purple, size: 8),
-                              SizedBox(width: 2),
-                              Text('Anon', style: TextStyle(color: SparkColors.purple, fontSize: 9, fontWeight: FontWeight.bold)),
-                            ],
+                        const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          item.location?.isNotEmpty == true ? item.location!.split(',').first : 'Brooklyn, NY',
+                          style: GoogleFonts.inter(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        const Icon(Icons.people, color: Colors.white60, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${item.slots} filled',
+                          style: GoogleFonts.inter(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildListTile(SparkItem item) {
+    final imageId = item.id.hashCode.abs() % 100;
+    final imageUrl = (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+        ? item.imageUrl!
+        : 'https://picsum.photos/seed/${imageId + 22}/300/300';
+    return GestureDetector(
+      onTap: () => _showDetailSheet(item),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.02),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
+        ),
+        child: Row(
+          children: [
+            // Left thumbnail image
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: _buildCardImageWidget(
+                imageUrl,
+                width: 72,
+                height: 72,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 14),
+            // Middle info details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 12),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          item.location?.isNotEmpty == true ? item.location!.split(',').first : 'Brooklyn, NY',
+                          style: GoogleFonts.inter(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  // Host avatar & name
+                  Row(
+                    children: [
+                      const Icon(Icons.person, color: Colors.white38, size: 12),
+                      const SizedBox(width: 4),
+                      Text(
+                        'by ${item.host}',
+                        style: GoogleFonts.inter(
+                          color: Colors.white38,
+                          fontSize: 11,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Right CTA button: "JOIN" or pending status
+            GestureDetector(
+              onTap: () => _handleJoin(item),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: item.isApproved ? const Color(0xFF10B981) : 
+                         (item.hasRequested ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFFF6B00)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  item.isApproved ? 'JOINED' : (item.hasRequested ? 'PENDING' : 'JOIN'),
+                  style: GoogleFonts.inter(
+                    color: item.isApproved || item.hasRequested ? Colors.white : Colors.black,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
                   ),
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDashboardOverview() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('Your ', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+              Text(_activeTab == 'act' ? 'Activities' : 'Rush-Ins', style: GoogleFonts.plusJakartaSans(color: SparkColors.orange, fontSize: 24, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 8),
+              const Icon(Icons.auto_awesome, color: SparkColors.purple, size: 20),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('Manage events you create and the ones you\'re part of.', style: GoogleFonts.inter(color: Colors.white54, fontSize: 13)),
+          const SizedBox(height: 20),
+          Row(
+            children: [
               Expanded(
-                child: GestureDetector(
-                  onTap: () => _setTab('act'),
-                  behavior: HitTestBehavior.opaque,
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.calendar_today, color: _activeTab == 'act' ? SparkColors.actPrimary : SparkColors.muted, size: 14),
-                        const SizedBox(width: 6),
-                        Text('Activities', style: TextStyle(color: _activeTab == 'act' ? SparkColors.actPrimary : SparkColors.muted, fontSize: 13, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
+                child: _buildHeroCard(
+                  title: 'Events I\'m\nHosting',
+                  subtitle: '${_myHostedRushIns.length + _myHostedActivities.length} Active Event(s)',
+                  desc: 'Events you created\nand are hosting.',
+                  colors: [SparkColors.orange.withValues(alpha: 0.15), SparkColors.orange.withValues(alpha: 0.05)],
+                  borderColor: SparkColors.orange.withValues(alpha: 0.3),
+                  accentColor: SparkColors.orange,
+                  icon: Icons.mic_external_on,
+                  chipLabel: 'You create',
+                  onTap: _showHostedSheet,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildHeroCard(
+                  title: 'Upcoming\nEvents',
+                  subtitle: '${_myJoinedRushIns.length + _myJoinedActivities.length} Upcoming',
+                  desc: 'Events you\'re going to\nor have joined.',
+                  colors: [SparkColors.blue.withValues(alpha: 0.15), SparkColors.purple.withValues(alpha: 0.05)],
+                  borderColor: SparkColors.blue.withValues(alpha: 0.3),
+                  accentColor: SparkColors.blue,
+                  icon: Icons.calendar_month,
+                  chipLabel: 'You join',
+                  onTap: _showJoinedSheet,
                 ),
               ),
             ],
@@ -777,92 +1281,62 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     );
   }
 
-  Widget _buildViewToggleBar() {
-    final isRush = _activeTab == 'rush';
-    final hostedCount = isRush ? _myHostedRushIns.length : _myHostedActivities.length;
-    final joinedCount = isRush ? _myJoinedRushIns.length : _myJoinedActivities.length;
-    final feedCount = isRush ? _rushIns.length : _activities.length;
-
-    return Column(
-      children: [
-        // Dashboard cards row
-        Row(
-          children: [
-            Expanded(child: _dashCard(
-              icon: Icons.rocket_launch,
-              label: 'My Hosted',
-              count: hostedCount,
-              colors: isRush ? [SparkColors.orange, SparkColors.yellow] : [SparkColors.actPrimary, SparkColors.actAccent],
-              onTap: () => _showHostedSheet(),
-            )),
-            const SizedBox(width: 10),
-            Expanded(child: _dashCard(
-              icon: Icons.group,
-              label: 'Joined',
-              count: joinedCount,
-              colors: isRush ? [SparkColors.purple, SparkColors.pink] : [SparkColors.actSecondary, SparkColors.actPrimary],
-              onTap: () => _showJoinedSheet(),
-            )),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // Feed count + view toggle
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(children: [
-              Container(width: 8, height: 8, decoration: const BoxDecoration(color: SparkColors.green, shape: BoxShape.circle))
-                  .animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(1, 1), end: const Offset(1.4, 1.4)).fade(end: 0.5),
-              const SizedBox(width: 6),
-              Text(
-                isRush
-                  ? (feedCount > 0 ? '$feedCount active near you' : 'No rush-ins yet')
-                  : (feedCount > 0 ? '$feedCount activities nearby' : 'No activities yet'),
-                style: const TextStyle(color: SparkColors.txt2, fontSize: 12),
-              ),
-            ]),
-            Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(color: SparkColors.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: SparkColors.gborder)),
-              child: Row(children: [_vtBtn('List', Icons.list, 'list'), _vtBtn('Map', Icons.map, 'map')]),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _dashCard({required IconData icon, required String label, required int count, required List<Color> colors, required VoidCallback onTap}) {
+  Widget _buildHeroCard({required String title, required String subtitle, required String desc, required List<Color> colors, required Color borderColor, required Color accentColor, required IconData icon, required String chipLabel, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        height: 220,
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [colors[0].withValues(alpha: 0.12), colors[1].withValues(alpha: 0.06)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: colors[0].withValues(alpha: 0.2)),
+          gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: borderColor),
         ),
-        child: Row(
+        child: Stack(
           children: [
-            Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: colors),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: Colors.white, size: 18),
+            Positioned(
+              right: -20,
+              bottom: 20,
+              child: Icon(icon, size: 100, color: accentColor.withValues(alpha: 0.2)),
             ),
-            const SizedBox(width: 10),
-            Expanded(
+            Padding(
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: TextStyle(color: colors[0], fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-                  Text('$count active', style: const TextStyle(color: SparkColors.txt2, fontSize: 11)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.location_on, color: accentColor, size: 10),
+                        const SizedBox(width: 4),
+                        Text(chipLabel, style: GoogleFonts.inter(color: accentColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(title, style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, height: 1.2)),
+                  const SizedBox(height: 6),
+                  Text(subtitle, style: GoogleFonts.inter(color: accentColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Text(desc, style: GoogleFonts.inter(color: Colors.white54, fontSize: 11, height: 1.3)),
+                  const Spacer(),
+                  Container(
+                    width: 32, height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: accentColor.withValues(alpha: 0.5)),
+                      color: accentColor.withValues(alpha: 0.1),
+                    ),
+                    child: Icon(Icons.arrow_forward, color: accentColor, size: 16),
+                  ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: colors[0].withValues(alpha: 0.5), size: 18),
           ],
         ),
       ),
@@ -893,11 +1367,12 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   // ---- BOTTOM SHEETS ----
   void _showHostedSheet() {
-    final isRush = _activeTab == 'rush';
-    final items = isRush ? _myHostedRushIns : _myHostedActivities;
-    final accent = isRush ? SparkColors.orange : SparkColors.actPrimary;
-    final title = isRush ? 'My Hosted Rush-ins' : 'My Hosted Activities';
-    final emptyMsg = isRush ? "You haven't created any rush-ins yet" : "You haven't created any activities yet";
+    final items = [..._myHostedRushIns, ..._myHostedActivities];
+    items.sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
+    
+    final accent = SparkColors.orange;
+    const title = 'Events I\'m Hosting';
+    const emptyMsg = "You haven't created any events yet";
 
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
@@ -929,6 +1404,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (_, i) {
                 final item = items[i];
+                final isItemRush = item['is_rush_in'] == true || (item['description']?.toString().contains('[is_rush_in:true]') ?? false);
+                final itemAccent = isItemRush ? SparkColors.orange : SparkColors.actPrimary;
                 final joinedC = item['_joinedCount'] ?? 0;
                 final pendingC = item['_pendingCount'] ?? 0;
                 final limit = item['participant_limit'] ?? 4;
@@ -941,17 +1418,17 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
                   },
                   child: Container(
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: SparkColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: accent.withValues(alpha: 0.12))),
+                  decoration: BoxDecoration(color: SparkColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: itemAccent.withValues(alpha: 0.12))),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       Expanded(child: Text(item['title'] ?? 'Untitled', style: const TextStyle(color: SparkColors.txt, fontSize: 14, fontWeight: FontWeight.w600))),
                       Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: accent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                        child: Text(isRush ? 'Rush-in' : 'Activity', style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.w600))),
+                        decoration: BoxDecoration(color: itemAccent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                        child: Text(isItemRush ? 'Rush-in' : 'Activity', style: TextStyle(color: itemAccent, fontSize: 10, fontWeight: FontWeight.w600))),
                     ]),
                     if ((item['description'] ?? '').toString().isNotEmpty) ...[
                       const SizedBox(height: 6),
-                      Text(item['description'], style: const TextStyle(color: SparkColors.muted, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(item['description'].toString().replaceAll(RegExp(r'\n?\[[a-zA-Z0-9_]+:.*?\]'), '').trim(), style: const TextStyle(color: SparkColors.muted, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
                     ],
                     const SizedBox(height: 10),
                     Row(children: [
@@ -976,11 +1453,12 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   }
 
   void _showJoinedSheet() {
-    final isRush = _activeTab == 'rush';
-    final items = isRush ? _myJoinedRushIns : _myJoinedActivities;
-    final accent = isRush ? SparkColors.purple : SparkColors.actSecondary;
-    final title = isRush ? 'Joined Rush-ins' : 'Joined Activities';
-    final emptyMsg = isRush ? "You haven't joined any rush-ins yet" : "You haven't joined any activities yet";
+    final items = [..._myJoinedRushIns, ..._myJoinedActivities];
+    items.sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
+    
+    final accent = SparkColors.purple;
+    const title = 'Joined / Pending Events';
+    const emptyMsg = "You haven't joined any events yet";
 
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
@@ -1012,6 +1490,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (_, i) {
                 final item = items[i];
+                final isItemRush = item['is_rush_in'] == true || (item['description']?.toString().contains('[is_rush_in:true]') ?? false);
+                final itemAccent = isItemRush ? SparkColors.purple : SparkColors.actSecondary;
                 final status = item['_myStatus']?.toString() ?? 'pending';
                 final hostName = item['_hostName'] ?? 'Someone';
                 final isApproved = status == 'approved';
@@ -1024,10 +1504,14 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
                   },
                   child: Container(
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: SparkColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: accent.withValues(alpha: 0.12))),
+                  decoration: BoxDecoration(color: SparkColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: itemAccent.withValues(alpha: 0.12))),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       Expanded(child: Text(item['title'] ?? 'Untitled', style: const TextStyle(color: SparkColors.txt, fontSize: 14, fontWeight: FontWeight.w600))),
+                      Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(color: itemAccent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                        child: Text(isItemRush ? 'Rush-in' : 'Activity', style: TextStyle(color: itemAccent, fontSize: 10, fontWeight: FontWeight.w600))),
+                      const SizedBox(width: 8),
                       Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: isApproved ? SparkColors.green.withValues(alpha: 0.15) : SparkColors.yellow.withValues(alpha: 0.15),
@@ -1040,7 +1524,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
                     ]),
                     if ((item['description'] ?? '').toString().isNotEmpty) ...[
                       const SizedBox(height: 6),
-                      Text(item['description'], style: const TextStyle(color: SparkColors.muted, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(item['description'].toString().replaceAll(RegExp(r'\n?\[[a-zA-Z0-9_]+:.*?\]'), '').trim(), style: const TextStyle(color: SparkColors.muted, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
                     ],
                     const SizedBox(height: 10),
                     Row(children: [
@@ -1198,16 +1682,144 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     if (_selectedCategories.isNotEmpty && !_selectedCategories.contains('All')) {
       list = list.where((e) => e.tags.any((t) => _selectedCategories.contains(t))).toList();
     }
+    
+    List<Widget> children = [];
     if (list.isEmpty) {
-      return [_buildEmptyState('No activities found', 'Try a different category or create one!', SparkColors.actPrimary)];
+      children.add(_buildEmptyState('No activities found', 'Try a different category or create one!', SparkColors.actPrimary));
+    } else {
+      children.addAll(list.asMap().entries.map((ent) => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: GestureDetector(
+          onTap: () => _showDetailSheet(ent.value),
+          child: _ActivityCard(item: ent.value).animate().fadeIn(delay: (ent.key*100).ms).slideY(begin: 0.1, end: 0),
+        ),
+      )));
     }
-    return list.asMap().entries.map((ent) => Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: GestureDetector(
-        onTap: () => _showDetailSheet(ent.value),
-        child: _ActivityCard(item: ent.value).animate().fadeIn(delay: (ent.key*100).ms).slideY(begin: 0.1, end: 0),
+    
+    // Append the CTA banner
+    children.add(
+      Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 40),
+        child: _buildCreateEventBanner().animate().fadeIn(delay: 500.ms).slideY(begin: 0.1, end: 0),
+      )
+    );
+    
+    return children;
+  }
+
+  Widget _buildCreateEventBanner() {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: SparkColors.orange.withValues(alpha: 0.3)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            SparkColors.orange.withValues(alpha: 0.15),
+            SparkColors.pink.withValues(alpha: 0.05),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: SparkColors.orange.withValues(alpha: 0.1),
+            blurRadius: 30,
+            spreadRadius: -5,
+          ),
+        ],
       ),
-    )).toList();
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.bolt_rounded, color: SparkColors.orange, size: 24)
+                              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+                              .shimmer(duration: 2000.ms, color: Colors.white),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Create. Invite. Experience.',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: SparkColors.orange,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Bring your ideas to life. The world is ready to join!',
+                        style: GoogleFonts.inter(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => HostActivityScreen(
+                        initialLocation: locationService.activeLat != null && locationService.activeLng != null
+                          ? LatLng(locationService.activeLat!, locationService.activeLng!)
+                          : const LatLng(0, 0),
+                        initialIsRushIn: false,
+                      ),
+                    )).then((_) => _refreshAll());
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [SparkColors.orange, SparkColors.pink],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: SparkColors.orange.withValues(alpha: 0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.add, color: Colors.white, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Create Event',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildEmptyState(String title, String subtitle, Color color) {
@@ -1472,162 +2084,235 @@ class _ActivityCard extends StatelessWidget {
   final SparkItem item;
   const _ActivityCard({required this.item});
 
+  String _getMonth(int month) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (month >= 1 && month <= 12) return months[month - 1];
+    return '';
+  }
+
+  Widget _buildCardImageWidget(String imageUrl, {double? width, double? height, BoxFit fit = BoxFit.cover}) {
+    if (imageUrl.startsWith('data:')) {
+      try {
+        final bytes = base64Decode(imageUrl.split(',').last);
+        return Image.memory(
+          bytes,
+          width: width,
+          height: height,
+          fit: fit,
+          errorBuilder: (_, __, ___) => Container(width: width, height: height, color: const Color(0xFF1a1a2e)),
+        );
+      } catch (_) {
+        return Container(width: width, height: height, color: const Color(0xFF1a1a2e));
+      }
+    }
+    return Image.network(
+      imageUrl,
+      width: width,
+      height: height,
+      fit: fit,
+      errorBuilder: (context, error, stackTrace) => Container(width: width, height: height, color: const Color(0xFF1a1a2e)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    bool isFull = item.isFull;
+    final title = item.title;
+    final location = item.location?.split(',').first ?? 'TBD';
+    final category = item.tags.isNotEmpty ? item.tags.first.toUpperCase() : 'EVENT';
+    
+    // Stable pseudo-random image id based on item ID
+    final imageId = item.id.hashCode.abs() % 100;
+    final image = (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+        ? item.imageUrl!
+        : 'https://picsum.photos/seed/$imageId/400/300';
+    
+    // Parse date if possible
+    String dateStr = item.date ?? 'TBA';
+    if (dateStr != 'TBA') {
+       try {
+         final parts = dateStr.split('-');
+         if (parts.length == 3) {
+            int m = int.parse(parts[1]);
+            int d = int.parse(parts[2]);
+            dateStr = '${_getMonth(m)} $d';
+         }
+       } catch (_) {}
+    }
+    final timeStr = item.time != null ? ' • ${item.time}' : '';
+    final dateTimeStr = '$dateStr$timeStr';
+
+    int maxParticipants = 20;
+    try {
+      if (item.slots.isNotEmpty) {
+        final pts = item.slots.split('/');
+        if (pts.length == 2) {
+          maxParticipants = int.tryParse(pts[1].trim()) ?? 20;
+        }
+      }
+    } catch (_) {}
 
     return Container(
+      height: 140,
       decoration: BoxDecoration(
         color: SparkColors.card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: SparkColors.gborder),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Stack(
+      child: Row(
         children: [
-          Positioned(top: 0, left: 0, right: 0, height: 3,
-            child: Container(
-              height: 3,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(colors: [SparkColors.actPrimary, SparkColors.actSecondary, SparkColors.actAccent]),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-              ),
+          ClipRRect(
+            borderRadius: const BorderRadius.horizontal(left: Radius.circular(19)),
+            child: Stack(
+              children: [
+                _buildCardImageWidget(
+                  image,
+                  width: 120,
+                  height: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+                Container(
+                  width: 120,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [Colors.transparent, SparkColors.card.withValues(alpha: 0.9), SparkColors.card],
+                      stops: const [0.5, 0.9, 1.0],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 44, height: 44,
-                      child: Stack(
-                        children: [
-                          Container(
-                            width: 44, height: 44,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(colors: item.hostColor ?? [SparkColors.actPrimary, SparkColors.actSecondary]),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(item.hostAvatar ?? '', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                          ),
-                          Positioned(
-                            bottom: -2, right: -2,
-                            child: Container(
-                              width: 16, height: 16,
-                              decoration: BoxDecoration(color: SparkColors.actPrimary, shape: BoxShape.circle, border: Border.all(color: SparkColors.card, width: 2)),
-                              child: const Icon(Icons.check, color: SparkColors.bg, size: 8),
-                            ),
-                          )
-                        ],
-                      ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(4, 14, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(item.host, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                              const SizedBox(width: 4),
-                              const Icon(Icons.check_circle, color: SparkColors.actPrimary, size: 12),
-                            ],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.calendar_today, color: Colors.white38, size: 12),
+                      const SizedBox(width: 4),
+                      Text(
+                        dateTimeStr,
+                        style: GoogleFonts.inter(color: Colors.white54, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on, color: Colors.white38, size: 12),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          location,
+                          style: GoogleFonts.inter(color: Colors.white54, fontSize: 11),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: SparkColors.purple.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          category,
+                          style: GoogleFonts.inter(
+                            color: SparkColors.purple,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
                           ),
-                          const Text('Posted recently', style: TextStyle(color: SparkColors.muted, fontSize: 11)),
-                        ],
+                        ),
                       ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: SparkColors.actSecondary.withValues(alpha: 0.1),
-                        border: Border.all(color: SparkColors.actSecondary.withValues(alpha: 0.2)),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(item.tags.isNotEmpty ? item.tags.first : 'Activity', style: const TextStyle(color: SparkColors.actSecondary, fontSize: 10, fontWeight: FontWeight.bold)),
-                    )
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(item.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(item.desc, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: SparkColors.muted, fontSize: 12, height: 1.4)),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 12, runSpacing: 6,
-                  children: [
-                    _IconText(Icons.calendar_today, item.date ?? 'TBD'),
-                    _IconText(Icons.access_time, item.time ?? 'TBD'),
-                    _IconText(Icons.location_on, item.type == 'rush' && !item.isApproved 
-                      ? 'Revealed on approval' 
-                      : (item.location?.split(',').first ?? 'TBD')),
-                    _IconText(Icons.group, isFull ? 'Full (${item.slots})' : '${item.slots} joined', color: isFull ? SparkColors.red : null),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        for (int i=0; i< (item.members?.length ?? 0).clamp(0,3); i++)
-                          Align(
-                            widthFactor: 0.7,
-                            child: Container(
-                              width: 26, height: 26,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: SparkColors.card, width: 2),
-                                gradient: LinearGradient(colors: (item.hostColor != null && item.hostColor!.isNotEmpty) ? item.hostColor!.reversed.toList() : [SparkColors.actPrimary, SparkColors.actSecondary]),
+                      const Spacer(),
+                      
+                      // Attendee Avatars Stack
+                      SizedBox(
+                        width: 60,
+                        height: 24,
+                        child: Stack(
+                          children: List.generate((item.members?.length ?? 2).clamp(0,2), (i) {
+                            return Positioned(
+                              right: i * 16.0 + 20,
+                              child: Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: SparkColors.card, width: 2),
+                                  image: DecorationImage(
+                                    image: NetworkImage('https://i.pravatar.cc/100?img=${imageId + i + 10}'),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
                               ),
-                              alignment: Alignment.center,
-                              child: Text(item.members?[i] ?? 'U', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                        if ((item.members?.length ?? 0) > 3)
-                          Align(
-                            widthFactor: 0.7,
-                            child: Container(
-                              width: 26, height: 26,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: SparkColors.card, width: 2),
-                                color: Colors.white.withValues(alpha: 0.1),
+                            );
+                          })..add(
+                            Positioned(
+                              right: 0,
+                              child: Container(
+                                padding: const EdgeInsets.only(left: 4),
+                                alignment: Alignment.centerLeft,
+                                height: 24,
+                                child: Text(
+                                  '+$maxParticipants',
+                                  style: GoogleFonts.inter(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w600),
+                                ),
                               ),
-                              alignment: Alignment.center,
-                              child: Text('+${(item.members?.length ?? 0) - 3}', style: const TextStyle(color: SparkColors.txt2, fontSize: 8)),
+                            )
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Glowing CTA Arrow
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.05),
+                          border: Border.all(color: SparkColors.orange.withValues(alpha: 0.3)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: SparkColors.orange.withValues(alpha: 0.2),
+                              blurRadius: 10,
+                              spreadRadius: 1,
                             ),
-                          )
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                      decoration: BoxDecoration(
-                        gradient: (isFull && !item.isApproved) ? null : 
-                          (item.isApproved ? const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]) : 
-                           (item.hasRequested ? null : const LinearGradient(colors: [SparkColors.actPrimary, SparkColors.actSecondary]))),
-                        color: (isFull && !item.isApproved) ? SparkColors.purple.withValues(alpha: 0.15) : 
-                          (item.hasRequested && !item.isApproved ? Colors.white.withValues(alpha: 0.1) : null),
-                        border: Border.all(color: (isFull && !item.isApproved) ? SparkColors.purple.withValues(alpha: 0.3) : (item.hasRequested ? SparkColors.gborder : Colors.transparent)),
-                        borderRadius: BorderRadius.circular(10),
+                          ],
+                        ),
+                        child: const Icon(Icons.arrow_forward_rounded, color: SparkColors.orange, size: 14),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(item.isApproved ? Icons.check_circle : (item.hasRequested ? Icons.pending : (isFull ? Icons.access_time : Icons.pan_tool)), 
-                               color: item.isApproved ? Colors.white : (item.hasRequested ? SparkColors.txt2 : (isFull ? SparkColors.purple : Colors.black)), size: 12),
-                          const SizedBox(width: 5),
-                          Text(item.isApproved ? 'Approved' : (item.hasRequested ? 'Requested' : (isFull ? 'Waitlist (${item.waitlist})' : 'Join')), 
-                               style: TextStyle(color: item.isApproved ? Colors.white : (item.hasRequested ? SparkColors.txt2 : (isFull ? SparkColors.purple : Colors.black)), fontSize: 12, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                  ],
-                )
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1636,24 +2321,7 @@ class _ActivityCard extends StatelessWidget {
   }
 }
 
-class _IconText extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color? color;
-  const _IconText(this.icon, this.text, {this.color});
 
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color ?? SparkColors.actPrimary, size: 11),
-        const SizedBox(width: 4),
-        Text(text, style: TextStyle(color: color ?? SparkColors.txt2, fontSize: 11)),
-      ],
-    );
-  }
-}
 
 
 
@@ -1763,6 +2431,33 @@ class _SparkMapViewState extends State<_SparkMapView> {
   bool _isDark = true;
   String _layer = 'street';
   bool _showLayersBox = false;
+  LatLng? _actualLocation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchActualLocation();
+  }
+
+  Future<void> _fetchActualLocation() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
+      if (mounted) {
+        setState(() => _actualLocation = LatLng(pos.latitude, pos.longitude));
+        _mapController.move(_actualLocation!, 14.0);
+      }
+    } catch (_) {
+      // Fallback to active location if GPS fails or permission denied
+      if (mounted) {
+        final lat = locationService.activeLat;
+        final lng = locationService.activeLng;
+        if (lat != null && lng != null) {
+          setState(() => _actualLocation = LatLng(lat, lng));
+          _mapController.move(_actualLocation!, 14.0);
+        }
+      }
+    }
+  }
 
   String _getTileUrl() {
     switch (_layer) {
@@ -1791,17 +2486,23 @@ class _SparkMapViewState extends State<_SparkMapView> {
             child: FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: LatLng(locationService.activeLat ?? 20.5937, locationService.activeLng ?? 78.9629),
+                initialCenter: _actualLocation ?? LatLng(locationService.activeLat ?? 20.5937, locationService.activeLng ?? 78.9629),
                 initialZoom: 13,
+                maxZoom: 22.0,
               ),
               children: [
-                TileLayer(urlTemplate: _getTileUrl(), userAgentPackageName: 'com.meetra.app'),
+                TileLayer(
+                  urlTemplate: _getTileUrl(), 
+                  userAgentPackageName: 'com.meetra.app',
+                  maxZoom: 22.0,
+                  maxNativeZoom: 17,
+                ),
                 MarkerLayer(
                   markers: [
                     // User's Live Location Marker
-                    if (locationService.activeLat != null && locationService.activeLng != null)
+                    if (_actualLocation != null)
                       Marker(
-                        point: LatLng(locationService.activeLat!, locationService.activeLng!),
+                        point: _actualLocation!,
                         width: 50, height: 50,
                         child: Container(
                           decoration: BoxDecoration(
@@ -1819,7 +2520,7 @@ class _SparkMapViewState extends State<_SparkMapView> {
                       ),
                     
                     // Spark Activities & Rush-ins
-                    ...sparkDataStore.values.map((v) => Marker(
+                    ...sparkDataStore.values.where((v) => !(v.isAnonymous && !v.isApproved)).map((v) => Marker(
                       point: LatLng(v.lat, v.lng), 
                       width: 44, height: 44,
                       child: GestureDetector(
@@ -2314,6 +3015,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
   
   bool _isWaitlist = true;
   bool _autoApprove = false;
+  bool _isAnonymous = false;
   double _radius = 5.0;
   bool _isSubmitting = false;
 
@@ -2400,6 +3102,39 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
     }
   }
 
+  Future<String> _resolvePinLandmark(LatLng pin, String defaultName) async {
+    try {
+      final geoUrl = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse'
+        '?format=json&lat=${pin.latitude}&lon=${pin.longitude}&zoom=18&addressdetails=1',
+      );
+      final geoRes = await http.get(geoUrl, headers: {'User-Agent': 'MeetraApp/1.0'});
+      if (geoRes.statusCode == 200) {
+        final geoData = jsonDecode(geoRes.body);
+        final address = geoData['address'] as Map<String, dynamic>? ?? {};
+        final landmark = geoData['name']
+            ?? address['amenity']
+            ?? address['building']
+            ?? address['shop']
+            ?? address['leisure']
+            ?? address['historic']
+            ?? address['tourism'];
+        if (landmark != null && landmark.toString().trim().isNotEmpty) {
+          return landmark.toString().trim();
+        } else {
+          final road = address['road'] ?? address['pedestrian'];
+          final area = address['neighbourhood'] ?? address['suburb'] ?? address['village'];
+          if (road != null) {
+            return area != null ? '$road, $area' : road.toString();
+          } else if (area != null) {
+            return area.toString();
+          }
+        }
+      }
+    } catch (_) {}
+    return defaultName;
+  }
+
   Future<void> _submit() async {
     if (_tab == 'rush' && (_rushTitle.text.isEmpty || _rushDesc.text.isEmpty)) return;
     if (_tab == 'act' && (_actTitle.text.isEmpty || _actDesc.text.isEmpty)) return;
@@ -2410,14 +3145,20 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
     if (uid == null) return;
 
     try {
-      await sb.from('profiles').select('name, avatar_url, city').eq('id', uid).maybeSingle();
+      final profile = await sb.from('profiles').select('name, avatar_url, city').eq('id', uid).maybeSingle();
+      final hostName = profile != null ? profile['name']?.toString() ?? 'Someone' : 'Someone';
       final city = locationService.activeLocation;
 
       final dt = DateTime.now();
 
       if (_tab == 'rush') {
         final durationHours = int.tryParse(_rushExpiry.text) ?? 2;
-        await sb.from('activities').insert({
+        
+        // 1. Resolve nearest landmark first
+        final pinLocationName = await _resolvePinLandmark(_pinLocation, city);
+
+        // 2. Insert into activities
+        final payload = <String, dynamic>{
           'user_id': uid,
           'title': _rushTitle.text.trim(),
           'description': _rushDesc.text.trim(),
@@ -2426,7 +3167,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'is_rush_in': true,
           'activity_type': 'rush_in',
           'category': 'rush_in',
-          'location_name': city,
+          'location_name': pinLocationName,
           'district': locationService.activeLocation.split(',').first.trim(),
           'state': locationService.activeLocation.split(',').length > 1 ? locationService.activeLocation.split(',')[1].trim() : '',
           'activity_time': dt.toIso8601String(),
@@ -2435,8 +3176,48 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'created_at': dt.toUtc().toIso8601String(),
           'expires_at': dt.add(Duration(hours: durationHours)).toIso8601String(),
           'duration_hours': durationHours,
-          'radius_km': 5,
-        });
+          'radius_km': _radius,
+          'is_anonymous': _isAnonymous,
+        };
+
+        final safeKeys = ['user_id', 'title', 'description', 'category', 'activity_time', 'lat', 'lng', 'location_name', 'district', 'state', 'is_active', 'participant_limit', 'activity_type', 'created_at'];
+        final safePayload = <String, dynamic>{};
+        String extraData = '';
+        
+        for (final key in payload.keys) {
+          if (safeKeys.contains(key)) {
+            safePayload[key] = payload[key];
+          } else {
+            if (payload[key] != null) {
+              extraData += '\n[$key:${payload[key]}]';
+            }
+          }
+        }
+        
+        if (extraData.isNotEmpty) {
+          safePayload['description'] = (safePayload['description'] as String) + extraData;
+        }
+
+        final response = await sb.from('activities').insert(safePayload).select('id').single();
+
+        final activityId = response['id'].toString();
+
+        // 3. Trigger notification blast with resolved landmark
+        try {
+          NotificationService.notifyNearbyActivity(
+            creatorId: uid,
+            activityId: activityId,
+            title: _rushTitle.text.trim(),
+            locationName: pinLocationName,
+            hostName: hostName,
+            lat: _pinLocation.latitude,
+            lng: _pinLocation.longitude,
+            isRushIn: true,
+            activityCity: city.split(',').first.trim(),
+            radiusKm: _radius,
+            isAnonymous: _isAnonymous,
+          );
+        } catch (_) {}
         if (mounted) {
           Navigator.pop(context, {
             'title': '⚡ Rush-in Created!',
@@ -2457,7 +3238,14 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           }
         } catch (_) {}
 
-        await sb.from('activities').insert({
+        // 1. Resolve nearest landmark or user-defined location name
+        String pinLocationName = _actLocation.text.trim();
+        if (pinLocationName.isEmpty) {
+          pinLocationName = await _resolvePinLandmark(_pinLocation, city);
+        }
+
+        // 2. Insert into activities
+        final payload = <String, dynamic>{
           'user_id': uid,
           'title': _actTitle.text.trim(),
           'description': _actDesc.text.trim(),
@@ -2466,14 +3254,54 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'is_rush_in': false,
           'activity_type': 'activity',
           'category': _actCategory.text.trim().isNotEmpty ? _actCategory.text.trim() : 'General',
-          'location_name': _actLocation.text.trim().isNotEmpty ? _actLocation.text.trim() : city,
+          'location_name': pinLocationName,
           'district': locationService.activeLocation.split(',').first.trim(),
           'state': locationService.activeLocation.split(',').length > 1 ? locationService.activeLocation.split(',')[1].trim() : '',
           'activity_time': actDate.toIso8601String(), 
           'lat': _pinLocation.latitude,
           'lng': _pinLocation.longitude,
           'created_at': dt.toUtc().toIso8601String(),
-        });
+        };
+
+        final safeKeys = ['user_id', 'title', 'description', 'category', 'activity_time', 'lat', 'lng', 'location_name', 'district', 'state', 'is_active', 'participant_limit', 'activity_type', 'created_at'];
+        final safePayload = <String, dynamic>{};
+        String extraData = '';
+        
+        for (final key in payload.keys) {
+          if (safeKeys.contains(key)) {
+            safePayload[key] = payload[key];
+          } else {
+            if (payload[key] != null) {
+              extraData += '\n[$key:${payload[key]}]';
+            }
+          }
+        }
+        
+        if (extraData.isNotEmpty) {
+          safePayload['description'] = (safePayload['description'] as String) + extraData;
+        }
+
+        final response = await sb.from('activities').insert(safePayload).select('id').single();
+
+        final activityId = response['id'].toString();
+
+        // 3. Trigger notification blast with resolved landmark
+        try {
+          NotificationService.notifyNearbyActivity(
+            creatorId: uid,
+            activityId: activityId,
+            title: _actTitle.text.trim(),
+            locationName: pinLocationName,
+            hostName: hostName,
+            lat: _pinLocation.latitude,
+            lng: _pinLocation.longitude,
+            isRushIn: false,
+            activityCity: city.split(',').first.trim(),
+            radiusKm: 25.0, // Default for standard activities
+            isAnonymous: false,
+          );
+        } catch (_) {}
+
         if (mounted) {
           Navigator.pop(context, {
             'title': '📅 Activity Created!',
@@ -2494,17 +3322,24 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
     final isAct = _tab == 'act';
     final accentColor = isAct ? SparkColors.actPrimary : SparkColors.orange;
     
-    return Container(
-      decoration: BoxDecoration(
-        color: SparkColors.bg2,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border.all(color: SparkColors.gborder),
-      ),
-      child: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10).copyWith(bottom: MediaQuery.of(context).viewInsets.bottom + 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: SparkColors.bg2,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: SparkColors.gborder),
+          ),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10).copyWith(bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 16),
@@ -2560,6 +3395,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
                   ],
                 ),
                 const SizedBox(height: 16),
+                _buildToggle('👤 Post as Anonymous', _isAnonymous, (v) => setState(() => _isAnonymous = v), accentColor),
                 const SizedBox(height: 16),
                 _buildMapPicker(accentColor),
                 const SizedBox(height: 16),
@@ -2613,6 +3449,8 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           ),
         ),
       ),
+    );
+      },
     );
   }
   Widget _buildMapPicker(Color accent) {

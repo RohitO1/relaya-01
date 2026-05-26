@@ -98,7 +98,7 @@ class NearbyAgent {
       emoji: isRushIn ? '🔥' : '📍',
       title: isRushIn ? 'Rush-In Nearby!' : 'New Activity Nearby!',
       body: '$title${location.isNotEmpty ? ' at $location' : ''} • $distStr away',
-      color: isRushIn ? const Color(0xFFFF007F) : const Color(0xFF00E5FF),
+      color: isRushIn ? const Color(0xFFFF007F) : const Color(0xFFFF6B00),
       payload: {'type': isRushIn ? 'rush_in' : 'activity', 'id': id},
     );
   }

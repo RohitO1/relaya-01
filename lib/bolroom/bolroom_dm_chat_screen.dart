@@ -12,6 +12,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import '../chatroom_live_screen.dart';
 
+import '../services/notification_service.dart';
+
 class BolroomDmChatScreen extends StatefulWidget {
   final String conversationId;
   final String partnerId;
@@ -66,7 +68,7 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
   );
   
   static LinearGradient userAvatarAura = const LinearGradient(
-    colors: [Color(0xFFD433FF), Color(0xFF7B2CBF), Color(0xFF00E5FF)],
+    colors: [Color(0xFFD433FF), Color(0xFF7B2CBF), Color(0xFFFF6B00)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -178,6 +180,23 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
         'last_message': previewMessage,
         'last_message_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', widget.conversationId);
+
+      // Send push notification
+      try {
+        final myProfile = await _sb.from('bolroom_profiles').select('anon_name').eq('id', _myId).maybeSingle();
+        final myName = myProfile?['anon_name'] ?? 'User';
+        NotificationService.sendNotification(
+          userId: widget.partnerId,
+          type: NotificationType.message,
+          title: 'Message from @$myName 💬',
+          body: previewMessage,
+          payload: {
+            'bolroom_dm': true,
+            'conversation_id': widget.conversationId,
+            'sender_id': _myId,
+          },
+        );
+      } catch (_) {}
       
       setState(() {
         _isAudioPreview = false;

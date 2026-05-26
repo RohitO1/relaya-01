@@ -22,7 +22,10 @@ class BolRoomConfig {
   /// LiveKit API Secret  (from same project's Settings → Keys page)
   static const String livekitApiSecret = 'aa2N3fCi65FqflofwW5tc3VhOtHdKUBHqz27x1QPM3BB';
 
+  /// Agora App ID for real-time voice and voice masking
+  static const String agoraAppId = '8f70c498d9b644d8b80a9100b73f23d7';
+
   /// Whether voice is enabled
   static bool get isVoiceEnabled =>
-      livekitUrl.isNotEmpty && !livekitUrl.startsWith('YOUR');
+      agoraAppId.isNotEmpty && agoraAppId != 'YOUR_AGORA_APP_ID';
 }

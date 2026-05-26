@@ -14,7 +14,7 @@ class WebImageHelper implements ImageHelper {
     String? folder,
   }) async {
     final completer = html.FileUploadInputElement();
-    completer.accept = 'image/*';
+    completer.accept = 'image/jpeg, image/png, image/webp';
     completer.click();
 
     await completer.onChange.first;
@@ -29,6 +29,23 @@ class WebImageHelper implements ImageHelper {
     
     final arrayBuffer = reader.result as List<int>;
     final Uint8List originalBytes = Uint8List.fromList(arrayBuffer);
+
+    // Validate that the file is not an SVG or XML file by checking the header.
+    // SVG/XML files start with "<?xml" or "<svg".
+    if (originalBytes.length > 5) {
+      final headerStr = String.fromCharCodes(originalBytes.sublist(0, 5).toList()).toLowerCase();
+      if (headerStr == '<?xml' || headerStr == '<svg ' || headerStr == '<html') {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('SVG or XML files are not supported. Please select a JPG or PNG image.'),
+              backgroundColor: Color(0xFFE11D48),
+            ),
+          );
+        }
+        return null;
+      }
+    }
 
     Uint8List? editedBytes;
 

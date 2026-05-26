@@ -1,17 +1,62 @@
-.dart_tool/
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate.cfg
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
 .idea/
+
+# Visual Studio Code related
 .vscode/
-.gradle/
+
+# Flutter/Dart related
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
 build/
+
+# Android related
+**/android/**/local.properties
+**/android/key.properties
+**/android/app/**/GeneratedPluginRegistrant.java
+.gradle/
 android/.gradle/
 android/app/build/
 android/app/src/main/gen/
 android/app/src/main/assets/
+*.keystore
+*.jks
+
+# iOS related
+**/ios/Flutter/.flutter-plugins
+**/ios/Flutter/.flutter-plugins-dependencies
+**/ios/Flutter/GeneratedPluginRegistrant.h
+**/ios/Flutter/GeneratedPluginRegistrant.m
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/flutter_has_run_before
 ios/.symlinks/
 ios/Pods/
+
+# Desktop / Web Ephemeral folders
 linux/flutter/ephemeral/
 macos/Flutter/ephemeral/
 windows/flutter/ephemeral/
 node_modules/
-"*.iml"
-"*.class"
+
+# Local Environment Variables & Custom Scratch Directories
+.env
+.env.*
+scratch/

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "488610187435",
+    "project_id": "relaya-f7ba4",
+    "storage_bucket": "relaya-f7ba4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:488610187435:android:11ded936dcc1580ac90fee",
+        "android_client_info": {
+          "package_name": "relaya.in"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWD5TXC2wetAqhULay7ziB8eJ0pufFWw4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

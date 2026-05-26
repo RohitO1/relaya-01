@@ -2,7 +2,6 @@
 // ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables, use_build_context_synchronously
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -14,10 +13,10 @@ import 'package:image_cropper/image_cropper.dart';
 import 'dart:convert';
 import 'package:meetra_app/bolroom/bolroom_dm_chat_screen.dart';
 import 'package:meetra_app/services/notification_service.dart';
+import 'dart:typed_data';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/services.dart';
 import 'package:meetra_app/services/voice_mask_service.dart';
 
 class BolroomProfileScreen extends StatefulWidget {
@@ -83,25 +82,34 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     }
   }
 
+  // Timestamp of last LOCAL user action - realtime updates within 1.5 s are ignored
+  // to prevent the DB-write roundtrip from flipping the toggle back.
+  DateTime _localActionTime = DateTime(2000);
+  bool get _isWithinLocalActionDebounce =>
+      DateTime.now().difference(_localActionTime).inMilliseconds < 5000;
+
   /// Re-read just the voice mask fields from DB so we stay synced
   /// with changes made from the live voice room.
   Future<void> _refreshVoiceMaskState() async {
     if (!_isMe) return;
+    if (_isWithinLocalActionDebounce) return; // user just acted - skip
     try {
       final bp = await _sb.from('bolroom_profiles')
-          .select('voice_mask_enabled, voice_mask_preset, voice_pitch')
+          .select('voice_mask_enabled, voice_mask_preset, voice_pitch, voice_formant')
           .eq('id', _myId)
           .maybeSingle();
-      if (bp != null && mounted) {
+      if (bp != null && mounted && !_isWithinLocalActionDebounce) {
         final dbEnabled = bp['voice_mask_enabled'] == true;
         final dbPreset = (bp['voice_mask_preset'] ?? 'ghost').toString();
         final dbPitch = (bp['voice_pitch'] ?? 0.5).toDouble();
+        final dbFormant = (bp['voice_formant'] ?? 0.0).toDouble();
         if (dbEnabled != _voiceMaskEnabled || dbPreset != _voiceMaskPreset || dbPitch != _voicePitch) {
           setState(() {
             _voiceMaskEnabled = dbEnabled;
             _voiceMaskPreset = dbPreset;
             _voicePitch = dbPitch;
-            _isEditingVoiceMask = false; // show active card, not editor
+            _voiceFormant = dbFormant;
+            _isEditingVoiceMask = false;
           });
         }
       }
@@ -121,16 +129,20 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
       ),
       callback: (payload) {
         if (!mounted) return;
+        // Ignore realtime echoes within 1.5 s of a local user action
+        if (_isWithinLocalActionDebounce) return;
         final row = payload.newRecord;
         final dbEnabled = row.containsKey('voice_mask_enabled') ? row['voice_mask_enabled'] == true : _voiceMaskEnabled;
         final dbPreset = row.containsKey('voice_mask_preset') && row['voice_mask_preset'] != null ? row['voice_mask_preset'].toString() : _voiceMaskPreset;
         final dbPitch = row.containsKey('voice_pitch') && row['voice_pitch'] != null ? (row['voice_pitch']).toDouble() : _voicePitch;
+        final dbFormant = row.containsKey('voice_formant') && row['voice_formant'] != null ? (row['voice_formant']).toDouble() : _voiceFormant;
         if (dbEnabled != _voiceMaskEnabled || dbPreset != _voiceMaskPreset || dbPitch != _voicePitch) {
           setState(() {
             _voiceMaskEnabled = dbEnabled;
             _voiceMaskPreset = dbPreset;
             _voicePitch = dbPitch;
-            _isEditingVoiceMask = false; // Reset to active card view
+            _voiceFormant = dbFormant;
+            _isEditingVoiceMask = false;
           });
         }
       },
@@ -145,9 +157,6 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     _audioRecorder.dispose();
     _audioPlayer.dispose();
     _testTimer?.cancel();
-    // Only stop masking for the loopback test preview — NEVER kill the live room masking.
-    // The loopback test uses a separate AudioRecord capture thread (enableLoopback: true).
-    // The live room WebRTC hook keeps running independently.
     if (_isRecordingTest) {
       VoiceMaskService.instance.stopMasking();
     }
@@ -219,7 +228,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     }
 
     if (_isRecordingTest) {
-      // Stop recording → show "Play Recording" button
+      // Stop recording -> show "Play Recording" button
       _testTimer?.cancel();
       _pcmSub?.cancel();
       await _audioRecorder.stop();
@@ -346,12 +355,6 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   Widget build(BuildContext context) {
     if (_loading) return Scaffold(backgroundColor: bgColor, body: Center(child: CircularProgressIndicator(color: purpleGlow, strokeWidth: 2)));
 
-    // Auto-refresh voice mask state from DB when tab is re-visited (debounced)
-    if (_isMe && DateTime.now().difference(_lastVoiceMaskRefresh).inSeconds > 2) {
-      _lastVoiceMaskRefresh = DateTime.now();
-      Future.microtask(() => _refreshVoiceMaskState());
-    }
-
     return Scaffold(
       backgroundColor: bgColor,
       body: SafeArea(
@@ -425,7 +428,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
           _menuTile(Icons.image_outlined, 'Change Profile Picture', const Color(0xFF8A2BE2), () { Navigator.pop(context); _showAvatarOptionsSheet(); }),
-          _menuTile(Icons.share_outlined, 'Share Profile', const Color(0xFF00E5FF), () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share link copied!'))); }),
+          _menuTile(Icons.share_outlined, 'Share Profile', const Color(0xFFFF6B00), () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share link copied!'))); }),
           _menuTile(Icons.palette_outlined, 'Change Aura', const Color(0xFFFFD700), () { Navigator.pop(context); _showAuraChangerSheet(); }),
           _menuTile(Icons.block_outlined, 'Blocked Users', const Color(0xFFFF4655), () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No blocked users.'))); }),
           _menuTile(Icons.logout, 'Sign Out', Colors.redAccent, () async {
@@ -462,7 +465,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildAvatarActionBtn(Icons.camera_alt, 'Camera', purpleGlow, () => _pickAndUploadAvatar(ImageSource.camera)),
-                _buildAvatarActionBtn(Icons.photo_library, 'Gallery', const Color(0xFF00E5FF), () => _pickAndUploadAvatar(ImageSource.gallery)),
+                _buildAvatarActionBtn(Icons.photo_library, 'Gallery', const Color(0xFFFF6B00), () => _pickAndUploadAvatar(ImageSource.gallery)),
                 if (_avatarUrl != null)
                   _buildAvatarActionBtn(Icons.delete_outline, 'Remove', Colors.redAccent, _removeAvatar),
               ],
@@ -691,7 +694,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
           ),
           _buildStatCard(
             _fmtNum(_roomsHosted), 'Rooms Hosted',
-            Icons.local_fire_department_outlined, const [Color(0xFF00E5FF), Color(0xFF1E90FF)],
+            Icons.local_fire_department_outlined, const [Color(0xFFFF6B00), Color(0xFF1E90FF)],
           ),
         ],
       ),
@@ -830,11 +833,11 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.chat_bubble_outline_rounded, color: const Color(0xFF00E5FF), size: 18),
+                    Icon(Icons.chat_bubble_outline_rounded, color: const Color(0xFFFF6B00), size: 18),
                     const SizedBox(width: 8),
                     const Text(
                       'Message',
-                      style: TextStyle(color: Color(0xFF00E5FF), fontSize: 15, fontWeight: FontWeight.w600),
+                      style: TextStyle(color: Color(0xFFFF6B00), fontSize: 15, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -1056,7 +1059,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _buildColorChanger(const Color(0xFF8A2BE2), '#8A2BE2', setSheetState),
-                    _buildColorChanger(const Color(0xFF00E5FF), '#00E5FF', setSheetState),
+                    _buildColorChanger(const Color(0xFFFF6B00), '#00E5FF', setSheetState),
                     _buildColorChanger(const Color(0xFFFF4655), '#FF4655', setSheetState),
                     _buildColorChanger(const Color(0xFFFFD700), '#FFD700', setSheetState),
                     _buildColorChanger(const Color(0xFF00FF00), '#00FF00', setSheetState),
@@ -1095,7 +1098,8 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   }
 
   bool _voiceMaskEnabled = false;
-  double _voicePitch = 0.5;
+  double _voicePitch = 0.5; // 0..1 mapping to -12..+12 semitones
+  double _voiceFormant = 0.0; // raw semitones -6..+6 (horizontal/brightness)
   String _voiceMaskPreset = 'ghost';
   bool _isEditingVoiceMask = false;
 
@@ -1124,17 +1128,18 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                 title: const Text("Enable Voice Masking", style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
                 subtitle: Text(
                   _voiceMaskEnabled ? "Your voice is disguised" : "Original Voice",
-                  style: TextStyle(color: _voiceMaskEnabled ? const Color(0xFF00E5FF) : textMuted, fontSize: 12)
+                  style: TextStyle(color: _voiceMaskEnabled ? const Color(0xFFFF6B00) : textMuted, fontSize: 12)
                 ),
                 value: _voiceMaskEnabled,
                 activeThumbColor: Colors.white,
-                activeTrackColor: const Color(0xFF00E5FF),
+                activeTrackColor: const Color(0xFFFF6B00),
                 inactiveThumbColor: Colors.grey,
                 inactiveTrackColor: const Color(0xFF2A2440),
                 onChanged: (v) {
+                  _localActionTime = DateTime.now(); // debounce guard
                   setState(() {
                     _voiceMaskEnabled = v;
-                    if (v) _isEditingVoiceMask = true;
+                    _isEditingVoiceMask = v; // show grid on ON, hide on OFF
                   });
                   _updateProfile({'voice_mask_enabled': v});
                 },
@@ -1159,13 +1164,13 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                       onTap: () {
                         setState(() {
                           _voiceMaskPreset = p.id;
+                          _isEditingVoiceMask = true;
                           _hasRecording = false;
                           _isPlayingTest = false;
                           _isRecordingTest = false;
                         });
                         _audioPlayer.stop();
                         _updateProfile({'voice_mask_preset': p.id});
-                        VoiceMaskService.instance.setPreset(p.id);
                       },
                       child: Column(
                         children: [
@@ -1209,15 +1214,21 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                     );
                   },
                 ),
+                // Custom voice pitch graph (only when 'custom' preset is selected)
+                if (_voiceMaskPreset == 'custom') ...[
+                  const SizedBox(height: 12),
+                  _buildProfileCustomVoicePad(setState),
+                ],
+                const SizedBox(height: 12),
                 // Test button
                 GestureDetector(
                   onTap: () => _toggleVoiceTest(setState),
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: (_isRecordingTest || _isPlayingTest || _hasRecording) ? const Color(0xFF00E5FF).withValues(alpha: 0.1) : cardColor,
+                      color: (_isRecordingTest || _isPlayingTest || _hasRecording) ? const Color(0xFFFF6B00).withValues(alpha: 0.1) : cardColor,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: (_isRecordingTest || _isPlayingTest || _hasRecording) ? const Color(0xFF00E5FF) : borderColor),
+                      border: Border.all(color: (_isRecordingTest || _isPlayingTest || _hasRecording) ? const Color(0xFFFF6B00) : borderColor),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1227,7 +1238,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                               : _isRecordingTest ? Icons.stop_circle_outlined
                               : _hasRecording ? Icons.play_circle_fill
                               : Icons.mic_none,
-                          color: const Color(0xFF00E5FF),
+                          color: const Color(0xFFFF6B00),
                           size: 18,
                         ),
                         const SizedBox(width: 8),
@@ -1262,12 +1273,12 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF00E5FF), Color(0xFF007BFF)],
+                        colors: [Color(0xFFFF6B00), Color(0xFF007BFF)],
                       ),
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
+                          color: const Color(0xFFFF6B00).withValues(alpha: 0.3),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         )
@@ -1286,7 +1297,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                   ),
                 ),
                 ] else ...[
-                  // Show active voice mask card
+                  // Show active voice mask card (collapsed view)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -1338,11 +1349,48 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                "Turn switch OFF to change voice",
-                                style: TextStyle(color: textMuted, fontSize: 11),
+                              const SizedBox(height: 6),
+                              Text(
+                                p.description,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 12,
+                                ),
                               ),
+                              const SizedBox(height: 12),
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _isEditingVoiceMask = true;
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                                  ),
+                                  child: const Text(
+                                    "Change",
+                                    style: TextStyle(
+                                      color: Color(0xFFFF6B00),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Show pitch slider in collapsed view for Custom preset
+                              if (p.id == 'custom') ...[ 
+                                const SizedBox(height: 16),
+                                if (_voiceMaskEnabled && _voiceMaskPreset == 'custom') ...[
+                                  const SizedBox(height: 20),
+                                  _buildProfileCustomVoicePad(setState),
+                                ],
+                              ],
+                              if (p.id != 'custom') const SizedBox(height: 0),
                             ],
                           );
                         }),
@@ -1351,7 +1399,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                   ),
                 ],
               ] else ...[
-                // Compelling promotional card when OFF
+                // Original Voice promotional card when OFF
                 const Divider(color: borderColor, height: 32),
                 Container(
                   width: double.infinity,
@@ -1366,10 +1414,10 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF00E5FF).withValues(alpha: 0.1),
+                          color: const Color(0xFFFF6B00).withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.record_voice_over, color: Color(0xFF00E5FF), size: 36),
+                        child: const Icon(Icons.record_voice_over, color: Color(0xFFFF6B00), size: 36),
                       ),
                       const SizedBox(height: 16),
                       const Text(
@@ -1392,6 +1440,72 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
       ],
     );
   }
+  /// Custom 2D voice pad for profile section: pitch (vertical) × formant (horizontal).
+  /// Matches the voiceroom custom pad for consistent UX.
+  /// Custom 2D voice pad - pitch (vertical, top=high) x brightness/formant (horizontal, right=bright).
+  Widget _buildProfileCustomVoicePad(StateSetter setSheetState) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Custom Voice Tuner', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text('Drag the dot to find your perfect voice texture', style: TextStyle(color: Colors.white70, fontSize: 11)),
+        const SizedBox(height: 10),
+        Container(
+          height: 180,
+          decoration: BoxDecoration(color: const Color(0xFF13101E), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF231D38))),
+          child: LayoutBuilder(builder: (ctx, constraints) {
+            final w = constraints.maxWidth;
+            final h = constraints.maxHeight;
+            double pitchNorm = ((_voicePitch - 0.5) * 24.0).clamp(-12.0, 12.0).toDouble();
+            double formantNorm = _voiceFormant.clamp(-6.0, 6.0).toDouble();
+            double dotX = (formantNorm + 6.0) / 12.0 * w;
+            double dotY = (1.0 - (pitchNorm + 12.0) / 24.0) * h;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanUpdate: (d) {
+                final lx = d.localPosition.dx.clamp(0.0, w);
+                final ly = d.localPosition.dy.clamp(0.0, h);
+                final newPitch = (1.0 - ly / h) * 24.0 - 12.0;
+                final newFormant = (lx / w) * 12.0 - 6.0;
+                setState(() {
+                  _voicePitch = (newPitch / 24.0) + 0.5;
+                  _voiceFormant = newFormant;
+                });
+                setSheetState(() {});
+                VoiceMaskService.instance.setCustomPitch(newPitch);
+                VoiceMaskService.instance.setCustomFormant(newFormant);
+              },
+              child: Stack(
+                children: [
+                  Positioned.fill(child: CustomPaint(painter: _VoicePadPainter(dotX: dotX, dotY: dotY))),
+                  Positioned(left: dotX - 14, top: dotY - 14, child: Container(width: 28, height: 28, decoration: BoxDecoration(shape: BoxShape.circle, gradient: const RadialGradient(colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]), boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.6), blurRadius: 12, spreadRadius: 2)]))),
+                ],
+              ),
+            );
+          }),
+        ),
+        const SizedBox(height: 12),
+        Center(child: Text('Pitch: ${((_voicePitch - 0.5) * 24).toStringAsFixed(1)} st · Brightness: ${_voiceFormant.toStringAsFixed(1)} st', style: TextStyle(color: Colors.white70, fontSize: 11))),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: () {
+            _localActionTime = DateTime.now();
+            _updateProfile({'voice_pitch': _voicePitch, 'voice_formant': _voiceFormant});
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Custom voice saved successfully!')));
+          },
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]), borderRadius: BorderRadius.circular(16)),
+            child: const Center(child: Text('Use this voice', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold))),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Returns a human-readable zone label for the current pad position.
 
   void _showVoiceMaskingSheet() {
     bool isRecording = false;
@@ -1409,7 +1523,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.masks, color: Color(0xFF00E5FF), size: 48),
+                const Icon(Icons.masks, color: Color(0xFFFF6B00), size: 48),
                 const SizedBox(height: 12),
                 const Text("Voice Masking", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
@@ -1418,11 +1532,14 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                 SwitchListTile(
                   title: const Text("Enable Masking", style: TextStyle(color: Colors.white, fontSize: 16)),
                   value: _voiceMaskEnabled,
-                  activeThumbColor: const Color(0xFF00E5FF),
+                  activeThumbColor: const Color(0xFFFF6B00),
                   onChanged: (v) {
                     setState(() => _voiceMaskEnabled = v);
-                    _updateProfile({'voice_mask_enabled': v});
                     setSheetState(() {});
+                    // Decouple DB write from UI state
+                    Future.delayed(const Duration(milliseconds: 300), () {
+                      if (mounted) _updateProfile({'voice_mask_enabled': v});
+                    });
                   },
                 ),
                 if (_voiceMaskEnabled) ...[
@@ -1520,7 +1637,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                       value: _voicePitch,
                       min: 0.0,
                       max: 1.0,
-                      activeColor: const Color(0xFF00E5FF),
+                      activeColor: const Color(0xFFFF6B00),
                       onChanged: (v) {
                         setState(() => _voicePitch = v);
                         setSheetState(() {});
@@ -1540,12 +1657,12 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                       width: double.infinity,
                       decoration: BoxDecoration(
                         color: (_isRecordingTest || _isPlayingTest || _hasRecording)
-                            ? const Color(0xFF00E5FF).withValues(alpha: 0.2)
+                            ? const Color(0xFFFF6B00).withValues(alpha: 0.2)
                             : const Color(0xFF1A132F),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: (_isRecordingTest || _isPlayingTest || _hasRecording)
-                              ? const Color(0xFF00E5FF) 
+                              ? const Color(0xFFFF6B00) 
                               : const Color(0xFF3B2768),
                         ),
                       ),
@@ -1557,7 +1674,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                                 : _isRecordingTest ? Icons.stop_circle_outlined
                                 : _hasRecording ? Icons.play_circle_fill
                                 : Icons.mic_none, 
-                            color: const Color(0xFF00E5FF),
+                            color: const Color(0xFFFF6B00),
                             size: 20,
                           ),
                           const SizedBox(width: 8),
@@ -1567,7 +1684,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                                 : _hasRecording ? 'Play Recording'
                                 : 'Test My Voice',
                             style: TextStyle(
-                              color: (_isRecordingTest || _isPlayingTest || _hasRecording) ? const Color(0xFF00E5FF) : Colors.white,
+                              color: (_isRecordingTest || _isPlayingTest || _hasRecording) ? const Color(0xFFFF6B00) : Colors.white,
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1596,12 +1713,12 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF00E5FF), Color(0xFF007BFF)],
+                          colors: [Color(0xFFFF6B00), Color(0xFF007BFF)],
                         ),
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
+                            color: const Color(0xFFFF6B00).withValues(alpha: 0.3),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           )
@@ -1737,7 +1854,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
           children: [
             _buildHexBadge('Founder', Icons.star_rounded, const [Color(0xFFFFDF00), Color(0xFFD4AF37)]),
             _buildHexBadge('Night Owl', Icons.nightlight_round, const [Color(0xFFB983FF), Color(0xFF7B2CBF)]),
-            _buildHexBadge('Elite Host', Icons.workspace_premium_rounded, const [Color(0xFF00E5FF), Color(0xFF1E90FF)]),
+            _buildHexBadge('Elite Host', Icons.workspace_premium_rounded, const [Color(0xFFFF6B00), Color(0xFF1E90FF)]),
             _buildHexBadge('Top Speaker', Icons.local_fire_department_rounded, const [Color(0xFFFF00FF), Color(0xFF8A2BE2)]),
             _buildMoreBadge(),
           ],
@@ -1876,7 +1993,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                   children: [
                     _buildBadgeDetailRow('Founder', 'Joined in the first year of BolRoom', Icons.star_rounded, const [Color(0xFFFFDF00), Color(0xFFD4AF37)], true),
                     _buildBadgeDetailRow('Night Owl', 'Active in 50+ rooms between 12 AM - 4 AM', Icons.nightlight_round, const [Color(0xFFB983FF), Color(0xFF7B2CBF)], true),
-                    _buildBadgeDetailRow('Elite Host', 'Hosted rooms with over 1k combined listeners', Icons.workspace_premium_rounded, const [Color(0xFF00E5FF), Color(0xFF1E90FF)], true),
+                    _buildBadgeDetailRow('Elite Host', 'Hosted rooms with over 1k combined listeners', Icons.workspace_premium_rounded, const [Color(0xFFFF6B00), Color(0xFF1E90FF)], true),
                     _buildBadgeDetailRow('Top Speaker', 'Spoke for 100+ hours in total', Icons.local_fire_department_rounded, const [Color(0xFFFF00FF), Color(0xFF8A2BE2)], true),
                     _buildBadgeDetailRow('Trend Setter', 'Created a room that trended globally', Icons.trending_up_rounded, const [Color(0xFF00FF87), Color(0xFF60EFFF)], true),
                     _buildBadgeDetailRow('Shadow Guide', 'Mentored 10+ new users', Icons.groups_rounded, const [Color(0xFFFF4655), Color(0xFF8A2BE2)], true),
@@ -2518,4 +2635,94 @@ class _FollowListSheetState extends State<_FollowListSheet> {
   }
 }
 
+class _VoicePadPainter extends CustomPainter {
+  final double dotX;
+  final double dotY;
+  const _VoicePadPainter({required this.dotX, required this.dotY});
 
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    // === Background gradient (dark left, bright right, low bottom, high top) ===
+    // Row 1: top-left=dark-high, top-right=bright-high
+    // Row 2: bottom-left=dark-low, bottom-right=bright-low
+    final bgPaint = Paint();
+    final bgRect = Rect.fromLTWH(0, 0, w, h);
+
+    // Vertical gradient: deep purple bottom, indigo top
+    bgPaint.shader = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [Color(0xFF1A0A2E), Color(0xFF0C0914)],
+    ).createShader(bgRect);
+    canvas.drawRect(bgRect, bgPaint);
+
+    // Horizontal tint overlay: cyan tint on right (brightness)
+    bgPaint.shader = LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [
+        Colors.transparent,
+        const Color(0xFFFF6B00).withAlpha(30),
+      ],
+    ).createShader(bgRect);
+    canvas.drawRect(bgRect, bgPaint);
+
+    // === Zone region fills ===
+    final zonePaint = Paint()..style = PaintingStyle.fill;
+    // High zone (top third) - slight purple tint
+    zonePaint.color = const Color(0xFF8A2BE2).withAlpha(20);
+    canvas.drawRect(Rect.fromLTWH(0, 0, w, h / 3), zonePaint);
+    // Low zone (bottom third) - slight orange tint
+    zonePaint.color = const Color(0xFFFF6600).withAlpha(15);
+    canvas.drawRect(Rect.fromLTWH(0, h * 2 / 3, w, h / 3), zonePaint);
+
+    // === Grid lines ===
+    final gridPaint = Paint()
+      ..color = const Color(0xFF231D38)
+      ..strokeWidth = 0.8;
+    for (int i = 1; i < 4; i++) {
+      final y = h * i / 4;
+      canvas.drawLine(Offset(0, y), Offset(w, y), gridPaint);
+    }
+    for (int i = 1; i < 4; i++) {
+      final x = w * i / 4;
+      canvas.drawLine(Offset(x, 0), Offset(x, h), gridPaint);
+    }
+
+    // === Center crosshair (neutral point) ===
+    final crossPaint = Paint()
+      ..color = const Color(0xFFFF6B00).withAlpha(50)
+      ..strokeWidth = 1.0;
+    canvas.drawLine(Offset(w / 2, 0), Offset(w / 2, h), crossPaint);
+    canvas.drawLine(Offset(0, h / 2), Offset(w, h / 2), crossPaint);
+
+    // === Pitch zone labels on Y axis ===
+    _drawZoneLabel(canvas, 'High', Offset(w * 0.5, h * 0.12), true);
+    _drawZoneLabel(canvas, 'Mid',  Offset(w * 0.5, h * 0.5),  true);
+    _drawZoneLabel(canvas, 'Low',  Offset(w * 0.5, h * 0.88), true);
+
+    // === Ripple rings around dot position ===
+    final ripplePaint = Paint()
+      ..color = const Color(0xFFFF6B00).withAlpha(25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawCircle(Offset(dotX, dotY), 24, ripplePaint);
+    ripplePaint.color = const Color(0xFFFF6B00).withAlpha(12);
+    canvas.drawCircle(Offset(dotX, dotY), 38, ripplePaint);
+  }
+
+  void _drawZoneLabel(Canvas canvas, String text, Offset center, bool horizontal) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: const TextStyle(color: Color(0x30FFFFFF), fontSize: 9, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+      textDirection: TextDirection.ltr,
+    );
+    tp.layout();
+    tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
+  }
+
+  @override
+  bool shouldRepaint(_VoicePadPainter old) => old.dotX != dotX || old.dotY != dotY;
+}

@@ -31,8 +31,10 @@ class VoiceMaskDsp {
 
     // ── Noise gate ────────────────────────────────────────────────────────
     // Threshold below which an entire 10ms frame is considered silence.
-    // 0.004f ≈ -68dBFS — below typical breath noise but above absolute silence.
-    private val GATE_THRESHOLD = 0.004f
+    // 0.001f ≈ -60dBFS (lowered to prevent attenuation of quiet speech)
+    private val GATE_THRESHOLD = 0.001f
+    private var gateGain = 0f
+    private var smoothedPitchFactor = 1.0
 
     // ── Ring buffer (pitch shifter) ───────────────────────────────────────
     // Size must be large enough for max delay at lowest sample rate.
@@ -43,10 +45,11 @@ class VoiceMaskDsp {
     // Write pointer — monotonically increasing; modulo rSize when accessing ring[].
     @Volatile private var writePos = 0L
 
-    // Dual read-pointer phases for Hann cross-fade OLA (Overlap-Add) pitch shift.
-    // Both are in the range [0.0, 1.0) representing where in the window cycle we are.
+    // 4-Phase Overlap-Add (OLA) state for smooth pitch shifting
     private var phase1 = 0.0
-    private var phase2 = 0.5   // Offset by half-cycle so the two windows complement.
+    private var phase2 = 0.25
+    private var phase3 = 0.5
+    private var phase4 = 0.75
 
     // ── Hann window cache ─────────────────────────────────────────────────
     // Precomputed for the current windowSize so we don't call cos() every sample.
@@ -78,6 +81,11 @@ class VoiceMaskDsp {
     private var reverbReadPos = 0
     private var reverbWritePos = 0
 
+    // ── Working Buffers (Zero Allocation) ─────────────────────────────────
+    private val workShorts = ShortArray(96000)
+    private val workFloats = FloatArray(96000)
+    private val pitchOut = FloatArray(96000)
+
     // ── Stats ─────────────────────────────────────────────────────────────
     @Volatile var processCallCount = 0L
         private set
@@ -86,8 +94,15 @@ class VoiceMaskDsp {
     //  Public API
     // ─────────────────────────────────────────────────────────────────────
 
-    /** Called from VoiceMaskPlugin.onInit() / onReset() — MethodChannel thread safe. */
+    /** Called from VoiceMaskPlugin.onInit() / onReset() — MethodChannel thread safe.
+     *
+     *  IMPORTANT: This may be called on every audio frame from the DSP callback.
+     *  We MUST guard with a sample-rate check to avoid flushing state on every frame.
+     *  Flushing state destroys the ring buffer, phase pointers, and filter state,
+     *  which breaks ALL pitch shifting and effects.
+     */
     fun configure(sr: Int) {
+        if (sr == sampleRate && ring.isNotEmpty()) return  // Already configured — skip
         sampleRate = sr
         rebuildBuffers(sr)
     }
@@ -144,33 +159,31 @@ class VoiceMaskDsp {
         val savedPosition = buffer.position()
         val savedLimit = buffer.limit()
 
-        // ── 1. Read entire buffer into a Kotlin ShortArray ─────────────
+        // ── 1. Read entire buffer into reused ShortArray ─────────────
         buffer.rewind()
         buffer.order(ByteOrder.LITTLE_ENDIAN)
-        val shorts = ShortArray(totalShorts)
-        buffer.asShortBuffer().get(shorts)
+        buffer.asShortBuffer().get(workShorts, 0, totalShorts)
 
-        // ── 2. Extract channels and run DSP ────────────────────────────
+        // ── 2. Extract channels and run DSP in-place ───────────────────
         for (c in 0 until numChannels) {
-            val channelData = FloatArray(numFrames)
             // Read interleaved data for this channel
             for (i in 0 until numFrames) {
-                channelData[i] = shorts[i * numChannels + c] / 32768f
+                workFloats[i] = workShorts[i * numChannels + c] / 32768f
             }
 
             // Run DSP chain
-            val processed = runDspChain(channelData, preset)
+            runDspChain(workFloats, numFrames, preset)
 
             // Write back interleaved data
             for (i in 0 until numFrames) {
-                shorts[i * numChannels + c] = (processed[i].coerceIn(-1f, 1f) * 32767f).toInt().toShort()
+                workShorts[i * numChannels + c] = (workFloats[i].coerceIn(-1f, 1f) * 32767f).toInt().toShort()
             }
         }
 
         // ── 5. Write back into the SAME DirectByteBuffer ───────────────
         buffer.rewind()
         buffer.order(ByteOrder.LITTLE_ENDIAN)
-        buffer.asShortBuffer().put(shorts)
+        buffer.asShortBuffer().put(workShorts, 0, totalShorts)
 
         // ── 6. Restore Buffer State ────────────────────────────────────
         // CRITICAL: WebRTC C++ might use position/limit to read the data.
@@ -182,67 +195,76 @@ class VoiceMaskDsp {
     //  DSP Chain
     // ─────────────────────────────────────────────────────────────────────
 
-    private fun runDspChain(input: FloatArray, preset: VoiceMaskPreset): FloatArray {
+    private fun runDspChain(buffer: FloatArray, size: Int, preset: VoiceMaskPreset) {
 
-        // STAGE 1: Noise Gate
-        // Compute peak amplitude of the frame. If below threshold, it's silence/hiss.
+        // STAGE 1: Noise Gate (with Hysteresis Smoothing)
         var peak = 0f
-        for (s in input) { val a = abs(s); if (a > peak) peak = a }
-        if (peak < GATE_THRESHOLD) {
-            // Frame is below the noise floor. Return zeroed output.
-            // This eliminates hiss, breath, and background noise between words.
-            return FloatArray(input.size)
-        }
-
-        // STAGE 2: Pitch Shift (Granular OLA)
+        for (i in 0 until size) { val a = abs(buffer[i]); if (a > peak) peak = a }
+        
+        val targetGate = if (peak > GATE_THRESHOLD) 1f else 0f
         val pitchFactor = if (preset.id == "custom") customPitchFactor else preset.pitchFactor
-        var out = if (abs(pitchFactor - 1.0) > 0.001) {
-            pitchShiftOla(input, pitchFactor)
-        } else {
-            input.copyOf() // No pitch shift needed — avoid unnecessary work.
+        
+        smoothedPitchFactor += (pitchFactor - smoothedPitchFactor) * 0.1
+        
+        if (abs(smoothedPitchFactor - 1.0) > 0.001) {
+            pitchShiftOla(buffer, size, smoothedPitchFactor)
+        }
+        
+        // Apply smoothed noise gate gain across the frame.
+        val gateCoef = if (targetGate > gateGain) 0.1f else 0.001f
+        for (i in 0 until size) {
+            gateGain += (targetGate - gateGain) * gateCoef
+            buffer[i] *= gateGain
         }
 
-        // STAGE 3: Band/Tone Shaping
-        // Band-pass (Shinchan: nasal / squeaky)
+        // STAGE 3: Distortion (Add presence/grit)
+        if (preset.distortion > 0f) {
+            saturate(buffer, size, preset.distortion)
+        }
+
+        // STAGE 4: Tone Shaping (Filters)
+        if (preset.bassBoost > 0f) {
+            bassBoost(buffer, size, preset.bassBoost)
+        }
+        
         if (preset.bandLowHz > 0f && preset.bandHighHz > 0f) {
-            out = bandPass(out, preset.bandLowHz, preset.bandHighHz)
+            bandPass(buffer, size, preset.bandLowHz, preset.bandHighHz)
         } else {
-            // Low-pass only (warmth / muffling)
-            if (preset.lowPassHz > 0f) out = lowPass(out, preset.lowPassHz)
-            // High-pass only
-            if (preset.highPassHz > 0f) out = highPass(out, preset.highPassHz)
+            if (preset.lowPassHz > 0f) lowPass(buffer, size, preset.lowPassHz)
+            if (preset.highPassHz > 0f) highPass(buffer, size, preset.highPassHz)
         }
 
-        // STAGE 4: Robot (Ring Modulation)
+        // STAGE 5: Vibrato/Warble
+        if (preset.vibratoRate > 0f) {
+            vibrato(buffer, size, preset.vibratoRate, preset.vibratoDepth)
+        }
+
+        // STAGE 6: Robot (Ring Modulation)
         if (preset.robotHz > 0f) {
-            out = ringModulate(out, preset.robotHz)
+            ringModulate(buffer, size, preset.robotHz)
         }
 
-        // STAGE 5: Flanger
+        // STAGE 7: Modulation Effects
         if (preset.flangerRate > 0f) {
-            out = flanger(out, preset.flangerRate, preset.flangerDepth)
+            flanger(buffer, size, preset.flangerRate, preset.flangerDepth)
         }
-
-        // STAGE 6: Chorus (subtle for old man / ghost warmth)
         if (preset.chorusDepth > 0f) {
-            out = chorus(out, preset.chorusDepth)
+            chorus(buffer, size, preset.chorusDepth)
         }
 
-        // STAGE 7: Reverb
+        // STAGE 8: Reverb
         if (preset.reverbMix > 0f) {
-            out = reverb(out, preset.reverbMix)
+            reverb(buffer, size, preset.reverbMix)
         }
 
-        // STAGE 8: Peak Limiter
-        // Prevents mathematical overflow from stacked effects clipping the DAC.
-        var maxPeak = 0f
-        for (s in out) { val a = abs(s); if (a > maxPeak) maxPeak = a }
-        if (maxPeak > 0.95f) {
-            val gain = 0.95f / maxPeak
-            for (i in out.indices) out[i] *= gain
+        // STAGE 9: Final Gain & Soft Limiter
+        for (i in 0 until size) {
+            var s = buffer[i] * preset.masterGain
+            // Wider Soft-knee clipping above 0.7 to prevent harsh distortion
+            if (s > 0.7f) s = 0.7f + (s - 0.7f) * 0.5f
+            else if (s < -0.7f) s = -0.7f + (s + 0.7f) * 0.5f
+            buffer[i] = s.coerceIn(-0.98f, 0.98f)
         }
-
-        return out
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -263,48 +285,49 @@ class VoiceMaskDsp {
      *
      * THREAD SAFETY: Entirely single-threaded (called only from processBuffer on WebRTC thread).
      */
-    private fun pitchShiftOla(input: FloatArray, pitchFactor: Double): FloatArray {
+    private fun pitchShiftOla(buffer: FloatArray, size: Int, pitchFactor: Double) {
         ensureHannWindow()
-
-        val output = FloatArray(input.size)
         val halfWindow = windowSize / 2
 
-        for (i in input.indices) {
-            // Write current sample into ring buffer.
+        for (i in 0 until size) {
             val wp = (writePos % rSize).toInt()
-            ring[wp] = input[i]
+            ring[wp] = buffer[i]
 
-            // --- Read Head 1 ---
-            // Phase increments by (1 - pitchFactor) / windowSize per sample.
-            // This slowly walks the read head backward or forward relative to the write head.
-            phase1 += (1.0 - pitchFactor) / windowSize
-            // Wrap phase into [0.0, 1.0)
-            phase1 -= floor(phase1)
+            // Increment common phase
+            val pInc = (1.0 - pitchFactor) / windowSize
+            phase1 = (phase1 + pInc) % 1.0; if (phase1 < 0) phase1 += 1.0
+            
+            // Calculate other phases offset by 1/4 cycle
+            phase2 = (phase1 + 0.25) % 1.0
+            phase3 = (phase1 + 0.50) % 1.0
+            phase4 = (phase1 + 0.75) % 1.0
 
-            // --- Read Head 2 (offset by half cycle) ---
-            phase2 = phase1 + 0.5
-            if (phase2 >= 1.0) phase2 -= 1.0
+            // Convert to delays
+            val d1 = (phase1 * windowSize) + halfWindow + 5.0
+            val d2 = (phase2 * windowSize) + halfWindow + 5.0
+            val d3 = (phase3 * windowSize) + halfWindow + 5.0
+            val d4 = (phase4 * windowSize) + halfWindow + 5.0
 
-            // Convert phases to sample delays (distance behind write pointer).
-            // Minimum delay of 5 samples prevents reading ahead of the write pointer.
-            val delay1 = (phase1 * windowSize) + halfWindow + 5.0
-            val delay2 = (phase2 * windowSize) + halfWindow + 5.0
+            // Read 4 grains
+            val s1 = readInterpolated(writePos - d1)
+            val s2 = readInterpolated(writePos - d2)
+            val s3 = readInterpolated(writePos - d3)
+            val s4 = readInterpolated(writePos - d4)
 
-            // Read interpolated samples from ring buffer.
-            val s1 = readInterpolated(writePos - delay1)
-            val s2 = readInterpolated(writePos - delay2)
+            // Window indices
+            val wi1 = (phase1 * windowSize).toInt().coerceIn(0, windowSize - 1)
+            val wi2 = (phase2 * windowSize).toInt().coerceIn(0, windowSize - 1)
+            val wi3 = (phase3 * windowSize).toInt().coerceIn(0, windowSize - 1)
+            val wi4 = (phase4 * windowSize).toInt().coerceIn(0, windowSize - 1)
 
-            // Look up precomputed Hann window values.
-            // window index is the phase scaled to [0, windowSize).
-            val w1 = hannWindow[(phase1 * windowSize).toInt().coerceIn(0, windowSize - 1)]
-            val w2 = hannWindow[(phase2 * windowSize).toInt().coerceIn(0, windowSize - 1)]
-
-            // Cross-faded output.
-            output[i] = s1 * w1 + s2 * w2
+            // Mix (normalized by 2.0 because 4 Hann windows sum to 2.0)
+            pitchOut[i] = (s1 * hannWindow[wi1] + s2 * hannWindow[wi2] + 
+                           s3 * hannWindow[wi3] + s4 * hannWindow[wi4]) * 0.5f
 
             writePos++
         }
-        return output
+        
+        System.arraycopy(pitchOut, 0, buffer, 0, size)
     }
 
     /**
@@ -328,7 +351,8 @@ class VoiceMaskDsp {
      * Only rebuilds if the window size has changed (e.g. after configure()).
      */
     private fun ensureHannWindow() {
-        val targetSize = (sampleRate * 0.035).toInt().coerceAtLeast(64)
+        // Increased window size (45ms) for smoother low-end fidelity (Dark Lord/Giant).
+        val targetSize = (sampleRate * 0.045).toInt().coerceAtLeast(64)
         if (hannWindow.size == targetSize) return  // Already correct, skip.
         windowSize = targetSize
         hannWindow = FloatArray(windowSize) { i ->
@@ -350,49 +374,43 @@ class VoiceMaskDsp {
      *
      * Output[n] = alpha * Output[n-1] + (1 - alpha) * Input[n]
      */
-    private fun lowPass(input: FloatArray, cutoffHz: Float): FloatArray {
+    private fun lowPass(buffer: FloatArray, size: Int, cutoffHz: Float) {
         val alpha = cutoffHz / (cutoffHz + sampleRate / (2f * PI.toFloat()))
-        val out = FloatArray(input.size)
-        for (i in input.indices) {
-            lpfState = lpfState + alpha * (input[i] - lpfState)
-            out[i] = lpfState
+        for (i in 0 until size) {
+            lpfState = lpfState + alpha * (buffer[i] - lpfState)
+            buffer[i] = lpfState
         }
-        return out
     }
 
     /**
      * Single-pole IIR High-Pass Filter.
      * HP is derived from LP: HP[n] = Input[n] - LP[n]
      */
-    private fun highPass(input: FloatArray, cutoffHz: Float): FloatArray {
+    private fun highPass(buffer: FloatArray, size: Int, cutoffHz: Float) {
         val alpha = cutoffHz / (cutoffHz + sampleRate / (2f * PI.toFloat()))
-        val out = FloatArray(input.size)
-        for (i in input.indices) {
-            hpfState = hpfState + alpha * (input[i] - hpfState)
-            out[i] = input[i] - hpfState   // HP = Input - LP
+        for (i in 0 until size) {
+            hpfState = hpfState + alpha * (buffer[i] - hpfState)
+            buffer[i] = buffer[i] - hpfState   // HP = Input - LP
         }
-        return out
     }
 
     /**
      * Band-Pass filter: apply LP followed by HP.
      * Frequencies between [lowHz, highHz] pass through; all others are attenuated.
      */
-    private fun bandPass(input: FloatArray, lowHz: Float, highHz: Float): FloatArray {
+    private fun bandPass(buffer: FloatArray, size: Int, lowHz: Float, highHz: Float) {
         // Low-pass to remove everything above highHz.
         val lpAlpha = highHz / (highHz + sampleRate / (2f * PI.toFloat()))
         // High-pass to remove everything below lowHz.
         val hpAlpha = lowHz / (lowHz + sampleRate / (2f * PI.toFloat()))
 
-        val out = FloatArray(input.size)
-        for (i in input.indices) {
+        for (i in 0 until size) {
             // LP stage
-            bpfLowState = bpfLowState + lpAlpha * (input[i] - bpfLowState)
+            bpfLowState = bpfLowState + lpAlpha * (buffer[i] - bpfLowState)
             // HP stage applied to LP output
             bpfHighState = bpfHighState + hpAlpha * (bpfLowState - bpfHighState)
-            out[i] = bpfLowState - bpfHighState
+            buffer[i] = bpfLowState - bpfHighState
         }
-        return out
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -400,95 +418,120 @@ class VoiceMaskDsp {
     // ─────────────────────────────────────────────────────────────────────
 
     /**
+     * Saturation / Distortion: waveshaper to add harmonics.
+     * x' = tanh(x * (1 + amount * 3))
+     */
+    private fun saturate(buffer: FloatArray, size: Int, amount: Float) {
+        val drive = 1f + amount * 3f
+        for (i in 0 until size) {
+            val x = buffer[i] * drive
+            // tanh approximation: x * (27 + x^2) / (27 + 9 * x^2)
+            buffer[i] = (x * (27f + x * x) / (27f + 9f * x * x)).coerceIn(-1f, 1f)
+        }
+    }
+
+    /**
+     * Simple low-shelf bass boost.
+     */
+    private fun bassBoost(buffer: FloatArray, size: Int, amount: Float) {
+        // Apply a gentle low-pass mixed back with original to boost bass.
+        System.arraycopy(buffer, 0, pitchOut, 0, size) // Reuse pitchOut as temp buffer
+        lowPass(pitchOut, size, 300f)
+        for (i in 0 until size) {
+            buffer[i] = buffer[i] + pitchOut[i] * amount
+        }
+    }
+
+    /**
+     * Vibrato: LFO-modulated pitch shifting or delay.
+     * Here we just modulate the smoothedPitchFactor's TARGET.
+     */
+    private var vibratoPhase = 0.0
+    private fun vibrato(buffer: FloatArray, size: Int, rate: Float, depth: Float) {
+        val angularFreq = 2.0 * PI * rate / sampleRate
+        val dFactor = Math.pow(2.0, depth.toDouble() / 12.0) - 1.0
+        
+        for (i in 0 until size) {
+            val lfo = sin(vibratoPhase)
+            val mod = 1.0 + lfo * dFactor
+            // Stub for now. Delay-based vibrato requires modulating read delays.
+            // buffer[i] remains unmodified.
+            vibratoPhase += angularFreq
+            if (vibratoPhase >= 2.0 * PI) vibratoPhase -= 2.0 * PI
+        }
+    }
+
+    /**
      * Ring Modulation: multiplies input by a carrier sine wave at [carrierHz].
      * Creates the classic metallic "robot" buzz by folding sidebands into the spectrum.
      */
-    private fun ringModulate(input: FloatArray, carrierHz: Float): FloatArray {
-        val out = FloatArray(input.size)
+    private fun ringModulate(buffer: FloatArray, size: Int, carrierHz: Float) {
         val angularFreq = 2.0 * PI * carrierHz / sampleRate
-        for (i in input.indices) {
-            out[i] = (input[i] * sin(robotPhase)).toFloat()
+        for (i in 0 until size) {
+            buffer[i] = (buffer[i] * sin(robotPhase)).toFloat()
             robotPhase += angularFreq
             // Keep robotPhase in [0, 2π) to prevent accumulation of floating point error.
             if (robotPhase >= 2.0 * PI) robotPhase -= 2.0 * PI
         }
-        return out
     }
 
     /**
      * Flanger effect: mixes dry signal with a delayed copy.
      * The delay time is modulated by a slow LFO to create the "sweeping jet" sound.
-     *
-     * @param rate  LFO rate in Hz (how fast the delay sweeps).
-     * @param depth Max delay in seconds.
      */
-    private fun flanger(input: FloatArray, rate: Float, depth: Float): FloatArray {
+    private fun flanger(buffer: FloatArray, size: Int, rate: Float, depth: Float) {
         val maxDelaySamples = (depth * sampleRate).toInt().coerceAtLeast(1)
         val lfoAngFreq = 2.0 * PI * rate / sampleRate
-        val out = FloatArray(input.size)
 
-        for (i in input.indices) {
-            // Write current sample into flanger buffer.
+        for (i in 0 until size) {
             val wp = flangerWritePos % flangerBuf.size
-            flangerBuf[wp] = input[i]
+            flangerBuf[wp] = buffer[i]
 
-            // Compute current delay in samples from LFO.
             val lfoValue = (1.0 + sin(flangerLfoPhase)) / 2.0  // LFO range [0, 1]
             val delaySamples = (lfoValue * maxDelaySamples).toInt().coerceAtLeast(1)
 
-            // Read delayed sample.
             var rp = flangerWritePos - delaySamples
             if (rp < 0) rp += flangerBuf.size
             val delayedSample = flangerBuf[rp % flangerBuf.size]
 
-            out[i] = input[i] * 0.7f + delayedSample * 0.3f
+            buffer[i] = buffer[i] * 0.7f + delayedSample * 0.3f
 
             flangerWritePos++
             flangerLfoPhase += lfoAngFreq
             if (flangerLfoPhase >= 2.0 * PI) flangerLfoPhase -= 2.0 * PI
         }
-        return out
     }
 
     /**
      * Subtle Chorus effect: mixes input with a fixed-delay copy.
-     * Adds a "quivering" quality useful for old-man and ghost presets.
-     *
-     * @param depth Delay depth in seconds (e.g., 0.003 = 3ms).
      */
-    private fun chorus(input: FloatArray, depth: Float): FloatArray {
+    private fun chorus(buffer: FloatArray, size: Int, depth: Float) {
         val delaySamples = (depth * sampleRate).toInt().coerceAtLeast(1)
-        val out = FloatArray(input.size)
 
-        for (i in input.indices) {
+        for (i in 0 until size) {
             val wp = chorusWritePos % chorusBuf.size
-            chorusBuf[wp] = input[i]
+            chorusBuf[wp] = buffer[i]
 
             var rp = chorusWritePos - delaySamples
             if (rp < 0) rp += chorusBuf.size
             val delayed = chorusBuf[rp % chorusBuf.size]
 
-            out[i] = input[i] * 0.75f + delayed * 0.25f
+            buffer[i] = buffer[i] * 0.75f + delayed * 0.25f
             chorusWritePos++
         }
-        return out
     }
 
     /**
-     * Simple comb-filter reverb for ambient "space" effects (ghost, drunk, pretty woman).
-     *
-     * @param mix Wet/dry ratio (0.0 = dry, 1.0 = fully wet).
+     * Simple comb-filter reverb for ambient "space" effects.
      */
-    private fun reverb(input: FloatArray, mix: Float): FloatArray {
-        val out = FloatArray(input.size)
-        for (i in input.indices) {
+    private fun reverb(buffer: FloatArray, size: Int, mix: Float) {
+        for (i in 0 until size) {
             val delayed = reverbBuf[reverbReadPos % reverbBuf.size]
-            reverbBuf[reverbWritePos % reverbBuf.size] = input[i] + delayed * 0.3f
-            out[i] = input[i] * (1f - mix) + delayed * mix
+            reverbBuf[reverbWritePos % reverbBuf.size] = buffer[i] + delayed * 0.3f
+            buffer[i] = buffer[i] * (1f - mix) + delayed * mix
             reverbReadPos++
             reverbWritePos++
         }
-        return out
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -517,10 +560,10 @@ class VoiceMaskDsp {
     private fun flushState() {
         ring.fill(0f)
         writePos = 0L
-        phase1 = 0.0; phase2 = 0.5
-        lpfState = 0f; hpfState = 0f
-        bpfLowState = 0f; bpfHighState = 0f
         robotPhase = 0.0
+        gateGain = 0f
+        smoothedPitchFactor = 1.0
+        phase1 = 0.0; phase2 = 0.25; phase3 = 0.5; phase4 = 0.75
         flangerBuf.fill(0f); flangerWritePos = 0; flangerLfoPhase = 0.0
         chorusBuf.fill(0f); chorusWritePos = 0
         reverbBuf.fill(0f); reverbReadPos = 0; reverbWritePos = 0

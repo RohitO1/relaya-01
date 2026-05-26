@@ -32,7 +32,7 @@ class _BolroomCommunitiesScreenState extends State<BolroomCommunitiesScreen> {
   static const Color textMuted = Color(0xFF8E8B99);
 
   static LinearGradient neonGradient = const LinearGradient(
-    colors: [Color(0xFFD433FF), Color(0xFF7B2CBF), Color(0xFF00E5FF)],
+    colors: [Color(0xFFD433FF), Color(0xFF7B2CBF), Color(0xFFFF6B00)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -46,13 +46,17 @@ class _BolroomCommunitiesScreenState extends State<BolroomCommunitiesScreen> {
   Future<void> _loadData() async {
     try {
       final comms = await _sb.from('bolroom_communities').select('*').order('member_count', ascending: false).limit(100);
-      final joined = await _sb.from('bolroom_community_members').select('community_id').eq('user_id', _myId);
+      List<dynamic> joined = [];
+      if (_myId.isNotEmpty && _myId != 'null' && _myId.contains('-')) {
+        final res = await _sb.from('bolroom_community_members').select('community_id').eq('user_id', _myId);
+        joined = res as List<dynamic>;
+      }
       if (mounted) {
         setState(() {
-        _communities = List<Map<String, dynamic>>.from(comms);
-        _joinedIds = (joined as List).map((e) => e['community_id'].toString()).toSet();
-        _loading = false;
-      });
+          _communities = List<Map<String, dynamic>>.from(comms);
+          _joinedIds = joined.map((e) => e['community_id'].toString()).toSet();
+          _loading = false;
+        });
       }
     } catch (e) {
       debugPrint('Load communities: $e');

@@ -4,18 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'profile_screen.dart';
-import 'dashboard_detail_screens.dart';
+import 'services/notification_service.dart';
+import 'rush_in_consumer_detail_view.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (matches profile_screen.dart palette)
 // ─────────────────────────────────────────────────────────────────────────────
 const _bg     = Color(0xFF0A0A0F);
 const _card   = Color(0xFF141C2E);
-const _cyan   = Color(0xFF00E5FF);
+const _cyan   = Color(0xFFFF6B00);
 const _green  = Color(0xFF22C55E);
 const _amber  = Color(0xFFF59E0B);
 const _red    = Color(0xFFEF4444);
-const _violet = Color(0xFFA855F7);
+const _violet = Color(0xFFFF7E40);
 
 SupabaseClient get _sb => Supabase.instance.client;
 String get _uid => _sb.auth.currentUser!.id;
@@ -108,13 +109,14 @@ class _HCSState extends State<_HostedCategoryScreen> {
   Future<void> _fetchCreations() async {
     try {
       final all = await _sb.from('activities')
-          .select('id, title, description, location_name, activity_time, is_rush_in, category, created_at')
+          .select('id, title, description, location_name, activity_time, category, created_at')
           .eq('user_id', _uid)
           .order('created_at', ascending: false);
       final filtered = (all as List).where((a) {
-        if (widget.isRushIn) return a['is_rush_in'] == true;
-        if (widget.isEvent) return a['is_rush_in'] != true && a['category'] == 'event';
-        return a['is_rush_in'] != true && a['category'] != 'event';
+        final isRushIn = a['is_rush_in'] == true || (a['description']?.toString().contains('[is_rush_in:true]') ?? false);
+        if (widget.isRushIn) return isRushIn;
+        if (widget.isEvent) return !isRushIn && a['category'] == 'event';
+        return !isRushIn && a['category'] != 'event';
       }).map<Map<String, dynamic>>((a) => Map<String, dynamic>.from(a)).toList();
       if (mounted) setState(() { _myCreations = filtered; _loading = false; });
     } catch (e) {
@@ -499,6 +501,32 @@ class _PPCState extends State<_ParticipantProfileCard> {
     setState(() => _busy = true);
     try {
       await _sb.from('requests').update({'status': newStatus}).eq('id', widget.req['id']);
+      
+      if (newStatus == 'approved') {
+        final senderId = widget.req['sender_id'] as String?;
+        final actTitle = _activity?['title'] as String? ?? 'Activity';
+        if (senderId != null) {
+          NotificationService.sendNotification(
+            userId: senderId,
+            type: NotificationType.approval,
+            title: 'Request Approved! 🎉',
+            body: 'Your request to join $actTitle has been approved!',
+            payload: {'request_id': widget.req['id'], 'target_id': widget.req['target_id']},
+          );
+        }
+      } else if (newStatus == 'rejected') {
+        final senderId = widget.req['sender_id'] as String?;
+        final actTitle = _activity?['title'] as String? ?? 'Activity';
+        if (senderId != null) {
+          NotificationService.sendNotification(
+            userId: senderId,
+            type: NotificationType.rejection,
+            title: 'Request Declined 😔',
+            body: 'Your request to join $actTitle was declined.',
+            payload: {'request_id': widget.req['id'], 'target_id': widget.req['target_id']},
+          );
+        }
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
@@ -1105,8 +1133,10 @@ class _JECState extends State<_JoinedEnrichedCard> {
           Navigator.push(context, MaterialPageRoute(
               builder: (_) => ProfileScreen(userId: widget.req['target_id'])));
         } else {
-          Navigator.push(context, MaterialPageRoute(
-              builder: (_) => ParticipantActivityDetailScreen(request: widget.req, targetType: widget.targetType)));
+          if (_activity != null) {
+            Navigator.push(context, MaterialPageRoute(
+                builder: (_) => RushInConsumerDetailView(activity: _activity!, onInteraction: () {})));
+          }
         }
       },
       child: Container(

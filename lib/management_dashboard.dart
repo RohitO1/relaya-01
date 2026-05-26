@@ -4,10 +4,9 @@ import 'dart:convert';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
-import 'dashboard_detail_screens.dart';
 import 'messages_screen.dart';
 import 'rush_in_consumer_detail_view.dart';
-import 'experience_screen.dart';
+// import 'experience_screen.dart'; // Disabled as per user instruction
 import 'services/notification_service.dart';
 
 // ════════════════════════════════════════════════════════════════════
@@ -62,7 +61,7 @@ class MainDashboardScreen extends StatelessWidget {
               title: 'My Network Hub (Outgoing)',
               desc: 'Monitor connection and follow requests you have sent.',
               icon: Icons.hub_outlined,
-              color: const Color(0xFF8B5CF6),
+              color: const Color(0xFFFF7E40),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NetworkHubScreen())),
             ),
             _buildManagementCard(
@@ -144,8 +143,8 @@ class ActivityManagementScreen extends StatelessWidget {
           elevation: 0,
           title: const Text('My Hosted Activities', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           bottom: const TabBar(
-            indicatorColor: Color(0xFF00E5FF),
-            labelColor: Color(0xFF00E5FF),
+            indicatorColor: Color(0xFFFF6B00),
+            labelColor: Color(0xFFFF6B00),
             unselectedLabelColor: Colors.white54,
             tabs: [
               Tab(text: 'UPCOMING'),
@@ -305,7 +304,7 @@ class _ActivityListHelperState extends State<_ActivityListHelper> {
           .order('created_at', ascending: false),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator(color: widget.isRushIn ? const Color(0xFFFF007F) : const Color(0xFF00E5FF)));
+          return Center(child: CircularProgressIndicator(color: widget.isRushIn ? const Color(0xFFFF007F) : const Color(0xFFFF6B00)));
         }
 
         final allActivities = snapshot.data ?? [];
@@ -362,7 +361,7 @@ class _ActivityListHelperState extends State<_ActivityListHelper> {
               children: [
                 GestureDetector(
                   onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => HostActivityDetailScreen(activity: act)));
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => RushInConsumerDetailView(activity: act, onInteraction: () {})));
                   },
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 20),
@@ -370,7 +369,7 @@ class _ActivityListHelperState extends State<_ActivityListHelper> {
                     decoration: BoxDecoration(
                       color: const Color(0xFF111827),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: widget.isRushIn ? const Color(0xFF00E5FF).withValues(alpha: 0.5) : const Color(0xFF3B82F6).withValues(alpha: 0.5)),
+                      border: Border.all(color: widget.isRushIn ? const Color(0xFFFF6B00).withValues(alpha: 0.5) : const Color(0xFF3B82F6).withValues(alpha: 0.5)),
                       boxShadow: [
                         BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 5))
                       ],
@@ -387,7 +386,7 @@ class _ActivityListHelperState extends State<_ActivityListHelper> {
                                 Container(
                                   width: 6, height: 6,
                                   decoration: BoxDecoration(
-                                    color: widget.isRushIn ? const Color(0xFF00E5FF) : const Color(0xFF3B82F6),
+                                    color: widget.isRushIn ? const Color(0xFFFF6B00) : const Color(0xFF3B82F6),
                                     shape: BoxShape.circle,
                                   ),
                                 ),
@@ -395,7 +394,7 @@ class _ActivityListHelperState extends State<_ActivityListHelper> {
                                 Text(
                                   widget.isRushIn ? 'LIVE RUSH-IN NEARBY' : 'MANAGED ACTIVITY',
                                   style: TextStyle(
-                                    color: widget.isRushIn ? const Color(0xFF00E5FF) : const Color(0xFF3B82F6),
+                                    color: widget.isRushIn ? const Color(0xFFFF6B00) : const Color(0xFF3B82F6),
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -641,9 +640,9 @@ class _CompanionManagementScreenState extends State<CompanionManagementScreen> {
 
                   return GestureDetector(
                     onTap: () {
-                      Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => CompanionIncomingRequestsScreen(companionListingId: companionId),
-                      ));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Companion feature is currently disabled.')),
+                      );
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
@@ -652,11 +651,11 @@ class _CompanionManagementScreenState extends State<CompanionManagementScreen> {
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
                           color: pendingCount > 0
-                              ? const Color(0xFF8B5CF6).withValues(alpha: 0.4)
+                              ? const Color(0xFFFF7E40).withValues(alpha: 0.4)
                               : Colors.white.withValues(alpha: 0.06),
                         ),
                         boxShadow: pendingCount > 0
-                            ? [BoxShadow(color: const Color(0xFF8B5CF6).withValues(alpha: 0.1), blurRadius: 20)]
+                            ? [BoxShadow(color: const Color(0xFFFF7E40).withValues(alpha: 0.1), blurRadius: 20)]
                             : [],
                       ),
                       child: Row(
@@ -666,8 +665,8 @@ class _CompanionManagementScreenState extends State<CompanionManagementScreen> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(color: const Color(0xFF8B5CF6).withValues(alpha: 0.15), shape: BoxShape.circle),
-                                child: const Icon(Icons.people_alt, color: Color(0xFF8B5CF6)),
+                                decoration: BoxDecoration(color: const Color(0xFFFF7E40).withValues(alpha: 0.15), shape: BoxShape.circle),
+                                child: const Icon(Icons.people_alt, color: Color(0xFFFF7E40)),
                               ),
                               if (pendingCount > 0)
                                 Positioned(
@@ -688,7 +687,7 @@ class _CompanionManagementScreenState extends State<CompanionManagementScreen> {
                                 const Text('Connection Requests', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                 Text(
                                   pendingCount > 0 ? '$pendingCount new request${pendingCount > 1 ? 's' : ''} waiting for review' : 'No pending requests',
-                                  style: TextStyle(color: pendingCount > 0 ? const Color(0xFF8B5CF6) : Colors.white38, fontSize: 12),
+                                  style: TextStyle(color: pendingCount > 0 ? const Color(0xFFFF7E40) : Colors.white38, fontSize: 12),
                                 ),
                               ],
                             ),
@@ -723,7 +722,7 @@ class _CompanionManagementScreenState extends State<CompanionManagementScreen> {
                         Container(width: 1, height: 30, color: Colors.white.withValues(alpha: 0.08)),
                         _statCol('$approved', 'Accepted', const Color(0xFF10B981)),
                         Container(width: 1, height: 30, color: Colors.white.withValues(alpha: 0.08)),
-                        _statCol(total > 0 ? '${((approved / total) * 100).round()}%' : '—', 'Accept Rate', const Color(0xFF00E5FF)),
+                        _statCol(total > 0 ? '${((approved / total) * 100).round()}%' : '—', 'Accept Rate', const Color(0xFFFF6B00)),
                       ],
                     ),
                   );
@@ -764,8 +763,8 @@ class NetworkHubScreen extends StatelessWidget {
           elevation: 0,
           title: const Text('Outgoing Requests', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           bottom: const TabBar(
-            indicatorColor: Color(0xFF8B5CF6),
-            labelColor: Color(0xFF8B5CF6),
+            indicatorColor: Color(0xFFFF7E40),
+            labelColor: Color(0xFFFF7E40),
             unselectedLabelColor: Colors.white54,
             tabs: [
               Tab(text: 'PENDING / DECLINED'),
@@ -798,7 +797,7 @@ class _NetworkHubListHelper extends StatelessWidget {
           .eq('sender_id', uid)
           .order('created_at', ascending: false),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF7E40)));
         
         final allRequests = snapshot.data ?? [];
         final requests = allRequests.where((r) => approvedOnly ? r['status'] == 'approved' : r['status'] != 'approved').toList();
@@ -986,7 +985,7 @@ class _NetworkHubCardState extends State<_NetworkHubCard> {
     }
 
     bool isRushIn = false;
-    Color themeColor = const Color(0xFF8B5CF6);
+    Color themeColor = const Color(0xFFFF7E40);
     IconData typeIcon = Icons.calendar_today;
     String typeLabel = 'Activity';
     String hostName = 'Host';
@@ -1012,7 +1011,7 @@ class _NetworkHubCardState extends State<_NetworkHubCard> {
       hostId = _targetData!['user_id']?.toString();
 
       if (isRushIn) {
-        themeColor = const Color(0xFF00E5FF);
+        themeColor = const Color(0xFFFF6B00);
         typeIcon = Icons.bolt;
         typeLabel = 'Rush-In';
       } else {
@@ -1034,15 +1033,6 @@ class _NetworkHubCardState extends State<_NetworkHubCard> {
     final isApproved = status == 'approved';
     final isRejected = status == 'rejected';
 
-    List<String> parseList(dynamic raw) {
-      if (raw == null) return [];
-      if (raw is List) return raw.map((e) => e.toString()).toList();
-      if (raw is String) {
-        return raw.replaceAll('{', '').replaceAll('}', '').split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-      }
-      return [];
-    }
-
     void openDetailView() {
       if (_targetData == null) return;
       if (isActivityType) {
@@ -1051,10 +1041,9 @@ class _NetworkHubCardState extends State<_NetworkHubCard> {
           onInteraction: () {},
         )));
       } else if (targetType == 'companion') {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => CompanionDetailScreen(
-          comp: _targetData!,
-          parseList: parseList,
-        )));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Companion details are currently unavailable.')),
+        );
       }
     }
 
@@ -1319,8 +1308,8 @@ class _RequestsManagerScreenState extends State<_RequestsManagerScreen> {
           elevation: 0,
           title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           bottom: const TabBar(
-            indicatorColor: Color(0xFF00E5FF),
-            labelColor: Color(0xFF00E5FF),
+            indicatorColor: Color(0xFFFF6B00),
+            labelColor: Color(0xFFFF6B00),
             unselectedLabelColor: Colors.white54,
             tabs: [
               Tab(text: 'PENDING'),
@@ -1336,7 +1325,7 @@ class _RequestsManagerScreenState extends State<_RequestsManagerScreen> {
               .order('created_at', ascending: false),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+              return const Center(child: CircularProgressIndicator(color: Color(0xFFFF7E40)));
             }
             
             final allRequests = snapshot.data ?? [];
@@ -1464,8 +1453,8 @@ class _RequestsManagerScreenState extends State<_RequestsManagerScreen> {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00E5FF).withValues(alpha: 0.1),
-                          foregroundColor: const Color(0xFF00E5FF),
+                          backgroundColor: const Color(0xFFFF6B00).withValues(alpha: 0.1),
+                          foregroundColor: const Color(0xFFFF6B00),
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1533,7 +1522,7 @@ class _MyFeedPostsScreenState extends State<MyFeedPostsScreen> {
                   .order('created_at', ascending: false),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)));
+                  return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00)));
                 }
                 final posts = snapshot.data ?? [];
                 if (posts.isEmpty) {

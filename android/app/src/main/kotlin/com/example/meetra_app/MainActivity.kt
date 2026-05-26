@@ -1,23 +1,37 @@
 package com.example.meetra_app
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 
-class MainActivity : FlutterActivity() {
+class MainActivity: FlutterActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        createNotificationChannel()
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        flutterEngine.plugins.add(VoiceMaskPlugin())
+    }
 
-        // Register VoiceMaskPlugin.
-        // IMPORTANT: This plugin has NO compile-time WebRTC imports, so it always
-        // loads cleanly. The WebRTC hook is performed lazily via reflection at runtime.
-        val plugin = VoiceMaskPlugin()
-        flutterEngine.plugins.add(plugin)
-        android.util.Log.d("MainActivity", "VoiceMaskPlugin registered ✅")
-
-        // We do NOT start the retry loop here because the WebRTC engine does not
-        // exist yet. The Dart RoomConnectedEvent listener calls hookWebRtc() over
-        // the MethodChannel, which triggers startRetryLoop() at the right moment.
-        // See: chatroom_live_screen.dart → _roomListener..on<RoomConnectedEvent>
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "High Importance Notifications"
+            val descriptionText = "This channel is used for important push notifications."
+            val importance = NotificationManager.IMPORTANCE_HIGH
+            val channel = NotificationChannel("high_importance_channel", name, importance).apply {
+                description = descriptionText
+                enableLights(true)
+                enableVibration(true)
+            }
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
     }
 }

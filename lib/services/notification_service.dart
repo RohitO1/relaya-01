@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 enum NotificationType {
   match,
@@ -8,7 +10,12 @@ enum NotificationType {
   approval,
   rejection,
   message,
-  system
+  compliment,
+  system,
+  bolroomMessage,
+  bolroomSystem,
+  bolroomFollower,
+  bolroomChatroom,
 }
 
 extension NotificationTypeExtension on NotificationType {
@@ -19,7 +26,12 @@ extension NotificationTypeExtension on NotificationType {
       case NotificationType.approval: return 'approval';
       case NotificationType.rejection: return 'rejection';
       case NotificationType.message: return 'message';
+      case NotificationType.compliment: return 'compliment';
       case NotificationType.system: return 'system';
+      case NotificationType.bolroomMessage: return 'bolroom_message';
+      case NotificationType.bolroomSystem: return 'bolroom_system';
+      case NotificationType.bolroomFollower: return 'bolroom_follower';
+      case NotificationType.bolroomChatroom: return 'bolroom_chatroom';
     }
   }
 }
@@ -52,7 +64,7 @@ class NotificationService {
         if (type == NotificationType.approval || type == NotificationType.rejection) {
           shouldNotify = settings['approvals'] ?? true;
         }
-        if (type == NotificationType.message) shouldNotify = settings['messages'] ?? true;
+        if (type == NotificationType.message || type == NotificationType.compliment) shouldNotify = settings['messages'] ?? true;
 
         if (!shouldNotify) {
           debugPrint('Notification suppressed user preferences: $type');
@@ -84,15 +96,22 @@ class NotificationService {
     required String activityId,
     required String title,
     required String locationName,
+    required String hostName,
     required double lat,
     required double lng,
+    required bool isRushIn,
+    required String activityCity,
     double radiusKm = 5.0,
+    bool isAnonymous = false,
   }) async {
     try {
+      // Resolve the location name: use the provided name, or reverse-geocode the pin
+      final resolvedLocation = await _resolveLocationName(locationName, lat, lng);
+
       // Fetch users who are NOT the creator and have nearby_activities enabled
       final List<dynamic> users = await _supabase
           .from('profiles')
-          .select('id, notification_settings, lat, lng')
+          .select('id, notification_settings, lat, lng, city')
           .neq('id', creatorId);
 
       for (var user in users) {
@@ -104,23 +123,108 @@ class NotificationService {
         // Check distance if lat/lng available
         final userLat = user['lat'];
         final userLng = user['lng'];
+        final userCity = user['city']?.toString();
         
-        if (userLat != null && userLng != null) {
-          final distance = _calculateDistance(lat, lng, userLat, userLng);
-          if (distance <= radiusKm) {
-            await sendNotification(
-              userId: userId,
-              type: NotificationType.nearbyActivity,
-              title: 'New Activity Nearby! 📍',
-              body: '$title at $locationName',
-              payload: {'activity_id': activityId},
-            );
+        bool shouldNotify = false;
+
+        if (isRushIn) {
+          // Strict radius check for Rush-ins
+          if (userLat != null && userLng != null) {
+            final distance = _calculateDistance(lat, lng, userLat, userLng);
+            if (distance <= radiusKm) {
+              shouldNotify = true;
+            }
           }
+        } else {
+          // City-wide check for Activities
+          if (userCity != null && userCity.toLowerCase() == activityCity.toLowerCase()) {
+            shouldNotify = true;
+          } else if (userLat != null && userLng != null) {
+            // Fallback: Check if they are physically within a 50km radius of the activity
+            final distance = _calculateDistance(lat, lng, userLat, userLng);
+            if (distance <= 50.0) {
+              shouldNotify = true;
+            }
+          }
+        }
+
+        if (shouldNotify) {
+          final notificationTitle = isAnonymous 
+              ? 'New Activity Nearby! 📍' 
+              : '$hostName created a Rush-in! ⚡';
+          final notificationBody = isAnonymous 
+              ? 'Someone created a rush-in near $resolvedLocation' 
+              : '$title near $resolvedLocation';
+
+          await sendNotification(
+            userId: userId,
+            type: NotificationType.nearbyActivity,
+            title: notificationTitle,
+            body: notificationBody,
+            payload: {'activity_id': activityId},
+          );
         }
       }
     } catch (e) {
       debugPrint('Error notifying nearby users: $e');
     }
+  }
+
+  /// Resolves a human-readable landmark name for the notification.
+  /// If [locationName] already looks like a specific place (not just a city),
+  /// returns it as-is. Otherwise, reverse-geocodes [lat]/[lng] to find the
+  /// nearest landmark (hospital, park, road, etc.).
+  static Future<String> _resolveLocationName(String locationName, double lat, double lng) async {
+    // If a specific location was already provided, use it directly
+    if (locationName.trim().isNotEmpty) {
+      // Check if it looks like a generic city-level name (e.g. "Lucknow, UP")
+      // Heuristic: if it contains a comma and is short, it's probably just a city
+      final parts = locationName.split(',');
+      final firstPart = parts.first.trim();
+      // If the first part alone is reasonably specific (>3 words or no comma), keep it
+      if (parts.length <= 1 || firstPart.split(' ').length > 2) {
+        return locationName.trim();
+      }
+    }
+
+    // Reverse-geocode the pin to find the nearest landmark
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse'
+        '?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1',
+      );
+      final res = await http.get(url, headers: {'User-Agent': 'MeetraApp/1.0'});
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final address = data['address'] as Map<String, dynamic>? ?? {};
+
+        // Try to find a specific landmark in priority order
+        final landmark = data['name']
+            ?? address['amenity']
+            ?? address['building']
+            ?? address['shop']
+            ?? address['leisure']
+            ?? address['historic']
+            ?? address['tourism'];
+
+        if (landmark != null && landmark.toString().trim().isNotEmpty) {
+          return landmark.toString().trim();
+        }
+
+        // Fall back to road + neighbourhood
+        final road = address['road'] ?? address['pedestrian'];
+        final area = address['neighbourhood'] ?? address['suburb'] ?? address['village'];
+        if (road != null) {
+          return area != null ? '$road, $area' : road.toString();
+        }
+        if (area != null) return area.toString();
+      }
+    } catch (e) {
+      debugPrint('Reverse geocode for notification failed: $e');
+    }
+
+    // Last resort: return whatever was originally passed
+    return locationName.trim().isNotEmpty ? locationName.trim() : 'your area';
   }
 
   // Haversine formula to calculate distance between two coordinates in kilometers
@@ -145,6 +249,14 @@ class NotificationService {
       await _supabase.from('notifications').update({'is_read': true}).eq('id', notificationId);
     } catch (e) {
       debugPrint('Error marking notification as read: $e');
+    }
+  }
+
+  static Future<void> deleteNotification(String notificationId) async {
+    try {
+      await _supabase.from('notifications').delete().eq('id', notificationId);
+    } catch (e) {
+      debugPrint('Error deleting notification: $e');
     }
   }
 

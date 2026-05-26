@@ -36,7 +36,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
       delay: _rand.nextDouble(),
       duration: _rand.nextDouble() * 3 + 2,
       color: [
-        const Color(0xFF00E5CC), const Color(0xFFA855F7), const Color(0xFFEC4899),
+        const Color(0xFFFF6B00), const Color(0xFFFF7E40), const Color(0xFFFF3D00),
         const Color(0xFFF97316), const Color(0xFF22C55E), const Color(0xFFEAB308),
         const Color(0xFF3B82F6),
       ][_rand.nextInt(7)],
@@ -64,8 +64,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
       body: Stack(
         children: [
           // Ambient orbs
-          Positioned(top: -80, right: -60, child: _orb(250, const Color(0xFF00E5CC))),
-          Positioned(bottom: 80, left: -40, child: _orb(200, const Color(0xFFA855F7))),
+          Positioned(top: -80, right: -60, child: _orb(250, const Color(0xFFFF6B00))),
+          Positioned(bottom: 80, left: -40, child: _orb(200, const Color(0xFFFF7E40))),
 
           // Confetti
           AnimatedBuilder(
@@ -96,13 +96,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              const Color(0xFF00E5CC).withValues(alpha: 0.2),
+                              const Color(0xFFFF6B00).withValues(alpha: 0.2),
                               const Color(0xFF22C55E).withValues(alpha: 0.2),
                             ],
                           ),
                         ),
                         child: const Center(
-                          child: Icon(Icons.check, color: Color(0xFF00E5CC), size: 36),
+                          child: Icon(Icons.check, color: Color(0xFFFF6B00), size: 36),
                         ),
                       ),
                     ),
@@ -110,7 +110,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
                     const SizedBox(height: 20),
 
                     Text(
-                      'Welcome to Meetra! 🎉',
+                      'Welcome to Relaya! 🎉',
                       style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
 
@@ -149,10 +149,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [Color(0xFF00E5CC), Color(0xFF22C55E)]),
+                          gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF22C55E)]),
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
-                            BoxShadow(color: const Color(0xFF00E5CC).withValues(alpha: 0.4), blurRadius: 30, offset: const Offset(0, 8)),
+                            BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.4), blurRadius: 30, offset: const Offset(0, 8)),
                           ],
                         ),
                         child: Row(

@@ -20,9 +20,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'home_screen.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
-import 'experience_screen.dart';
+// import 'experience_screen.dart'; // Disabled as per user instruction
+import 'chat_screen.dart';
 import 'auth_screen.dart';
 import 'onboarding_screen.dart';
+import 'services/profile_completion_service.dart';
 import 'host_activity_screen.dart';
 import 'services/location_service.dart';
 import 'push_notification_manager.dart';
@@ -38,6 +40,7 @@ import 'splash_screen.dart';
 import 'widgets/app_header_actions.dart';
 import 'package:app_links/app_links.dart';
 import 'chatroom_live_screen.dart';
+import 'widgets/location_picker_sheet.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -118,10 +121,10 @@ class _MeetraAppState extends State<MeetraApp> {
           theme: ThemeData(
             brightness: Brightness.light,
             scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-            primaryColor: const Color(0xFF4A00E0),
+            primaryColor: const Color(0xFFFF5C00),
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF4A00E0),
-              secondary: Color(0xFF00E5FF),
+              primary: Color(0xFFFF5C00),
+              secondary: Color(0xFFFF6B00),
               surface: Colors.white,
             ),
             textTheme: GoogleFonts.outfitTextTheme(ThemeData.light().textTheme)
@@ -137,10 +140,10 @@ class _MeetraAppState extends State<MeetraApp> {
           ),
           darkTheme: ThemeData.dark().copyWith(
             scaffoldBackgroundColor: const Color(0xFF050508),
-            primaryColor: const Color(0xFF00E5FF),
+            primaryColor: const Color(0xFFFF6B00),
             colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF00E5FF),
-              secondary: Color(0xFF4A00E0),
+              primary: Color(0xFFFF6B00),
+              secondary: Color(0xFFFF5C00),
               surface: Color(0xFF0D0D12),
             ),
             pageTransitionsTheme: const PageTransitionsTheme(
@@ -163,7 +166,7 @@ class _MeetraAppState extends State<MeetraApp> {
             builder: (context, snapshot) {
               final session = snapshot.hasData ? snapshot.data!.session : null;
               if (session != null) {
-                // User is logged in ï¿½ check if onboarding is complete
+                // User is logged in - check if onboarding is complete
                 return FutureBuilder<Map<String, dynamic>?>(
                   future: Supabase.instance.client
                       .from('profiles')
@@ -184,7 +187,8 @@ class _MeetraAppState extends State<MeetraApp> {
                                 width: 80,
                                 height: 80,
                               ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-                               .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 800.ms, curve: Curves.easeInOut),
+                               .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 800.ms, 
+curve: Curves.easeInOut),
                             ],
                           ),
                         ),
@@ -255,7 +259,7 @@ class NeonCard extends StatelessWidget {
     required this.child,
     this.blurRadius = 15.0,
     this.spreadRadius = 1.0,
-    this.shadowColor = const Color(0xFF00E5FF),
+    this.shadowColor = const Color(0xFFFF6B00),
     this.bgColor = const Color(0xFF101015),
     this.padding = const EdgeInsets.all(16),
     this.margin = const EdgeInsets.symmetric(vertical: 8),
@@ -324,11 +328,11 @@ class _Animated3DButtonState extends State<Animated3DButton>
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                      colors: [Color(0xFF4A00E0), Color(0xFF00E5FF)]),
+                      colors: [Color(0xFFFF5C00), Color(0xFFFF6B00)]),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                        color: const Color(0xFF00E5FF).withValues(alpha: 0.5),
+                        color: const Color(0xFFFF6B00).withValues(alpha: 0.5),
                         blurRadius: 10,
                         spreadRadius: 1,
                         offset: const Offset(0, 2)),
@@ -355,6 +359,13 @@ class _Animated3DButtonState extends State<Animated3DButton>
 class MainDashboard extends StatefulWidget {
   const MainDashboard({super.key});
 
+  static void switchTab(BuildContext context, int index) {
+    final state = context.findAncestorStateOfType<_MainDashboardState>();
+    if (state != null) {
+      state._onSelectTab(index);
+    }
+  }
+
   @override
   State<MainDashboard> createState() => _MainDashboardState();
 }
@@ -363,18 +374,50 @@ class _MainDashboardState extends State<MainDashboard> {
   int _currentIndex = 0;
   final List<int> _navigationHistory = [];
   static const int _maxHistory = 10;
+  bool _goingForward = true;
+  String _navTransition = 'Slide';
+  Timer? _presenceTimer;
 
   @override
   void initState() {
     super.initState();
+    _loadNavPref();
+    _startPresenceHeartbeat();
     // Start the AI nearby agent after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) NearbyAgent.instance.start(context, radiusKm: 15.0);
     });
   }
 
+  void _startPresenceHeartbeat() {
+    _updatePresence();
+    _presenceTimer = Timer.periodic(const Duration(minutes: 2), (_) => _updatePresence());
+  }
+
+  Future<void> _updatePresence() async {
+    try {
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (uid != null) {
+        final currentCity = locationService.activeDistrict.isNotEmpty ? locationService.activeDistrict : 'Unknown';
+        await Supabase.instance.client.from('profiles').update({
+          'city': currentCity,
+        }).eq('id', uid);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadNavPref() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _navTransition = prefs.getString('nav_transition') ?? 'Slide';
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _presenceTimer?.cancel();
     NearbyAgent.instance.stop();
     super.dispose();
   }
@@ -382,7 +425,10 @@ class _MainDashboardState extends State<MainDashboard> {
   void _onSelectTab(int index) {
     if (_currentIndex == index) return;
     HapticFeedback.lightImpact();
+    // Reload preference just in case it was changed
+    _loadNavPref();
     setState(() {
+      _goingForward = index > _currentIndex;
       _navigationHistory.add(_currentIndex);
       if (_navigationHistory.length > _maxHistory) {
         _navigationHistory.removeAt(0);
@@ -393,8 +439,7 @@ class _MainDashboardState extends State<MainDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final double bottomSafeArea = MediaQuery.of(context).padding.bottom;
 
     return PopScope(
       canPop: false,
@@ -405,120 +450,181 @@ class _MainDashboardState extends State<MainDashboard> {
             _currentIndex = _navigationHistory.removeLast();
           });
         } else {
-          // If history is empty, allow the system to handle the pop (exit app)
           SystemNavigator.pop();
         }
       },
       child: Scaffold(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        body: Column(
+        backgroundColor: const Color(0xFF000000),
+        body: Stack(
           children: [
-            Expanded(child: _getScreenByIndex(_currentIndex)),
-            // Custom Bottom Navigation Bar
-            Container(
-              height: 70,
-              margin: const EdgeInsets.all(12),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(35),
-                child: BackdropFilter(
-                  filter: ui.ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                  child: Container(
-                    decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFF0A0A0F).withValues(alpha: 0.6)
-                            : Colors.white.withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(35),
-                        border: Border.all(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.1)
-                                : Colors.black.withValues(alpha: 0.05)),
-                        boxShadow: [
-                          BoxShadow(
-                              color: isDark ? Colors.black26 : Colors.black12,
-                              blurRadius: 10,
-                              offset: const Offset(0, 5))
-                        ]),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildNavIcon(Icons.home_outlined, 0),
-                        _buildNavIcon(Icons.explore_outlined, 1),
-                        _buildLightningButton(context),
-                        _buildNavIcon(Icons.auto_awesome_outlined, 3),
-                        _buildNavIcon(Icons.person_outline, 4),
-                      ],
-                    ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragEnd: (details) {
+                if (details.primaryVelocity! < -300) {
+                  // Swipe left -> Next tab
+                  if (_currentIndex < 4) _onSelectTab(_currentIndex + 1);
+                } else if (details.primaryVelocity! > 300) {
+                  // Swipe right -> Prev tab
+                  if (_currentIndex > 0) _onSelectTab(_currentIndex - 1);
+                }
+              },
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 80 + bottomSafeArea),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    switch (_navTransition) {
+                      case 'Fade':
+                        return FadeTransition(opacity: animation, child: child);
+                      case 'Scale':
+                        return ScaleTransition(scale: animation, child: child);
+                      case '3D Flip':
+                        final rotate = Tween(begin: 3.14, end: 0.0).animate(animation);
+                        return AnimatedBuilder(
+                          animation: rotate,
+                          builder: (context, ch) {
+                            // Ensure the old child fades out so they don't overlap weirdly
+                            final isUnder = (ValueKey(_currentIndex) != child.key);
+                            var tilt = ((animation.value - 0.5).abs() - 0.5) * 0.003;
+                            tilt *= isUnder ? -1.0 : 1.0;
+                            final value = isUnder ? math.min(rotate.value, 1.57) : rotate.value;
+                            return Transform(
+                              transform: Matrix4.rotationY(value)..setEntry(3, 0, tilt),
+                              alignment: Alignment.center,
+                              child: ch,
+                            );
+                          },
+                          child: child,
+                        );
+                      case 'Slide':
+                      default:
+                        final slideOffset = _goingForward ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
+                        final slide = Tween(begin: slideOffset, end: Offset.zero).animate(animation);
+                        return SlideTransition(position: slide, child: child);
+                    }
+                  },
+                  child: KeyedSubtree(
+                    key: ValueKey(_currentIndex),
+                    child: _getScreenByIndex(_currentIndex),
                   ),
                 ),
               ),
-            )
-          ],
-        ),
-      ),
-    );
-  }
+            ),
 
-  Widget _buildNavIcon(IconData icon, int index) {
-    bool isSelected = _currentIndex == index;
-    return GestureDetector(
-      onTap: () => _onSelectTab(index),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: isSelected
-              ? const Color(0xFF00E5FF).withValues(alpha: 0.1)
-              : Colors.transparent,
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                      color: const Color(0xFF00E5FF).withValues(alpha: 0.2),
-                      blurRadius: 15)
-                ]
-              : [],
-        ),
-        child: Icon(icon,
-            color: isSelected
-                ? const Color(0xFF00E5FF)
-                : (Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white54
-                    : Colors.black45),
-            size: 26),
-      ),
-    );
-  }
-
-  Widget _buildLightningButton(BuildContext context) {
-    bool isSelected = _currentIndex == 2;
-    return GestureDetector(
-      onTap: () => _onSelectTab(2),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            colors: [Color(0xFF00E5FF), Color(0xFF0077FF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected
-                  ? const Color(0xFF00E5FF).withValues(alpha: 0.9)
-                  : const Color(0xFF00E5FF).withValues(alpha: 0.5),
-              blurRadius: isSelected ? 30 : 20,
-              spreadRadius: isSelected ? 4 : 2,
-            )
-          ],
-        ),
-        child: const Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(Icons.explore_rounded, color: Colors.white70, size: 28),
+            // ── Flat Bottom Nav Bar ──
             Positioned(
-              right: -2,
-              top: -2,
-              child: Icon(Icons.bolt, color: Colors.white, size: 16),
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: EdgeInsets.only(bottom: bottomSafeArea),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0A0A0F),
+                  border: Border(
+                    top: BorderSide(
+                      color: Color(0xFF2A1F3D),
+                      width: 1.0,
+                    ),
+                  ),
+                ),
+                child: SizedBox(
+                  height: 60,
+                  child: Row(
+                    children: [
+                      // Home
+                      _buildNavItem(Icons.home_outlined, Icons.home_rounded, 0),
+                      // Explore
+                      _buildNavItem(Icons.explore_outlined, Icons.explore_rounded, 1),
+                      // Center Spark button
+                      _buildCenterSparkButton(),
+                      // Messages
+                      _buildNavItem(Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 3),
+                      // Profile
+                      _buildNavItem(Icons.person_outline_rounded, Icons.person_rounded, 4),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Builds the elevated center Spark (lightning) button with ringed glow
+  Widget _buildCenterSparkButton() {
+    final bool isSelected = _currentIndex == 2;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _onSelectTab(2),
+        behavior: HitTestBehavior.opaque,
+        child: Center(
+          child: Transform.translate(
+            offset: const Offset(0, -18),
+            child: Container(
+              width: 68,
+              height: 68,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                // Dark outer ring
+                color: const Color(0xFF1A1A1F),
+                border: Border.all(
+                  color: const Color(0xFFFF6B00).withValues(alpha: 0.35),
+                  width: 2.0,
+                ),
+                boxShadow: [
+                  // Outer orange glow
+                  BoxShadow(
+                    color: const Color(0xFFFF6B00).withValues(alpha: isSelected ? 0.5 : 0.25),
+                    blurRadius: isSelected ? 28 : 18,
+                    spreadRadius: isSelected ? 3 : 1,
+                  ),
+                ],
+              ),
+              // Inner gradient circle with gap
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFFFF6B00),
+                        Color(0xFFFF3060),
+                      ],
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.bolt_rounded,
+                    color: Colors.white,
+                    size: 30,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(IconData outlineIcon, IconData filledIcon, int index) {
+    bool isSelected = _currentIndex == index;
+    Color color = isSelected ? Colors.white : const Color(0xFF8E8E93);
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _onSelectTab(index),
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isSelected ? filledIcon : outlineIcon,
+              color: color,
+              size: 28, // Slightly larger to compensate for removed text
             ),
           ],
         ),
@@ -531,13 +637,14 @@ class _MainDashboardState extends State<MainDashboard> {
       case 0:
         return const HomeScreen();
       case 1:
-        return const DiscoverScreen();
+        return ExploreScreen(onCreateTap: () => _showCreateRushInSheet(context));
       case 2:
         return SparkScreen(
           onBack: () => _onSelectTab(0),
         );
       case 3:
-        return const ExperienceScreen();
+        // Replaced ExperienceScreen with ChatScreen
+        return const ChatScreen();
       case 4:
         return const ProfileScreen();
       default:
@@ -639,7 +746,7 @@ class _MainDashboardState extends State<MainDashboard> {
                                 IconButton(
                                     icon: const Icon(
                                         Icons.remove_circle_outline,
-                                        color: Color(0xFF4A00E0)),
+                                        color: Color(0xFFFF5C00)),
                                     onPressed: () {}),
                                 const Text('12',
                                     style: TextStyle(
@@ -647,7 +754,7 @@ class _MainDashboardState extends State<MainDashboard> {
                                         fontSize: 18)),
                                 IconButton(
                                     icon: const Icon(Icons.add_circle_outline,
-                                        color: Color(0xFF4A00E0)),
+                                        color: Color(0xFFFF5C00)),
                                     onPressed: () {}),
                               ],
                             )
@@ -810,7 +917,7 @@ class _MainDashboardState extends State<MainDashboard> {
                                     // Neon Wash
                                     if (isSheetMapDark)
                                       Container(
-                                          color: const Color(0xFF4A00E0)
+                                          color: const Color(0xFFFF5C00)
                                               .withValues(alpha: 0.15)),
 
                                     // Glassmorphic Search Bar
@@ -907,7 +1014,7 @@ class _MainDashboardState extends State<MainDashboard> {
                                             if (context.mounted) {
                                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                                                 content: Row(children: [const Icon(Icons.check_circle, color: Colors.white, size: 18), const SizedBox(width: 8), Text('Location: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}')]),
-                                                backgroundColor: const Color(0xFF00E5CC), behavior: SnackBarBehavior.floating,
+                                                backgroundColor: const Color(0xFFFF6B00), behavior: SnackBarBehavior.floating,
                                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), duration: const Duration(seconds: 3),
                                               ));
                                             }
@@ -925,9 +1032,9 @@ class _MainDashboardState extends State<MainDashboard> {
                                           width: 36,
                                           height: 36,
                                           decoration: BoxDecoration(
-                                              color: const Color(0xFF00E5CC),
+                                              color: const Color(0xFFFF6B00),
                                               shape: BoxShape.circle,
-                                              boxShadow: [BoxShadow(color: const Color(0xFF00E5CC).withValues(alpha: 0.4), blurRadius: 8)]),
+                                              boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.4), blurRadius: 8)]),
                                           child: const Icon(Icons.my_location, color: Colors.white, size: 18),
                                         ),
                                       ),
@@ -988,7 +1095,7 @@ class _MainDashboardState extends State<MainDashboard> {
                                                 dense: true,
                                                 leading: const Icon(
                                                     Icons.location_on,
-                                                    color: Color(0xFF00E5FF),
+                                                    color: Color(0xFFFF6B00),
                                                     size: 14),
                                                 title: Text(r['display_name'],
                                                     style: const TextStyle(
@@ -1024,7 +1131,7 @@ class _MainDashboardState extends State<MainDashboard> {
                                                       vertical: 4),
                                               decoration: BoxDecoration(
                                                   color:
-                                                      const Color(0xFF4A00E0),
+                                                      const Color(0xFFFF5C00),
                                                   borderRadius:
                                                       BorderRadius.circular(
                                                           10)),
@@ -1078,7 +1185,7 @@ class _MainDashboardState extends State<MainDashboard> {
                                 Switch(
                                     value: true,
                                     activeThumbColor: Colors.white,
-                                    activeTrackColor: const Color(0xFF4A00E0),
+                                    activeTrackColor: const Color(0xFFFF5C00),
                                     onChanged: (val) {})
                               ],
                             )),
@@ -1121,14 +1228,14 @@ class _MainDashboardState extends State<MainDashboard> {
       width: 105,
       padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFF3B4CCA) : const Color(0xFF101015),
+        color: isSelected ? const Color(0xFFFF8A00) : const Color(0xFF101015),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         children: [
           Icon(icon,
-              color: isSelected ? Colors.white : const Color(0xFF4A00E0)),
+              color: isSelected ? Colors.white : const Color(0xFFFF5C00)),
           const SizedBox(height: 8),
           Text(label,
               style: TextStyle(
@@ -1144,7 +1251,7 @@ class _MainDashboardState extends State<MainDashboard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFF00E5FF) : const Color(0xFF101015),
+        color: isSelected ? const Color(0xFFFF6B00) : const Color(0xFF101015),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(label,
@@ -1179,6 +1286,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
   // Sorting & Filtering
   double _filterDistance = 100.0; // max distance in km (100 = Anywhere)
+  String _selectedLocation = 'Near Me';
+  final List<String> _locations = ['Near Me', 'NYC', 'LA', 'Miami', 'Chicago'];
 
   // -- Random Profile Deck (main page) --
   List<Map<String, dynamic>> _randomProfiles = [];
@@ -1320,7 +1429,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       'active': 128,
       'activity': 'studying now',
       'users': ['S', 'R', 'P'],
-      'userColors': [0xFF8B5CF6, 0xFF06B6D4, 0xFFEC4899],
+      'userColors': [0xFFFF7E40, 0xFF06B6D4, 0xFFFF3D00],
       'extra': 12,
     },
     {
@@ -1332,7 +1441,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       'active': 96,
       'activity': 'grinding now',
       'users': ['K', 'M', 'V'],
-      'userColors': [0xFF10B981, 0xFF8B5CF6, 0xFFF59E0B],
+      'userColors': [0xFF10B981, 0xFFFF7E40, 0xFFF59E0B],
       'extra': 9,
     },
     {
@@ -1344,7 +1453,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       'active': 214,
       'activity': 'vibing now',
       'users': ['A', 'N'],
-      'userColors': [0xFFEC4899, 0xFF3B82F6],
+      'userColors': [0xFFFF3D00, 0xFF3B82F6],
       'extra': 21,
     },
     {
@@ -1380,7 +1489,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       'active': 187,
       'activity': 'playing now',
       'users': ['X', 'G'],
-      'userColors': [0xFF8B5CF6, 0xFF06B6D4],
+      'userColors': [0xFFFF7E40, 0xFF06B6D4],
       'extra': 18,
     },
     {
@@ -1392,7 +1501,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       'active': 89,
       'activity': 'shooting now',
       'users': ['L', 'P'],
-      'userColors': [0xFFF59E0B, 0xFFEC4899],
+      'userColors': [0xFFF59E0B, 0xFFFF3D00],
       'extra': 8,
     },
     {
@@ -1416,7 +1525,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       'active': 53,
       'activity': 'performing now',
       'users': ['M', 'F'],
-      'userColors': [0xFF10B981, 0xFF8B5CF6],
+      'userColors': [0xFF10B981, 0xFFFF7E40],
       'extra': 5,
     },
     {
@@ -1428,7 +1537,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       'active': 112,
       'activity': 'building now',
       'users': ['A', 'K'],
-      'userColors': [0xFF06B6D4, 0xFF8B5CF6],
+      'userColors': [0xFF06B6D4, 0xFFFF7E40],
       'extra': 11,
     },
     {
@@ -1440,7 +1549,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       'active': 248,
       'activity': 'finding love now',
       'users': ['S', 'R', 'N', 'V'],
-      'userColors': [0xFFEC4899, 0xFF8B5CF6, 0xFF06B6D4, 0xFFF59E0B],
+      'userColors': [0xFFFF3D00, 0xFFFF7E40, 0xFF06B6D4, 0xFFF59E0B],
       'extra': 24,
       'wide': true,
     },
@@ -2280,9 +2389,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(colors: [Color(0xFF00E5FF), Color(0xFF3B4CCA)]),
+                              gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)]),
                               borderRadius: BorderRadius.circular(16),
-                              boxShadow: [BoxShadow(color: const Color(0xFF00E5FF).withValues(alpha: 0.3), blurRadius: 8)],
+                              boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 8)],
                             ),
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -2300,6 +2409,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       Expanded(
                         child: GestureDetector(
                           onTap: () async {
+                            ProfileCompletionService.requireCompleteProfile(context, onComplete: () async {
                             final uid = Supabase.instance.client.auth.currentUser?.id;
                             if (uid == null) return;
                             try {
@@ -2347,7 +2457,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                   Navigator.pop(ctx);
                                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                                     content: Text('Knock sent to ${m['name']}! 🚪'),
-                                    backgroundColor: const Color(0xFF8B5CF6),
+                                    backgroundColor: const Color(0xFFFF7E40),
                                   ));
                                 }
                               }
@@ -2358,13 +2468,14 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                     backgroundColor: const Color(0xFFE11D48)));
                               }
                             }
+                            });
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)]),
+                              gradient: const LinearGradient(colors: [Color(0xFFFF7E40), Color(0xFFFF3D00)]),
                               borderRadius: BorderRadius.circular(16),
-                              boxShadow: [BoxShadow(color: const Color(0xFF8B5CF6).withValues(alpha: 0.3), blurRadius: 8)],
+                              boxShadow: [BoxShadow(color: const Color(0xFFFF7E40).withValues(alpha: 0.3), blurRadius: 8)],
                             ),
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -2441,12 +2552,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
     return Stack(
       children: [
-        Positioned.fill(
-          child: AnimatedBuilder(
-            animation: _bgController,
-            builder: (context, child) => CustomPaint(
-              painter: CosmicBackgroundPainter(_bgController.value),
-            ),
+        const Positioned.fill(
+          child: ColoredBox(
+            color: Colors.black,
           ),
         ),
         SafeArea(
@@ -2454,22 +2562,23 @@ class _DiscoverScreenState extends State<DiscoverScreen>
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
-              // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Header ──────────────────────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // EXPLORE title in Boogaloo font
+                      // EXPLORE title matched to other main headers
                       Expanded(
                         child: Text(
                           'EXPLORE',
-                          style: GoogleFonts.boogaloo(
+                          style: GoogleFonts.inter(
                             fontSize: 28,
-                            fontWeight: FontWeight.w400,
-                            color: const Color(0xFF38D9A9),
-                            letterSpacing: 1.5,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            fontStyle: FontStyle.italic,
+                            letterSpacing: 1.0,
                             height: 1.0,
                           ),
                         ),
@@ -2879,7 +2988,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         boxShadow: [
           BoxShadow(
               color:
-                  const Color(0xFF38D9A9).withValues(alpha: isBg ? 0.05 : 0.15),
+                  const Color(0xFFFF6B00).withValues(alpha: isBg ? 0.05 : 0.15),
               blurRadius: 20),
         ],
       ),
@@ -2937,7 +3046,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     const SizedBox(height: 4),
                     Row(children: [
                       const Icon(Icons.location_on,
-                          color: Color(0xFF38D9A9), size: 12),
+                          color: Color(0xFFFF6B00), size: 12),
                       const SizedBox(width: 3),
                       Text(p['city'].toString(),
                           style: const TextStyle(
@@ -2954,15 +3063,14 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.12),
+                                color: Colors.transparent,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.08)),
+                                    color: const Color(0xFFFF6B00)),
                               ),
                               child: Text(t,
                                   style: const TextStyle(
-                                      fontSize: 10, color: Colors.white70)),
+                                      fontSize: 10, color: Color(0xFFFF6B00), fontWeight: FontWeight.bold)),
                             ))
                         .toList(),
                   ),
@@ -3059,7 +3167,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 // Avatar
                 CircleAvatar(
                   radius: 38,
-                  backgroundColor: const Color(0xFF7C3AED),
+                  backgroundColor: const Color(0xFFFF5C00),
                   backgroundImage: avatarUrl.isNotEmpty
                       ? _buildSafeImageProvider(avatarUrl)
                       : null,
@@ -3161,6 +3269,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   }
 
   void _onSwipeRight(Map<String, dynamic> p) async {
+    ProfileCompletionService.requireCompleteProfile(context, onComplete: () async {
     HapticFeedback.mediumImpact();
     final uid = Supabase.instance.client.auth.currentUser?.id;
     if (uid == null) return;
@@ -3222,7 +3331,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Knocked ${p['name']}! ??'),
-            backgroundColor: const Color(0xFF3B4CCA),
+            backgroundColor: const Color(0xFFFF8A00),
             duration: const Duration(seconds: 1),
             behavior: SnackBarBehavior.floating,
             shape:
@@ -3235,12 +3344,13 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text('Knocked! ??'),
-              backgroundColor: Color(0xFF3B4CCA),
+              backgroundColor: Color(0xFFFF8A00),
               duration: Duration(seconds: 1)),
         );
       }
     }
     _nextProfile();
+    });
   }
 
   void _onSwipeLeft(Map<String, dynamic> p) {
@@ -3273,7 +3383,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             children: [
               // Header
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: Row(
                   children: [
                     GestureDetector(
@@ -3287,15 +3397,15 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                        color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                             color:
-                                const Color(0xFF00E5FF).withValues(alpha: 0.4)),
+                                const Color(0xFFFF6B00).withValues(alpha: 0.4)),
                       ),
                       child: Text(_selectedInterest,
                           style: const TextStyle(
-                              color: Color(0xFF00E5FF),
+                              color: Color(0xFFFF6B00),
                               fontWeight: FontWeight.bold,
                               fontSize: 13)),
                     ),
@@ -3309,7 +3419,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             shape: BoxShape.circle),
                         child: Icon(Icons.tune,
                             color: _filterDistance < 100
-                                ? const Color(0xFF00E5FF)
+                                ? const Color(0xFFFF6B00)
                                 : Colors.white70,
                             size: 16),
                       ),
@@ -3322,15 +3432,89 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 ),
               ),
 
+              // Horizontal Scrollable Location Filters (Near Me, NYC, LA, Miami, Chicago) with white borders
+              SizedBox(
+                height: 46,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  itemCount: _locations.length,
+                  itemBuilder: (context, idx) {
+                    final loc = _locations[idx];
+                    final isSelected = _selectedLocation == loc;
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedLocation = loc;
+                        });
+                        if (loc == 'Near Me') {
+                          _filterDistance = 100.0;
+                          _loadProfilesForInterest(_selectedInterest);
+                        } else {
+                          _filterDistance = 25.0; // Simulate filters for selected city
+                          _loadProfilesForInterest(_selectedInterest);
+                        }
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected ? const Color(0xFFFF6B00) : Colors.black.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFFFF6B00) : Colors.white,
+                            width: 1,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            loc,
+                            style: TextStyle(
+                              color: isSelected ? Colors.black : Colors.white,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
               // Swipeable Card Area
               Expanded(
                 child: _loadingInterest
                     ? const Center(
                         child:
-                            CircularProgressIndicator(color: Color(0xFF00E5FF)))
+                            CircularProgressIndicator(color: Color(0xFFFF6B00)))
                     : outOfProfiles
                         ? _buildEmptyProfiles()
                         : _buildSwipeStack(profiles),
+              ),
+
+              // Bottom Horizontal Interest Category/Vibe Row with Icons
+              Container(
+                height: 76,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 1),
+                  ),
+                ),
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    _bottomVibeIcon('Music', Icons.music_note, const Color(0xFFFF7E40)),
+                    _bottomVibeIcon('Art', Icons.palette, const Color(0xFFD946EF)),
+                    _bottomVibeIcon('Fitness', Icons.fitness_center, const Color(0xFFEF4444)),
+                    _bottomVibeIcon('Food', Icons.restaurant, const Color(0xFFF97316)),
+                    _bottomVibeIcon('Travel', Icons.flight, const Color(0xFF06B6D4)),
+                    _bottomVibeIcon('Gaming', Icons.sports_esports, const Color(0xFF10B981)),
+                    _bottomVibeIcon('Tech & AI', Icons.memory, const Color(0xFF6366F1)),
+                  ],
+                ),
               ),
             ],
           ),
@@ -3342,6 +3526,43 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     );
   }
 
+  Widget _bottomVibeIcon(String label, IconData icon, Color color) {
+    final isSelected = _selectedInterest == label;
+    return GestureDetector(
+      onTap: () => _selectInterest(label),
+      child: Container(
+        margin: const EdgeInsets.only(right: 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isSelected ? color.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.04),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected ? color : Colors.white.withValues(alpha: 0.1),
+                  width: 1.5,
+                ),
+              ),
+              child: Icon(icon, color: isSelected ? color : Colors.white70, size: 16),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? color : Colors.white54,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSwipeStack(List<Map<String, dynamic>> profiles) {
     final current = profiles[_profileIdx];
     final hasNext = _profileIdx + 1 < profiles.length;
@@ -3349,203 +3570,201 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
     return Stack(
       children: [
-        // Third card (furthest back â€” just a shape)
+        // Third card
         if (hasNextNext)
           Positioned.fill(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 40),
+              padding: const EdgeInsets.only(left: 40, right: 40, top: 32, bottom: 95),
               child: Transform.scale(
-                scale: 0.88,
-                child: Opacity(
-                  opacity: 0.2,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(28),
-                      color: const Color(0xFF1A1A2E),
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.06)),
-                    ),
-                  ),
-                ),
+                scale: 0.90,
+                alignment: Alignment.bottomCenter,
+                child: _buildProfileCard(profiles[_profileIdx + 2],
+                    isBackground: true),
               ),
             ),
           ),
 
-        // Second card peeking behind (depth effect)
+        // Second card
         if (hasNext)
           Positioned.fill(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 32),
+              padding: const EdgeInsets.only(left: 32, right: 32, top: 24, bottom: 95),
               child: Transform.scale(
-                scale: 0.94,
-                child: Opacity(
-                  opacity: 0.4,
-                  child: _buildProfileCard(profiles[_profileIdx + 1],
-                      isBackground: true),
-                ),
+                scale: 0.95,
+                alignment: Alignment.bottomCenter,
+                child: _buildProfileCard(profiles[_profileIdx + 1],
+                    isBackground: true),
               ),
             ),
           ),
 
-        // Current swipeable card
+        // Main swipeable card
         Positioned.fill(
-          child: GestureDetector(
-            onPanStart: (_) => setState(() => _isDragging = true),
-            onPanUpdate: (d) {
-              setState(() {
-                _dragX += d.delta.dx;
-                _dragY += d.delta.dy;
-              });
-            },
-            onPanEnd: (_) => _onSwipeComplete(current),
-            child: AnimatedContainer(
-              duration: _isDragging
-                  ? Duration.zero
-                  : const Duration(milliseconds: 350),
-              curve: Curves.easeOutBack,
-              transform: Matrix4.identity()
-                ..setTranslationRaw(_dragX, _dragY * 0.3, 0.0)
-                ..rotateZ(_dragX * 0.0008),
-              transformAlignment: Alignment.center,
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 16),
-                    child: _buildProfileCard(current, isBackground: false),
-                  ),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 95),
+            child: GestureDetector(
+              onPanStart: (_) => setState(() => _isDragging = true),
+              onPanUpdate: (d) {
+                setState(() {
+                  _dragX += d.delta.dx;
+                  _dragY += d.delta.dy;
+                });
+              },
+              onPanEnd: (_) => _onSwipeComplete(current),
+              child: AnimatedContainer(
+                duration: _isDragging
+                    ? Duration.zero
+                    : const Duration(milliseconds: 350),
+                curve: Curves.easeOutBack,
+                transform: Matrix4.identity()
+                  ..setTranslationRaw(_dragX, _dragY * 0.3, 0.0)
+                  ..rotateZ(_dragX * 0.0008),
+                transformAlignment: Alignment.center,
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 16),
+                      child: _buildProfileCard(current, isBackground: false),
+                    ),
 
-                  // KNOCK overlay (right swipe)
-                  if (_dragX > 40)
+                    // KNOCK overlay
                     Positioned(
-                      top: 100,
-                      left: 60,
+                      top: 40,
+                      left: 40,
                       child: Transform.rotate(
-                        angle: -0.3,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 10),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                                color: const Color(0xFF10B981), width: 3),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text('KNOCK ??',
+                        angle: -0.2,
+                        child: Opacity(
+                          opacity: (_dragX / 150).clamp(0.0, 1.0),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 8),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                  color: const Color(0xFFFF6B00), width: 4),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              'KNOCK',
                               style: TextStyle(
-                                  color: const Color(0xFF10B981),
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 28,
-                                  shadows: [
-                                    Shadow(
-                                        color: const Color(0xFF10B981)
-                                            .withValues(alpha: 0.5),
-                                        blurRadius: 15)
-                                  ])),
+                                color: Color(0xFFFF6B00),
+                                fontSize: 32,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
 
-                  // PASS overlay (left swipe)
-                  if (_dragX < -40)
+                    // PASS overlay
                     Positioned(
-                      top: 100,
-                      right: 60,
+                      top: 40,
+                      right: 40,
                       child: Transform.rotate(
-                        angle: 0.3,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 10),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                                color: const Color(0xFFEF4444), width: 3),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text('PASS ?',
+                        angle: 0.2,
+                        child: Opacity(
+                          opacity: (-_dragX / 150).clamp(0.0, 1.0),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 8),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                  color: const Color(0xFFEF4444), width: 4),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              'PASS',
                               style: TextStyle(
-                                  color: const Color(0xFFEF4444),
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 28,
-                                  shadows: [
-                                    Shadow(
-                                        color: const Color(0xFFEF4444)
-                                            .withValues(alpha: 0.5),
-                                        blurRadius: 15)
-                                  ])),
+                                color: Color(0xFFEF4444),
+                                fontSize: 32,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ),
 
-        // Bottom action buttons
+        // Bottom action buttons: 3 circular buttons (X, star, heart) centered perfectly
         Positioned(
-          bottom: 20,
-          left: 40,
-          right: 40,
+          bottom: 12,
+          left: 0,
+          right: 0,
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Pass Button
+              // Pass Button (X dismiss, circular outline)
               GestureDetector(
                 onTap: () => _onSwipeLeft(current),
                 child: Container(
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
+                    color: Colors.black.withValues(alpha: 0.4),
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: const Color(0xFFEF4444).withValues(alpha: 0.4)),
+                        color: Colors.white.withValues(alpha: 0.3), width: 1.5),
                   ),
                   child: const Icon(Icons.close,
-                      color: Color(0xFFEF4444), size: 28),
+                      color: Colors.white, size: 28),
                 ),
               ),
-              // Super Knock (star)
+              const SizedBox(width: 24),
+              // Super Knock (Star)
               GestureDetector(
-                onTap: () async {
-                  HapticFeedback.heavyImpact();
-                  final uid = Supabase.instance.client.auth.currentUser?.id;
-                  if (uid == null) return;
-                  try {
-                    await Supabase.instance.client.from('requests').insert({
-                      'sender_id': uid,
-                      'target_id': current['id'],
-                      'target_type': 'profile',
-                      'status': 'pending',
-                      'message': 'Super Knock! ?',
-                    });
-                  } catch (_) {}
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text('Super Knocked ${current['name']}! ?'),
-                          backgroundColor: const Color(0xFF8B5CF6),
-                          duration: const Duration(seconds: 1)),
-                    );
-                  }
-                  _nextProfile();
+                onTap: () {
+                  ProfileCompletionService.requireCompleteProfile(context, onComplete: () async {
+                    HapticFeedback.heavyImpact();
+                    final uid = Supabase.instance.client.auth.currentUser?.id;
+                    if (uid == null) return;
+                    try {
+                      await Supabase.instance.client.from('requests').insert({
+                        'sender_id': uid,
+                        'target_id': current['id'],
+                        'target_type': 'profile',
+                        'status': 'pending',
+                        'message': 'Super Knock! ⭐',
+                      });
+                    } catch (_) {}
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content: Text('Super Knocked ${current['name']}! ⭐'),
+                            backgroundColor: const Color(0xFFFF7E40),
+                            duration: const Duration(seconds: 1)),
+                      );
+                    }
+                    _nextProfile();
+                  });
                 },
                 child: Container(
-                  width: 48,
-                  height: 48,
+                  width: 50,
+                  height: 50,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                        colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)]),
+                    color: Colors.black.withValues(alpha: 0.4),
                     shape: BoxShape.circle,
+                    border: Border.all(
+                        color: const Color(0xFFFF6B00), width: 1.5),
                     boxShadow: [
                       BoxShadow(
-                          color: const Color(0xFF8B5CF6).withValues(alpha: 0.4),
-                          blurRadius: 12)
+                          color: const Color(0xFFFF6B00).withValues(alpha: 0.2),
+                          blurRadius: 10)
                     ],
                   ),
-                  child: const Icon(Icons.star, color: Colors.white, size: 22),
+                  child: const Icon(Icons.star, color: Color(0xFFFF6B00), size: 24),
                 ),
               ),
-              // Knock Button
+              const SizedBox(width: 24),
+              // Knock Button (Heart)
               GestureDetector(
                 onTap: () => _onSwipeRight(current),
                 child: Container(
@@ -3553,17 +3772,17 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   height: 60,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                        colors: [Color(0xFF00E5FF), Color(0xFF3B4CCA)]),
+                        colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)]),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
                           color:
-                              const Color(0xFF00E5FF).withValues(alpha: 0.35),
+                              const Color(0xFFFF6B00).withValues(alpha: 0.35),
                           blurRadius: 14)
                     ],
                   ),
-                  child: const Icon(Icons.front_hand,
-                      color: Colors.white, size: 26),
+                  child: const Icon(Icons.favorite,
+                      color: Colors.white, size: 28),
                 ),
               ),
             ],
@@ -3579,129 +3798,119 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       onTap: () => _showFullProfile(p),
       child: Container(
         decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-              color: const Color(0xFF00E5FF)
-                  .withValues(alpha: isBackground ? 0.05 : 0.15),
-              blurRadius: 24),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            _buildSafeImage(p['avatar'],
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    Container(color: const Color(0xFF1a1a2e))),
-            // Bottom gradient overlay
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                height: 260,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.95)
-                    ],
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+                color: const Color(0xFFFF6B00)
+                    .withValues(alpha: isBackground ? 0.05 : 0.15),
+                blurRadius: 24),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _buildSafeImage(p['avatar'],
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      Container(color: const Color(0xFF1a1a2e))),
+              // Bottom gradient overlay
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 320,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.5),
+                        Colors.black.withValues(alpha: 0.95)
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            // Info
-            Positioned(
-              bottom: 80,
-              left: 24,
-              right: 24,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text('${p['name']}, ',
-                          style: const TextStyle(
-                              fontSize: 28, fontWeight: FontWeight.w800)),
-                      Text('${p['age']}',
-                          style: const TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w300,
-                              color: Colors.white70)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on,
-                          color: Color(0xFF00E5FF), size: 14),
-                      const SizedBox(width: 4),
-                      Text(p['city'] ?? p['location'] ?? '',
-                          style: const TextStyle(
-                              color: Colors.white60, fontSize: 13)),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8)),
-                        child: Text('${_getDisplayDistance(p)} away',
-                            style: const TextStyle(
-                                color: Colors.white54, fontSize: 11)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(p['bio'] ?? '',
-                      style:
-                          const TextStyle(color: Colors.white54, fontSize: 13),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8, runSpacing: 8,
-                    children: ((p['interests'] as List?) ?? [])
-                        .take(4)
-                        .map<Widget>((t) => _buildPill(t.toString(), isInterest: true, isSmall: true))
-                        .toList(),
-                  ),
-                ],
-              ),
-            ),
-            // Top-right distance badge
-            Positioned(
-              top: 16,
-              right: 16,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(16)),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
+              // Info
+              Positioned(
+                bottom: 20,
+                left: 20,
+                right: 20,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.info_outline, color: Colors.white70, size: 14),
-                    SizedBox(width: 4),
-                    Text('Profile',
-                        style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600)),
+                    Row(
+                      children: [
+                        Text('${p['name'] ?? 'User'}, ',
+                            style: const TextStyle(
+                                fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                        Text('${p['age'] ?? ''}',
+                            style: const TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.w300,
+                                color: Colors.white70)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on,
+                            color: Color(0xFFFF6B00), size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${_getDisplayDistance(p)} miles · ${p['city'] ?? 'Brooklyn, NY'}',
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(p['bio'] ?? '',
+                        style:
+                            const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 12),
+                    // Orange-outlined interest tags inside card
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: ((p['interests'] as List?) ?? [])
+                          .take(3)
+                          .map<Widget>((t) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: const Color(0xFFFF6B00),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  t.toString(),
+                                  style: const TextStyle(
+                                    color: Color(0xFFFF6B00),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ))
+                          .toList(),
+                    ),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ));
+    );
   }
 
   Widget _buildMatchOverlay() {
@@ -3715,9 +3924,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             // Sparkling header
             ShaderMask(
               shaderCallback: (bounds) => const LinearGradient(colors: [
-                Color(0xFF00E5FF),
-                Color(0xFF8B5CF6),
-                Color(0xFFEC4899)
+                Color(0xFFFF6B00),
+                Color(0xFFFF7E40),
+                Color(0xFFFF3D00)
               ]).createShader(bounds),
               child: const Text("It's a Match! ??",
                   style: TextStyle(
@@ -3739,10 +3948,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border:
-                        Border.all(color: const Color(0xFF00E5FF), width: 3),
+                        Border.all(color: const Color(0xFFFF6B00), width: 3),
                     boxShadow: [
                       BoxShadow(
-                          color: const Color(0xFF00E5FF).withValues(alpha: 0.4),
+                          color: const Color(0xFFFF6B00).withValues(alpha: 0.4),
                           blurRadius: 20)
                     ],
                   ),
@@ -3756,10 +3965,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                      color: const Color(0xFFEC4899).withValues(alpha: 0.2),
+                      color: const Color(0xFFFF3D00).withValues(alpha: 0.2),
                       shape: BoxShape.circle),
                   child: const Icon(Icons.favorite,
-                      color: Color(0xFFEC4899), size: 28),
+                      color: Color(0xFFFF3D00), size: 28),
                 ),
                 const SizedBox(width: 24),
                 Container(
@@ -3768,10 +3977,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border:
-                        Border.all(color: const Color(0xFF8B5CF6), width: 3),
+                        Border.all(color: const Color(0xFFFF7E40), width: 3),
                     boxShadow: [
                       BoxShadow(
-                          color: const Color(0xFF8B5CF6).withValues(alpha: 0.4),
+                          color: const Color(0xFFFF7E40).withValues(alpha: 0.4),
                           blurRadius: 20)
                     ],
                   ),
@@ -3818,11 +4027,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 height: 56,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                      colors: [Color(0xFF00E5FF), Color(0xFF3B4CCA)]),
+                      colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)]),
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                        color: const Color(0xFF00E5FF).withValues(alpha: 0.4),
+                        color: const Color(0xFFFF6B00).withValues(alpha: 0.4),
                         blurRadius: 16)
                   ],
                 ),
@@ -4096,7 +4305,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               child: Column(
                                 children: [
                                   SizedBox(height: 16),
-                                  Icon(Icons.favorite, color: Color(0xFFEC4899), size: 40),
+                                  Icon(Icons.favorite, color: Color(0xFFFF3D00), size: 40),
                                   SizedBox(height: 12),
                                   Text('Compliment Sent!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                                   SizedBox(height: 8),
@@ -4154,10 +4363,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 14),
                                   decoration: BoxDecoration(
-                                    gradient: const LinearGradient(colors: [Color(0xFFEC4899), Color(0xFF8B5CF6)]),
+                                    gradient: const LinearGradient(colors: [Color(0xFFFF3D00), Color(0xFFFF7E40)]),
                                     borderRadius: BorderRadius.circular(12),
                                     boxShadow: [
-                                      BoxShadow(color: const Color(0xFFEC4899).withValues(alpha: 0.3), blurRadius: 8),
+                                      BoxShadow(color: const Color(0xFFFF3D00).withValues(alpha: 0.3), blurRadius: 8),
                                     ],
                                   ),
                                   alignment: Alignment.center,
@@ -4287,13 +4496,13 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           padding: const EdgeInsets.symmetric(vertical: 18),
                           decoration: BoxDecoration(
                               gradient: const LinearGradient(colors: [
-                                Color(0xFF00E5FF),
+                                Color(0xFFFF6B00),
                                 Color(0xFF3B82F6)
                               ]),
                               borderRadius: BorderRadius.circular(24),
                               boxShadow: [
                                 BoxShadow(
-                                    color: const Color(0xFF00E5FF).withValues(alpha: 0.4),
+                                    color: const Color(0xFFFF6B00).withValues(alpha: 0.4),
                                     blurRadius: 16,
                                     offset: const Offset(0, 6))
                               ]),
@@ -4357,7 +4566,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         children: [
           Row(
             children: [
-              Icon(icon, color: const Color(0xFF00E5FF), size: 18),
+              Icon(icon, color: const Color(0xFFFF6B00), size: 18),
               const SizedBox(width: 8),
               Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
             ],
@@ -4372,21 +4581,21 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   Widget _buildDetailRow(IconData icon, String text, {String? subtitle}) {
     Color iconColor = Colors.white54;
     if (icon == Icons.location_on_outlined) {
-      iconColor = const Color(0xFF00E5FF);
+      iconColor = const Color(0xFFFF6B00);
     } else if (icon == Icons.height) { iconColor = const Color(0xFFFACC15); }
-    else if (icon == Icons.person_outline) { iconColor = const Color(0xFFEC4899); }
+    else if (icon == Icons.person_outline) { iconColor = const Color(0xFFFF3D00); }
     else if (icon == Icons.search) { iconColor = const Color(0xFF3B82F6); }
     else if (icon == Icons.wine_bar_outlined) { iconColor = const Color(0xFFEF4444); }
     else if (icon == Icons.smoking_rooms_outlined) { iconColor = const Color(0xFF9CA3AF); }
     else if (icon == Icons.grass_outlined) { iconColor = const Color(0xFF10B981); }
     else if (icon == Icons.fitness_center_outlined) { iconColor = const Color(0xFFF97316); }
     else if (icon == Icons.restaurant_outlined) { iconColor = const Color(0xFFEAB308); }
-    else if (icon == Icons.school_outlined) { iconColor = const Color(0xFF8B5CF6); }
+    else if (icon == Icons.school_outlined) { iconColor = const Color(0xFFFF7E40); }
     else if (icon == Icons.work_outline) { iconColor = const Color(0xFF06B6D4); }
     else if (icon == Icons.auto_awesome_outlined) { iconColor = const Color(0xFFD946EF); }
     else if (icon == Icons.church_outlined) { iconColor = const Color(0xFF38D9A9); }
     else if (icon == Icons.favorite_border) { iconColor = const Color(0xFFF43F5E); }
-    else { iconColor = const Color(0xFF00E5FF); }
+    else { iconColor = const Color(0xFFFF6B00); }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -4428,17 +4637,17 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       final lower = text.toLowerCase();
       if (lower.contains('study')) { icon = Icons.menu_book; pillColor = const Color(0xFF3B82F6); }
       else if (lower.contains('fit') || lower.contains('gym')) { icon = Icons.fitness_center; pillColor = const Color(0xFFEF4444); }
-      else if (lower.contains('music')) { icon = Icons.music_note; pillColor = const Color(0xFF8B5CF6); }
+      else if (lower.contains('music')) { icon = Icons.music_note; pillColor = const Color(0xFFFF7E40); }
       else if (lower.contains('start') || lower.contains('busin')) { icon = Icons.rocket_launch; pillColor = const Color(0xFFF59E0B); }
       else if (lower.contains('travel')) { icon = Icons.flight; pillColor = const Color(0xFF06B6D4); }
       else if (lower.contains('game') || lower.contains('gaming')) { icon = Icons.sports_esports; pillColor = const Color(0xFF10B981); }
-      else if (lower.contains('photo')) { icon = Icons.camera_alt; pillColor = const Color(0xFFEC4899); }
+      else if (lower.contains('photo')) { icon = Icons.camera_alt; pillColor = const Color(0xFFFF3D00); }
       else if (lower.contains('cook') || lower.contains('food')) { icon = Icons.restaurant; pillColor = const Color(0xFFF97316); }
       else if (lower.contains('art') || lower.contains('paint')) { icon = Icons.palette; pillColor = const Color(0xFFD946EF); }
       else if (lower.contains('tech') || lower.contains('code')) { icon = Icons.memory; pillColor = const Color(0xFF6366F1); }
       else if (lower.contains('dance')) { icon = Icons.nightlife; pillColor = const Color(0xFFEAB308); }
       else if (lower.contains('read') || lower.contains('book')) { icon = Icons.auto_stories; pillColor = const Color(0xFF14B8A6); }
-      else { icon = Icons.local_fire_department; pillColor = const Color(0xFF00E5FF); }
+      else { icon = Icons.local_fire_department; pillColor = const Color(0xFFFF6B00); }
       
       bgColor = pillColor.withValues(alpha: 0.15);
       borderColor = pillColor.withValues(alpha: 0.4);
@@ -4548,7 +4757,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           },
                           child: const Text('Apply',
                               style: TextStyle(
-                                  color: Color(0xFF00E5FF),
+                                  color: Color(0xFFFF6B00),
                                   fontWeight: FontWeight.bold))),
                     ],
                   ),
@@ -4564,7 +4773,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               ? 'Anywhere'
                               : '${_filterDistance.toInt()} km',
                           style: const TextStyle(
-                              color: Color(0xFF00E5FF),
+                              color: Color(0xFFFF6B00),
                               fontWeight: FontWeight.bold)),
                     ],
                   ),
@@ -4573,7 +4782,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       min: 5,
                       max: 100,
                       divisions: 19,
-                      activeColor: const Color(0xFF00E5FF),
+                      activeColor: const Color(0xFFFF6B00),
                       inactiveColor: Colors.white10,
                       onChanged: (v) {
                         setModalState(() => _filterDistance = v);
@@ -4677,14 +4886,14 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                   content: Text('Connection accepted! ??'),
-                                  backgroundColor: Color(0xFF3B4CCA)));
+                                  backgroundColor: Color(0xFFFF8A00)));
                         },
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
                               gradient: const LinearGradient(colors: [
-                                Color(0xFF00E5FF),
-                                Color(0xFF3B4CCA)
+                                Color(0xFFFF6B00),
+                                Color(0xFFFF8A00)
                               ]),
                               borderRadius: BorderRadius.circular(20)),
                           child: const Center(
@@ -4716,7 +4925,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                         content: Text('Meetra Premium Activated! ?'),
-                        backgroundColor: Color(0xFF8B5CF6)));
+                        backgroundColor: Color(0xFFFF7E40)));
                     _showIncomingKnock(); // re-open popup now that premium is active
                   },
                   child: Container(
@@ -4724,7 +4933,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                          colors: [Color(0xFFE11D48), Color(0xFF8B5CF6)]),
+                          colors: [Color(0xFFE11D48), Color(0xFFFF7E40)]),
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
@@ -4772,7 +4981,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 // (MarketplaceScreen was replaced by ExperienceScreen module)
 
 // ----------------------------------------------------
-// 2. EXPLORE SCREEN (Actually the "Rush-In Live" feed mapped to Middle)
+// 2. EXPLORE SCREEN — "Active / Inactive" Ecosystem
 // ----------------------------------------------------
 class ExploreScreen extends StatefulWidget {
   final VoidCallback onCreateTap;
@@ -4781,788 +4990,1046 @@ class ExploreScreen extends StatefulWidget {
   State<ExploreScreen> createState() => _ExploreScreenState();
 }
 
-class _ExploreScreenState extends State<ExploreScreen> {
+class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateMixin {
   final _currentUid = Supabase.instance.client.auth.currentUser?.id;
-  Set<String> _hiddenIds = {};
-  Set<String> _requestedIds = {};
-  Set<String> _approvedIds = {};
-  bool _isLoadingState = true;
-  String _activeFilter = 'Trending';
-  double? _myLat;
-  double? _myLng;
-  String _myCity = '';
+  bool _isLoading = true;
 
-  // Haversine formula to compute distance in km between two lat/lng
-  static double _haversineKm(
-      double lat1, double lng1, double lat2, double lng2) {
-    const r = 6371.0; // Earth radius in km
-    final dLat = (lat2 - lat1) * 3.141592653589793 / 180;
-    final dLng = (lng2 - lng1) * 3.141592653589793 / 180;
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(lat1 * 3.141592653589793 / 180) *
-            math.cos(lat2 * 3.141592653589793 / 180) *
-            math.sin(dLng / 2) *
-            math.sin(dLng / 2);
-    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    return r * c;
-  }
+  List<Map<String, dynamic>> _activeUsers = [];
+  List<Map<String, dynamic>> _inactiveUsers = [];
+
+  // Activities mapping for the "What's the move?" picker
+  static const List<Map<String, dynamic>> _activities = [
+    {'label': 'COFFEE', 'emoji': '☕', 'msg': "hang for coffee?"},
+    {'label': 'FOOD', 'emoji': '🍕', 'msg': "hang for food?"},
+    {'label': 'BIRYANI', 'emoji': '🍛', 'msg': "hang for biryani?"},
+    {'label': 'BEER', 'emoji': '🍺', 'msg': "hang for a beer?"},
+    {'label': 'CHAI', 'emoji': '🍵', 'msg': "hang for chai?"},
+    {'label': 'STREET', 'emoji': '🌮', 'msg': "hang for street food?"},
+    {'label': 'DRINKS', 'emoji': '🍸', 'msg': "hang for drinks?"},
+    {'label': 'SUTTA', 'emoji': '🚬', 'msg': "hang for sutta?"},
+    {'label': 'SHOPPING', 'emoji': '🛍️', 'msg': "hang for shopping?"},
+    {'label': 'MOVIES', 'emoji': '🍿', 'msg': "hang for a movie?"},
+    {'label': 'GAMING', 'emoji': '🎮', 'msg': "hang for gaming?"},
+    {'label': 'CHILL', 'emoji': '🎶', 'msg': "just hang?"},
+  ];
+
+  static const List<Map<String, dynamic>> _times = [
+    {'id': 'now', 'label': 'NOW', 'icon': '⚡'},
+    {'id': '30m', 'label': '+30 MIN', 'icon': '🕐'},
+    {'id': '1h', 'label': '+1 HR', 'icon': '⏰'},
+    {'id': '6pm', 'label': '6 PM', 'icon': '🌇'},
+  ];
+
+  StreamSubscription<List<Map<String, dynamic>>>? _profilesSubscription;
 
   @override
   void initState() {
     super.initState();
-    _loadDiscoveryState();
-    // Listen to global location changes for live feed updates
-    locationService.coordinatesUpdateNotifier.addListener(_loadDiscoveryState);
+    _checkFreshUser();
+    _loadProfiles();
+    locationService.activeLocationNotifier.addListener(_loadProfiles);
+  }
+
+  Future<void> _checkFreshUser() async {
+    final uid = _currentUid;
+    if (uid == null) return;
+    try {
+      final res = await Supabase.instance.client.from('profiles').select('explore_first_visited_at, visibility').eq('id', uid).maybeSingle();
+      if (res != null && res['explore_first_visited_at'] == null) {
+         await Supabase.instance.client.from('profiles').update({
+            'explore_first_visited_at': DateTime.now().toUtc().toIso8601String(),
+            'visibility': 'inactive',
+            'visibility_updated_at': DateTime.now().toUtc().toIso8601String(),
+         }).eq('id', uid);
+      }
+    } catch (_) {}
   }
 
   @override
   void dispose() {
-    locationService.coordinatesUpdateNotifier.removeListener(_loadDiscoveryState);
+    _profilesSubscription?.cancel();
+    locationService.activeLocationNotifier.removeListener(_loadProfiles);
     super.dispose();
   }
 
-  Future<void> _loadDiscoveryState() async {
-    if (_currentUid == null) {
-      setState(() => _isLoadingState = false);
-      return;
+  void _loadProfiles() {
+    if (_currentUid == null) { setState(() => _isLoading = false); return; }
+    
+    final activeDistrict = locationService.activeDistrict.isNotEmpty ? locationService.activeDistrict : 'Unknown';
+
+    _profilesSubscription?.cancel();
+    
+    if (activeDistrict == 'Unknown') {
+       if (mounted) setState(() { _activeUsers = []; _inactiveUsers = []; _isLoading = false; });
+       return;
     }
+
+    setState(() => _isLoading = true);
+
+    _profilesSubscription = Supabase.instance.client
+        .from('profiles')
+        .stream(primaryKey: ['id'])
+        .listen((data) {
+      final now = DateTime.now().toUtc();
+      final List<Map<String, dynamic>> act = [], inact = [];
+
+      final searchCity = activeDistrict.toLowerCase().trim();
+      final centerLat = locationService.activeLat ?? 0;
+      final centerLng = locationService.activeLng ?? 0;
+
+      for (final p in data) {
+        if (p['id'] == _currentUid) continue;
+
+        final dbCity = (p['city']?.toString() ?? '').toLowerCase().trim();
+        
+        bool isNearby = false;
+        if (searchCity.isNotEmpty && dbCity.contains(searchCity)) {
+          isNearby = true;
+        } else if (centerLat != 0 && centerLng != 0 && p['lat'] != null && p['lng'] != null) {
+          final profileLat = double.tryParse(p['lat'].toString()) ?? 0;
+          final profileLng = double.tryParse(p['lng'].toString()) ?? 0;
+          if (locationService.calculateDistanceInKm(centerLat, centerLng, profileLat, profileLng) <= 50) {
+            isNearby = true;
+          }
+        }
+
+        if (!isNearby) continue;
+
+        final visibility = p['visibility']?.toString() ?? 'inactive';
+        
+        final profile = {
+          'id': p['id'], 'name': p['name'] ?? p['full_name'] ?? 'User',
+          'age': p['age'] ?? 22, 'avatar_url': p['avatar_url'] ?? '',
+          'bio': p['bio'] ?? '', 'city': p['city'] ?? '',
+          'distance_km': p['distance_km'] ?? 0,
+          'visibility_updated_at': p['visibility_updated_at'] ?? p['updated_at'] ?? '',
+          'visibility': visibility,
+          'explore_status': p['explore_status'] ?? '',
+        };
+        
+        if (visibility == 'active') { act.add(profile); }
+        else { inact.add(profile); }
+      }
+
+      act.sort((a, b) => (b['visibility_updated_at']?.toString() ?? '').compareTo(a['visibility_updated_at']?.toString() ?? ''));
+      inact.sort((a, b) => (b['visibility_updated_at']?.toString() ?? '').compareTo(a['visibility_updated_at']?.toString() ?? ''));
+
+      if (mounted) setState(() { _activeUsers = act; _inactiveUsers = inact; _isLoading = false; });
+    }, onError: (e) {
+      debugPrint('ExploreScreen stream error: $e');
+      if (mounted) setState(() => _isLoading = false);
+    });
+  }
+
+  Future<void> _refreshProfiles() async {
+    _loadProfiles();
+    await Future.delayed(const Duration(milliseconds: 600));
+  }
+
+  Future<void> _showVisibilitySettings(BuildContext context) async {
+    final uid = _currentUid;
+    if (uid == null) return;
+    
+    String currentVisibility = 'inactive';
+    String currentStatus = '';
     try {
-      // Load hidden, requested, and approved IDs
-      final hidden = await Supabase.instance.client
-          .from('hidden_feed')
-          .select('rush_in_id')
-          .eq('user_id', _currentUid!);
-      final requested = await Supabase.instance.client
-          .from('requests')
-          .select('target_id, status')
-          .eq('sender_id', _currentUid!)
-          .eq('target_type', 'activity');
-      final profile = await Supabase.instance.client
-          .from('profiles')
-          .select('lat, lng, city')
-          .eq('id', _currentUid!)
-          .maybeSingle();
+      final res = await Supabase.instance.client.from('profiles').select('visibility, explore_status').eq('id', uid).maybeSingle();
+      if (res != null) {
+        if (res['visibility'] == 'active') {
+          currentVisibility = 'active';
+        }
+        currentStatus = res['explore_status']?.toString() ?? '';
+      }
+    } catch (_) {}
 
-      if (mounted) {
-        setState(() {
-          _hiddenIds = hidden.map((r) => r['rush_in_id'].toString()).toSet();
+    if (!context.mounted) return;
+    
+    final controller = TextEditingController(text: currentStatus);
 
-          _requestedIds = {};
-          _approvedIds = {};
-          for (final r in requested) {
-            final tid = r['target_id'].toString();
-            if (r['status'] == 'approved') {
-              _approvedIds.add(tid);
-            }
-            _requestedIds.add(tid);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final isVisible = currentVisibility == 'active';
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Container(
+              height: 450,
+              decoration: BoxDecoration(
+                color: const Color(0xFF131313).withValues(alpha: 0.95),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1)),
+              ),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(top: 12),
+                          width: 40, height: 4,
+                          decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                        ),
+                        const SizedBox(height: 24),
+                        Text('Explore Settings', style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        Text(isVisible ? 'You are Active' : 'You are Inactive', style: GoogleFonts.inter(color: isVisible ? const Color(0xFF17C964) : Colors.white54, fontSize: 14, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 24),
+                        
+                        Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () async {
+                                  if (currentVisibility == 'active') return;
+                                  setSheetState(() => currentVisibility = 'active');
+                                  final currentCity = locationService.activeDistrict.isNotEmpty ? locationService.activeDistrict : 'Unknown';
+                                  await Supabase.instance.client.from('profiles').update({
+                                    'visibility': 'active',
+                                    'visibility_updated_at': DateTime.now().toUtc().toIso8601String(),
+                                    'city': currentCity,
+                                  }).eq('id', uid);
+                                },
+                                child: AnimatedContainer(
+                                  duration: 200.ms,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  decoration: BoxDecoration(
+                                    color: isVisible ? const Color(0xFF17C964).withValues(alpha: 0.1) : const Color(0xFF1C1C1C),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: isVisible ? const Color(0xFF17C964) : Colors.transparent, width: 2),
+                                  ),
+                                  child: Center(child: Text('Active', style: GoogleFonts.inter(color: isVisible ? Colors.white : Colors.white54, fontWeight: FontWeight.bold))),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () async {
+                                  if (currentVisibility == 'inactive') return;
+                                  setSheetState(() => currentVisibility = 'inactive');
+                                  final currentCity = locationService.activeDistrict.isNotEmpty ? locationService.activeDistrict : 'Unknown';
+                                  await Supabase.instance.client.from('profiles').update({
+                                    'visibility': 'inactive',
+                                    'visibility_updated_at': DateTime.now().toUtc().toIso8601String(),
+                                    'city': currentCity,
+                                  }).eq('id', uid);
+                                },
+                                child: AnimatedContainer(
+                                  duration: 200.ms,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  decoration: BoxDecoration(
+                                    color: !isVisible ? Colors.white.withValues(alpha: 0.1) : const Color(0xFF1C1C1C),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: !isVisible ? Colors.white54 : Colors.transparent, width: 2),
+                                  ),
+                                  child: Center(child: Text('Inactive', style: GoogleFonts.inter(color: !isVisible ? Colors.white : Colors.white54, fontWeight: FontWeight.bold))),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 24),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('YOUR VIEW', style: GoogleFonts.inter(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1C1C1C),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: TextField(
+                            controller: controller,
+                            style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
+                            maxLines: 1,
+                            decoration: InputDecoration(
+                              hintText: 'what are you exploring here?',
+                              hintStyle: GoogleFonts.inter(color: Colors.white30, fontSize: 14),
+                              border: InputBorder.none,
+                            ),
+                          ),
+                        ),
+                        
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () async {
+                            final statusText = controller.text.trim();
+                            try {
+                              await Supabase.instance.client.from('profiles').update({
+                                'explore_status': statusText,
+                              }).eq('id', uid);
+                              if (ctx.mounted) {
+                                Navigator.pop(ctx);
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  const SnackBar(content: Text('Settings saved!'), backgroundColor: Color(0xFF17C964)),
+                                );
+                              }
+                            } catch (e) {
+                              debugPrint('Error saving settings: $e');
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                                );
+                              }
+                            }
+                          },
+                          child: Container(
+                            width: double.infinity, height: 56,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF17C964),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF17C964).withValues(alpha: 0.3),
+                                  blurRadius: 20, offset: const Offset(0, 8)
+                                )
+                              ]
+                            ),
+                            child: Center(
+                              child: Text('Save Settings', style: GoogleFonts.inter(color: Colors.black, fontSize: 16, fontWeight: FontWeight.w800)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+      ),
+    );
+  }
+
+  void _showProfileDetailOverlay(Map<String, dynamic> profile) {
+    final name = profile['name'] ?? 'User';
+    final avatarUrl = profile['avatar_url']?.toString() ?? '';
+    final status = profile['explore_status']?.toString().isNotEmpty == true 
+        ? profile['explore_status'].toString() 
+        : 'Just exploring around!';
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.8),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            decoration: BoxDecoration(
+              color: const Color(0xFF131313).withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 40,
+                  spreadRadius: 10,
+                )
+              ]
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Glowing Circle Avatar
+                Container(
+                  width: 120, height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF17C964), width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF17C964).withValues(alpha: 0.25),
+                        blurRadius: 25, spreadRadius: 4
+                      )
+                    ],
+                  ),
+                  child: Container(
+                    margin: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      image: avatarUrl.isNotEmpty 
+                          ? DecorationImage(image: NetworkImage(avatarUrl), fit: BoxFit.cover) 
+                          : null,
+                      color: const Color(0xFF2A2A2A),
+                    ),
+                    child: avatarUrl.isEmpty 
+                        ? const Icon(Icons.person, color: Colors.white54, size: 55) 
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                
+                // Name
+                Text(
+                  name,
+                  style: GoogleFonts.inter(
+                    color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5
+                  ),
+                ),
+                const SizedBox(height: 24),
+                
+                // "Why I am here" Card
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1C1C1C),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Why I am here',
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF17C964), fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.5
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '"$status"',
+                        style: GoogleFonts.inter(
+                          color: Colors.white70, fontSize: 15, height: 1.4, fontStyle: FontStyle.italic
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+                
+                // Pulsing Green Hangout Button
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showWhatsTheMoveSheet(profile);
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 68, height: 68,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF17C964),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF17C964).withValues(alpha: 0.35),
+                              blurRadius: 20, spreadRadius: 2
+                            )
+                          ],
+                        ),
+                        child: const Icon(Icons.forum_rounded, color: Colors.black, size: 28),
+                      ).animate(onPlay: (c) => c.repeat()).scale(
+                        begin: const Offset(1, 1), end: const Offset(1.05, 1.05),
+                        duration: 1200.ms, curve: Curves.easeInOut
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'HANG OUT',
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF17C964), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2.0
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showWhatsTheMoveSheet(Map<String, dynamic> profile) {
+    final name = (profile['name'] ?? 'User').toString().split(' ')[0];
+    final avatarUrl = profile['avatar_url']?.toString() ?? '';
+    final profileId = profile['id']?.toString() ?? '';
+
+    int? selectedActivityIdx;
+    String selectedTimeId = 'now';
+    bool showConfirmation = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          // --- STEP 2: CONFIRMATION SCREEN ---
+          if (showConfirmation && selectedActivityIdx != null) {
+            final activity = _activities[selectedActivityIdx!];
+            final timeObj = _times.firstWhere((t) => t['id'] == selectedTimeId);
+            final timeStr = selectedTimeId == 'now' ? 'right now' : (timeObj['label'] as String).toLowerCase();
+
+            return Container(
+              height: MediaQuery.of(ctx).size.height * 0.7,
+              decoration: BoxDecoration(
+                color: const Color(0xFF131313).withValues(alpha: 0.95),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1)),
+              ),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('READY', style: GoogleFonts.inter(color: const Color(0xFFF5A524), fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                          const Padding(padding: EdgeInsets.symmetric(horizontal: 8.0), child: Icon(Icons.play_arrow_rounded, color: Colors.white54, size: 16)),
+                          Text('SEND', style: GoogleFonts.inter(color: const Color(0xFFF5A524), fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                        ],
+                      ),
+                      const Spacer(flex: 2),
+                      SizedBox(
+                        height: 120,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              width: 80, height: 80,
+                              decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
+                                BoxShadow(color: const Color(0xFF17C964).withValues(alpha: 0.2), blurRadius: 60, spreadRadius: 20)
+                              ]),
+                            ),
+                            Text(activity['emoji'] as String, style: const TextStyle(fontSize: 80))
+                              .animate(onPlay: (c) => c.repeat(reverse: true))
+                              .slideY(begin: 0, end: -0.1, duration: 1500.ms, curve: Curves.easeInOut)
+                              .scale(begin: const Offset(1, 1), end: const Offset(1.05, 1.05), duration: 1500.ms),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      Text(activity['msg'] as String, style: GoogleFonts.inter(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                      const SizedBox(height: 16),
+                      Text(timeStr, style: GoogleFonts.inter(color: const Color(0xFFF5A524), fontSize: 16, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('to ', style: GoogleFonts.inter(color: Colors.white54, fontSize: 16)),
+                          Text(name, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const Spacer(flex: 3),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: GestureDetector(
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            try {
+                              // Delete any existing hangout request between these two users to avoid clashes
+                              try {
+                                await Supabase.instance.client
+                                    .from('requests')
+                                    .delete()
+                                    .eq('target_type', 'hangout')
+                                    .or('and(sender_id.eq.$_currentUid,target_id.eq.$profileId),and(sender_id.eq.$profileId,target_id.eq.$_currentUid)');
+                              } catch (_) {}
+
+                              // Insert the premium Hangout invite message
+                              await Supabase.instance.client.from('messages').insert({
+                                'sender_id': _currentUid,
+                                'receiver_id': profileId,
+                                'text': '⚡HANGOUT_INVITE|${activity["emoji"]}|${activity["msg"]}|$timeStr',
+                                'is_image': false,
+                              });
+
+                              // Insert a pending hangout request in requests table
+                              await Supabase.instance.client.from('requests').insert({
+                                'sender_id': _currentUid,
+                                'target_id': profileId,
+                                'target_type': 'hangout',
+                                'status': 'pending',
+                              });
+
+                              // Send push/system notification about the premium hangout invite
+                              try {
+                                await NotificationService.sendNotification(
+                                  userId: profileId,
+                                  type: NotificationType.message,
+                                  title: '⚡ New Hangout Invite!',
+                                  body: 'Invited you to hang out for: ${activity["msg"]}',
+                                  payload: {'sender_id': _currentUid},
+                                );
+                              } catch (err) {
+                                debugPrint('Hangout notification failed: $err');
+                              }
+
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text('Sent to $name!'), backgroundColor: const Color(0xFF17C964)));
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text('Failed: $e'), backgroundColor: Colors.red));
+                              }
+                            }
+                          },
+                          child: Container(
+                            width: double.infinity, height: 60,
+                            decoration: BoxDecoration(color: const Color(0xFF17C964), borderRadius: BorderRadius.circular(20),
+                              boxShadow: [BoxShadow(color: const Color(0xFF17C964).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 8))]
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text('send to $name', style: GoogleFonts.inter(color: Colors.black, fontSize: 18, fontWeight: FontWeight.w800)),
+                                const SizedBox(width: 8),
+                                const Icon(Icons.arrow_outward_rounded, color: Colors.black, size: 20),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      GestureDetector(
+                        onTap: () => setSheetState(() => showConfirmation = false),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.arrow_back_rounded, color: Colors.white54, size: 16),
+                            const SizedBox(width: 4),
+                            Text('change', style: GoogleFonts.inter(color: Colors.white54, fontSize: 16, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
+            );
           }
 
-          // Load user's current selected location from Service
-          _myLat = locationService.activeLat;
-          _myLng = locationService.activeLng;
-          _myCity = locationService.activeLocation.toLowerCase().trim();
-
-          _isLoadingState = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isLoadingState = false);
-    }
-  }
-
-  Future<void> _hideFromFeed(String activityId) async {
-    setState(() => _hiddenIds.add(activityId));
-    try {
-      await Supabase.instance.client.from('hidden_feed').insert({
-        'user_id': _currentUid,
-        'rush_in_id': activityId,
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _requestToJoin(Map<String, dynamic> act) async {
-    final actId = act['id'].toString();
-    final hostId = act['user_id'].toString();
-    if (_requestedIds.contains(actId)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Already requested!'), backgroundColor: Colors.amber));
-      return;
-    }
-    try {
-      // 1. Get requester's profile
-      final profile = await Supabase.instance.client
-          .from('profiles')
-          .select('name')
-          .eq('id', _currentUid!)
-          .maybeSingle();
-      final senderName = profile?['name'] ?? 'Someone';
-
-      // 2. Insert request
-      await Supabase.instance.client.from('requests').insert({
-        'sender_id': _currentUid,
-        'target_id': act['id'],
-        'target_type': 'activity',
-        'status': 'pending',
-        'message': 'I want to join your Rush-In!',
-      });
-
-      // 3. Notify host via messages
-      await Supabase.instance.client.from('messages').insert({
-        'sender_id': _currentUid,
-        'receiver_id': hostId,
-        'text': '? $senderName wants to join your Rush-In: "${act['title']}"',
-        'is_image': false,
-        'created_at': DateTime.now().toIso8601String(),
-      });
-
-      setState(() => _requestedIds.add(actId));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Request Sent! ? Host will review your profile.'),
-          backgroundColor: Color(0xFF00E5FF),
-        ));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
-      }
-    }
-  }
-
-  void _openDetail(Map<String, dynamic> act) {
-    Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => RushInConsumerDetailView(
-            activity: act,
-            onInteraction: _loadDiscoveryState,
-          ),
-        ));
-  }
-
-  // Compute distance from user to a rush-in (returns null if no coords)
-  double? _distanceToRushIn(Map<String, dynamic> act) {
-    if (_myLat == null || _myLng == null) return null;
-    final actLat = double.tryParse(act['lat']?.toString() ?? '');
-    final actLng = double.tryParse(act['lng']?.toString() ?? '');
-    if (actLat == null || actLng == null) return null;
-    return _haversineKm(_myLat!, _myLng!, actLat, actLng);
-  }
-
-  // Check if user is in the same city/district as the rush-in
-  bool _isSameCity(Map<String, dynamic> act) {
-    if (_myCity.isEmpty) return false;
-    final actCity =
-        (act['location_name']?.toString() ?? '').toLowerCase().trim();
-    return actCity.contains(_myCity) || _myCity.contains(actCity);
-  }
-
-  // Apply visibility + active filter to rush-in list
-  List<Map<String, dynamic>> _applyFilters(List<Map<String, dynamic>> rushIns) {
-    final now = DateTime.now();
-
-    // Step 1: Distance/city visibility gating
-    List<Map<String, dynamic>> visible = rushIns.where((act) {
-      final dist = _distanceToRushIn(act);
-      final radiusKm =
-          double.tryParse(act['radius_km']?.toString() ?? '') ?? 5.0;
-
-      // If we can compute distance, check radius
-      if (dist != null) {
-        if (dist <= radiusKm) return true;
-      }
-
-      // Fallback: same city/district
-      if (_isSameCity(act)) return true;
-
-      // If user has no location, show everything (graceful fallback)
-      if (_myLat == null || _myLng == null) return true;
-
-      return false;
-    }).toList();
-
-    // Step 2: Exclude approved requests (they live in My Join Requests now)
-    visible = visible
-        .where((act) => !_approvedIds.contains(act['id'].toString()))
-        .toList();
-
-    // Step 3: Apply active filter
-    switch (_activeFilter) {
-      case 'Ending Soon':
-        visible = visible.where((act) {
-          if (act['expires_at'] == null) return false;
-          final diff =
-              DateTime.parse(act['expires_at']).toLocal().difference(now);
-          return diff.inHours < 1 && diff.inMinutes > 0;
-        }).toList();
-        visible.sort((a, b) {
-          final aExp = DateTime.parse(a['expires_at']).toLocal();
-          final bExp = DateTime.parse(b['expires_at']).toLocal();
-          return aExp.compareTo(bExp); // Soonest first
-        });
-        break;
-      case 'Under 1km':
-        visible = visible.where((act) {
-          final dist = _distanceToRushIn(act);
-          return dist != null && dist <= 1.0;
-        }).toList();
-        visible.sort((a, b) {
-          final da = _distanceToRushIn(a) ?? 999;
-          final db = _distanceToRushIn(b) ?? 999;
-          return da.compareTo(db);
-        });
-        break;
-      case 'Open Slots':
-        // Show Rush-Ins where participant_limit has not been fully reached
-        // We approximate by checking if there are open slots based on pending+approved count
-        visible = visible.where((act) {
-          final limit =
-              int.tryParse(act['participant_limit']?.toString() ?? '') ?? 100;
-          return limit >
-              0; // All are technically "open" unless we track exact count
-        }).toList();
-        break;
-      case 'Trending':
-      default:
-        // Sort by newest first (most recent activity = trending)
-        visible.sort((a, b) {
-          final aDate =
-              DateTime.tryParse(a['created_at'] ?? '') ?? DateTime(2000);
-          final bDate =
-              DateTime.tryParse(b['created_at'] ?? '') ?? DateTime(2000);
-          return bDate.compareTo(aDate);
-        });
-        break;
-    }
-
-    return visible;
-  }
-
-  String get _filterLabel {
-    switch (_activeFilter) {
-      case 'Ending Soon':
-        return '? ENDING SOON';
-      case 'Under 1km':
-        return '?? UNDER 1KM';
-      case 'Open Slots':
-        return '??? OPEN SLOTS';
-      default:
-        return '? TRENDING';
-    }
-  }
-
-  Color get _filterLabelColor {
-    switch (_activeFilter) {
-      case 'Ending Soon':
-        return const Color(0xFFEAB308);
-      case 'Under 1km':
-        return const Color(0xFF10B981);
-      case 'Open Slots':
-        return const Color(0xFF8B5CF6);
-      default:
-        return const Color(0xFF00E5CC);
-    }
+          // --- STEP 1: ACTIVITY PICKER ---
+          return Container(
+            height: MediaQuery.of(ctx).size.height * 0.85,
+            decoration: BoxDecoration(
+              color: const Color(0xFF131313).withValues(alpha: 0.95),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1)),
+            ),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Column(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 12),
+                      width: 40, height: 4,
+                      decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircleAvatar(
+                          radius: 14, backgroundColor: const Color(0xFF2A2A2A),
+                          backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                        ),
+                        const SizedBox(width: 10),
+                        Text('hang with ', style: GoogleFonts.inter(color: Colors.white70, fontSize: 15)),
+                        Text(name, style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text("what's the ", style: GoogleFonts.inter(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                        Text("move?", style: GoogleFonts.inter(color: const Color(0xFF17C964), fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('ACTIVITIES', style: GoogleFonts.inter(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                      ),
+                    ),
+                    Expanded(
+                      child: GridView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 4, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 0.85,
+                        ),
+                        itemCount: _activities.length,
+                        itemBuilder: (context, i) {
+                          final act = _activities[i];
+                          final isSelected = selectedActivityIdx == i;
+                          return GestureDetector(
+                            onTap: () => setSheetState(() => selectedActivityIdx = i),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                color: isSelected ? const Color(0xFF17C964).withValues(alpha: 0.1) : const Color(0xFF1C1C1C),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: isSelected ? const Color(0xFF17C964) : Colors.transparent, width: 1.5),
+                                boxShadow: isSelected ? [BoxShadow(color: const Color(0xFF17C964).withValues(alpha: 0.2), blurRadius: 10)] : [],
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(act['emoji'] as String, style: const TextStyle(fontSize: 28)),
+                                  const SizedBox(height: 8),
+                                  Text(act['label'] as String, style: GoogleFonts.inter(color: isSelected ? Colors.white : Colors.white54, fontSize: 10, fontWeight: FontWeight.w700)),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('WHEN?', style: GoogleFonts.inter(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      child: Row(
+                        children: _times.map((t) {
+                          final isSelected = selectedTimeId == t['id'];
+                          return Expanded(
+                            child: GestureDetector(
+                              onTap: () => setSheetState(() => selectedTimeId = t['id'] as String),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                margin: const EdgeInsets.symmetric(horizontal: 4),
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? const Color(0xFF17C964).withValues(alpha: 0.1) : const Color(0xFF1C1C1C),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: isSelected ? const Color(0xFF17C964) : Colors.transparent, width: 2),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(t['icon'] as String, style: const TextStyle(fontSize: 24)),
+                                    const SizedBox(height: 8),
+                                    Text(t['label'] as String, style: GoogleFonts.inter(color: isSelected ? Colors.white : Colors.white70, fontSize: 11, fontWeight: FontWeight.w700)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                      child: GestureDetector(
+                        onTap: () {
+                          if (selectedActivityIdx != null) {
+                            setSheetState(() => showConfirmation = true);
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          width: double.infinity, height: 56,
+                          decoration: BoxDecoration(
+                            color: selectedActivityIdx != null ? Colors.white : const Color(0xFF2A2A2A),
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: selectedActivityIdx != null ? [BoxShadow(color: Colors.white.withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 5))] : [],
+                          ),
+                          child: Center(
+                            child: Text(
+                              selectedActivityIdx != null ? 'continue ↑' : 'select an activity',
+                              style: GoogleFonts.inter(
+                                color: selectedActivityIdx != null ? Colors.black : Colors.white38,
+                                fontSize: 16, fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Rush-In Live',
-                        style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white
-                                    : Colors.black)),
-                    Text('Spontaneous meetups happening now',
-                        style: TextStyle(
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white54
-                                    : Colors.black54,
-                            fontSize: 12)),
-                  ],
-                ),
-                Animated3DButton(onPressed: widget.onCreateTap),
-              ],
-            ),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                _buildFilterPill(Icons.whatshot, 'Trending'),
-                _buildFilterPill(Icons.access_time, 'Ending Soon'),
-                _buildFilterPill(Icons.near_me, 'Under 1km'),
-                _buildFilterPill(Icons.people, 'Open Slots'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(_filterLabel,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                        letterSpacing: 1.2,
-                        color: _filterLabelColor)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: _isLoadingState
-                ? const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF00E5CC)))
-                : StreamBuilder<List<Map<String, dynamic>>>(
-                    stream: Supabase.instance.client
-                        .from('activities')
-                        .stream(primaryKey: ['id']).order('created_at',
-                            ascending: false),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(
-                            child: CircularProgressIndicator(
-                                color: Color(0xFF00E5CC)));
-                      }
-                      final now = DateTime.now();
-                      final all = snapshot.data ?? [];
-                      final rushIns = all.where((act) {
-                        if (act['is_rush_in'] != true) return false;
-                        if (act['is_active'] != true) return false;
-                        if (act['user_id'] == _currentUid) return false;
-                        if (_hiddenIds.contains(act['id'].toString())) {
-                          return false;
-                        }
-                        if (act['expires_at'] != null) {
-                          if (!DateTime.parse(act['expires_at'])
-                              .toLocal()
-                              .isAfter(now)) {
-                            return false;
-                          }
-                        }
-                        return true;
-                      }).toList();
-
-                      // Apply distance visibility + filters
-                      final filtered = _applyFilters(rushIns);
-
-                      if (filtered.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.bolt,
-                                  size: 80,
-                                  color: const Color(0xFF00E5CC)
-                                      .withValues(alpha: 0.2)),
-                              const SizedBox(height: 16),
-                              Text(
-                                _activeFilter == 'Under 1km'
-                                    ? 'No Rush-Ins within 1km.'
-                                    : _activeFilter == 'Ending Soon'
-                                        ? 'No Rush-Ins ending soon.'
-                                        : 'No Rush-Ins near you right now.',
-                                style: const TextStyle(
-                                    color: Colors.white54, fontSize: 16),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text('Be the first to spark one! ?',
-                                  style: TextStyle(
-                                      color: Colors.white38, fontSize: 13)),
-                            ],
+          SafeArea(
+            child: RefreshIndicator(
+              color: const Color(0xFF17C964),
+              backgroundColor: const Color(0xFF2A2A2A),
+              onRefresh: _refreshProfiles,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                slivers: [
+                  // Top Header
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // App Title / Brand
+                          Text(
+                            'EXPLORE',
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              fontStyle: FontStyle.italic,
+                              letterSpacing: 1.0,
+                              height: 1.0,
+                            ),
                           ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: filtered.length + 1,
-                        itemBuilder: (context, index) {
-                          if (index == filtered.length) {
-                            return const SizedBox(height: 100);
-                          }
-                          final act = filtered[index];
-                          return _buildRushInCard(act);
-                        },
-                      );
-                    },
+                          
+                          // Glassmorphism Location Pill
+                          ValueListenableBuilder<String>(
+                            valueListenable: locationService.activeDistrictNotifier,
+                            builder: (_, loc, __) {
+                              final displayLoc = loc.isNotEmpty ? loc : 'Nearby';
+                              return GestureDetector(
+                                onTap: () => showLocationSearchSheet(context),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.my_location, color: Color(0xFF17C964), size: 14),
+                                      const SizedBox(width: 8),
+                                      Text('Active in $displayLoc', style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.keyboard_arrow_down, color: Colors.white54, size: 16),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          
+                          // Settings Icon
+                          GestureDetector(
+                            onTap: () => _showVisibilitySettings(context),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.05),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                              ),
+                              child: const Icon(Icons.settings, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
+
+                  if (_isLoading)
+                    const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: Color(0xFF17C964), strokeWidth: 2)))
+                  else if (_activeUsers.isEmpty && _inactiveUsers.isEmpty)
+                    SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withValues(alpha: 0.05),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                              ),
+                              child: const Icon(Icons.radar_rounded, color: Color(0xFF17C964), size: 48),
+                            ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 2000.ms),
+                            const SizedBox(height: 24),
+                            Text('No one around right now', style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 8),
+                            Text('Try exploring a different city', style: GoogleFonts.inter(color: Colors.white54, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    )
+                  else ...[
+                    // Active Users
+                    _sectionHeader('Active', _activeUsers.length, const Color(0xFF17C964)),
+                    _profileGrid(_activeUsers, isActive: true),
+                    
+                    // Inactive Users
+                    _sectionHeader('Inactive', _inactiveUsers.length, Colors.white38),
+                    _profileGrid(_inactiveUsers, isActive: false),
+                    
+                    const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                  ]
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRushInCard(Map<String, dynamic> act) {
-    final actId = act['id'].toString();
-    final isGhost = act['is_ghost_mode'] == true;
-    final title = act['title'] ?? 'Rush-In';
-    final hook = act['hook'] ?? '';
-    final locationName = act['location_name'] ?? 'Nearby';
-    final isRequested = _requestedIds.contains(actId);
-
-    // Time remaining
-    String timeLeft = 'Live Now';
-    if (act['expires_at'] != null) {
-      final diff = DateTime.parse(act['expires_at'])
-          .toLocal()
-          .difference(DateTime.now());
-      if (diff.inHours > 0) {
-        timeLeft = '${diff.inHours}h ${diff.inMinutes % 60}m left';
-      } else {
-        timeLeft = '${diff.inMinutes}m left';
-      }
-    }
-    final isEndingSoon = act['expires_at'] != null &&
-        DateTime.parse(act['expires_at'])
-                .toLocal()
-                .difference(DateTime.now())
-                .inHours <
-            1;
-
-    // Distance badge
-    final dist = _distanceToRushIn(act);
-    String? distText;
-    if (dist != null) {
-      distText = dist < 1
-          ? '${(dist * 1000).round()}m'
-          : '${dist.toStringAsFixed(1)}km';
-    }
-
-    // Host info
-    final hostName = act['host_name'] as String? ??
-        act['user_name'] as String? ??
-        (isGhost ? 'Secret Host' : 'Host');
-    final hostAvatar =
-        act['host_avatar'] as String? ?? act['avatar_url'] as String? ?? '';
-    final lat = double.tryParse(act['lat']?.toString() ?? '');
-    final lng = double.tryParse(act['lng']?.toString() ?? '');
-    const accentColor = Color(0xFF00E5CC);
-    final borderColor = isEndingSoon ? const Color(0xFFFF3D5A) : accentColor;
-
-    return GestureDetector(
-      onTap: () => _openDetail(act),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF10121A),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.4),
-                blurRadius: 14,
-                offset: const Offset(0, 4))
+  Widget _sectionHeader(String title, int count, Color color) {
+    if (count == 0) return const SliverToBoxAdapter(child: SizedBox.shrink());
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(title, style: GoogleFonts.inter(color: color, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+            const SizedBox(width: 8),
+            Text('$count users', style: GoogleFonts.inter(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w500)),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(width: 4, color: borderColor),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Row 1: RUSH-IN pill + time badge
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: accentColor.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                    color: accentColor.withValues(alpha: 0.4)),
-                              ),
-                              child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.bolt,
-                                        color: accentColor, size: 11),
-                                    SizedBox(width: 4),
-                                    Text('RUSH-IN',
-                                        style: TextStyle(
-                                            color: accentColor,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: 0.5)),
-                                  ]),
-                            ),
-                            Row(children: [
-                              Container(
-                                  width: 7,
-                                  height: 7,
-                                  decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: isEndingSoon
-                                          ? Colors.red
-                                          : accentColor)),
-                              const SizedBox(width: 5),
-                              Text(timeLeft,
-                                  style: TextStyle(
-                                      color: isEndingSoon
-                                          ? Colors.red
-                                          : accentColor,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600)),
-                            ]),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        // Title - blurred in ghost mode
-                        isGhost
-                            ? ImageFiltered(
-                                imageFilter:
-                                    ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                child: Text(title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 17)))
-                            : Text(title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 17)),
-                        const SizedBox(height: 6),
-                        if (hook.isNotEmpty)
-                          Text('"$hook"',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: Colors.white60,
-                                  fontSize: 12.5,
-                                  fontStyle: FontStyle.italic,
-                                  height: 1.4)),
-                        const Divider(color: Colors.white12, height: 22),
-                        // Location - blurred in ghost mode
-                        isGhost
-                            ? ImageFiltered(
-                                imageFilter:
-                                    ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                child: _infoChip(Icons.location_on_outlined,
-                                    locationName, const Color(0xFFF87171)))
-                            : GestureDetector(
-                                onTap: lat != null && lng != null
-                                    ? () => _openLocationOnMap(
-                                        lat, lng, locationName)
-                                    : null,
-                                child: _infoChip(Icons.location_on_outlined,
-                                    locationName, const Color(0xFFF87171),
-                                    underline: lat != null && lng != null)),
-                        const SizedBox(height: 12),
-                        // Host row + actions
-                        Row(children: [
-                          GestureDetector(
-                            onTap: isGhost
-                                ? null
-                                : () => _viewHostProfile(
-                                    act['user_id']?.toString() ?? ''),
-                            child: isGhost
-                                ? ImageFiltered(
-                                    imageFilter: ui.ImageFilter.blur(
-                                        sigmaX: 10, sigmaY: 10),
-                                    child: const CircleAvatar(
-                                        radius: 15,
-                                        backgroundColor: Color(0xFF9D4EDD),
-                                        child: Icon(Icons.person,
-                                            size: 14, color: Colors.white)))
-                                : CircleAvatar(
-                                    radius: 15,
-                                    backgroundColor: const Color(0xFF9D4EDD),
-                                    backgroundImage: hostAvatar.isNotEmpty
-                                        ? _buildSafeImageProvider(hostAvatar)
-                                        : null,
-                                    child: hostAvatar.isEmpty
-                                        ? Text(
-                                            hostName.isNotEmpty
-                                                ? hostName[0].toUpperCase()
-                                                : 'H',
-                                            style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold))
-                                        : null),
-                          ),
-                          const SizedBox(width: 8),
-                          isGhost
-                              ? ImageFiltered(
-                                  imageFilter:
-                                      ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                  child: Text(hostName,
-                                      style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600)))
-                              : Text(hostName,
-                                  style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600)),
-                          const Spacer(),
-                          GestureDetector(
-                            onTap:
-                                isRequested ? null : () => _requestToJoin(act),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: isRequested
-                                    ? Colors.white.withValues(alpha: 0.05)
-                                    : accentColor.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: isRequested
-                                        ? Colors.white12
-                                        : accentColor.withValues(alpha: 0.5)),
-                              ),
-                              child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                        isRequested
-                                            ? Icons.hourglass_top
-                                            : Icons.bolt,
-                                        color: isRequested
-                                            ? Colors.white38
-                                            : accentColor,
-                                        size: 14),
-                                    const SizedBox(width: 5),
-                                    Text(isRequested ? 'Pending' : 'Join',
-                                        style: TextStyle(
-                                            color: isRequested
-                                                ? Colors.white38
-                                                : accentColor,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12)),
-                                  ]),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: () => _hideFromFeed(actId),
-                            child: Container(
-                              height: 36,
-                              width: 36,
-                              decoration: BoxDecoration(
-                                  color: Colors.red.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                      color:
-                                          Colors.red.withValues(alpha: 0.3))),
-                              child: const Icon(Icons.close,
-                                  color: Colors.red, size: 16),
-                            ),
-                          ),
-                        ]),
-                      ],
-                    ),
+      ),
+    );
+  }
+
+  Widget _profileGrid(List<Map<String, dynamic>> profiles, {required bool isActive}) {
+    if (profiles.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4, crossAxisSpacing: 16, mainAxisSpacing: 24, childAspectRatio: 0.65,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, i) => _profileCard(profiles[i], isActive: isActive)
+            .animate(key: ValueKey('${isActive ? "act" : "inact"}_${profiles[i]['id']}'))
+            .fadeIn(duration: 400.ms)
+            .slideY(begin: 0.2, duration: 400.ms, curve: Curves.easeOutQuart),
+          childCount: profiles.length,
+        ),
+      ),
+    );
+  }
+
+  Widget _profileCard(Map<String, dynamic> profile, {required bool isActive}) {
+    final name = (profile['name'] ?? 'User').toString().split(' ')[0];
+    final avatarUrl = profile['avatar_url']?.toString() ?? '';
+    final streak = ((name.length * 7) % 50) + 1; 
+
+    return GestureDetector(
+      onTap: isActive ? () => _showProfileDetailOverlay(profile) : null,
+      child: Column(
+        children: [
+          // Dynamic Avatar Stlying
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Pulsating border for Active, dull border for Inactive
+              Container(
+                width: 64, height: 64,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isActive ? const Color(0xFF17C964) : Colors.white24,
+                    width: isActive ? 3 : 2,
                   ),
+                  boxShadow: isActive ? [BoxShadow(color: const Color(0xFF17C964).withValues(alpha: 0.4), blurRadius: 12, spreadRadius: 2)] : [],
                 ),
-              ],
+                child: Container(
+                  margin: const EdgeInsets.all(2), // Gap between glowing border and image
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    image: avatarUrl.isNotEmpty ? DecorationImage(image: NetworkImage(avatarUrl), fit: BoxFit.cover) : null,
+                    color: const Color(0xFF2A2A2A),
+                  ),
+                  child: avatarUrl.isEmpty ? const Center(child: Icon(Icons.person, color: Colors.white54, size: 30)) : null,
+                ),
+              ),
+              
+              // Status Indicator Sticker
+              if (isActive)
+                Positioned(
+                  bottom: 0, right: -2,
+                  child: Container(
+                    width: 20, height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF17C964),
+                      border: Border.all(color: const Color(0xFF0F121B), width: 2.5),
+                    ),
+                    child: const Icon(Icons.bolt_rounded, color: Colors.black, size: 14),
+                  ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 2000.ms, color: Colors.white),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          
+          // Name with opacity depending on state
+          Text(name, 
+            style: GoogleFonts.inter(
+              color: isActive ? Colors.white : Colors.white54, 
+              fontSize: 13, fontWeight: isActive ? FontWeight.w700 : FontWeight.w500
+            ), 
+            maxLines: 1, overflow: TextOverflow.ellipsis
+          ),
+          
+          const SizedBox(height: 2),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              profile['explore_status']?.toString().isNotEmpty == true 
+                  ? '"${profile['explore_status']}"'
+                  : '$streak 🔥',
+              style: GoogleFonts.inter(
+                color: isActive ? Colors.white70 : Colors.white38, 
+                fontSize: 10,
+                fontStyle: profile['explore_status']?.toString().isNotEmpty == true ? FontStyle.italic : FontStyle.normal
+              ),
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  /// Small info chip used in activity/rush-in card footer
-  Widget _infoChip(IconData icon, String label, Color color,
-      {bool underline = false}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 12, color: color),
-        const SizedBox(width: 4),
-        Text(label,
-            style: TextStyle(
-                color: color,
-                fontSize: 11.5,
-                decoration:
-                    underline ? TextDecoration.underline : TextDecoration.none,
-                decorationColor: color)),
-      ],
-    );
-  }
-
-  /// Opens Google Maps or an in-app map for a precise location
-  void _openLocationOnMap(double lat, double lng, String label) {
-    Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => _SinglePinMapScreen(lat: lat, lng: lng, label: label)));
-  }
-
-  void _viewHostProfile(String hostId) {
-    if (hostId.isEmpty) return;
-    Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProfileScreen(userId: hostId)));
-  }
-
-  Widget _buildFilterPill(IconData icon, String label) {
-    final isSelected = _activeFilter == label;
-    return GestureDetector(
-      onTap: () => setState(() => _activeFilter = label),
-      child: Container(
-        margin: const EdgeInsets.only(right: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFF00E5CC).withValues(alpha: 0.15)
-              : const Color(0xFF141722),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: isSelected
-                  ? const Color(0xFF00E5CC).withValues(alpha: 0.5)
-                  : Colors.transparent),
-        ),
-        child: Row(
-          children: [
-            Icon(icon,
-                size: 14,
-                color: isSelected ? const Color(0xFF00E5CC) : Colors.white54),
-            const SizedBox(width: 8),
-            Text(label,
-                style: TextStyle(
-                    color:
-                        isSelected ? const Color(0xFF00E5FF) : Colors.white54,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
+        ],
+      ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0, duration: 400.ms),
     );
   }
 }
+
+
+
+
+
 
 // ----------------------------------------------------
 // MAP LAYER TYPES
@@ -5587,7 +6054,7 @@ extension _MapLayerX on _MapLayer {
       }[this]!;
 
   Color get accent => const {
-        _MapLayer.street: Color(0xFF00E5FF),
+        _MapLayer.street: Color(0xFFFF6B00),
         _MapLayer.satellite: Color(0xFF4CAF50),
         _MapLayer.terrain: Color(0xFF8BC34A),
         _MapLayer.cycling: Color(0xFFFF9800),
@@ -5897,7 +6364,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         'message': 'I want to join your Rush-In!'
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Join Request Sent! ðŸ’‹'), backgroundColor: Color(0xFF00E5FF)));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Join Request Sent! ðŸ’‹'), backgroundColor: Color(0xFFFF6B00)));
       Navigator.pop(context); // Close bottom sheet
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
@@ -5946,7 +6413,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                 children: [
                   const Text('Live Near You',
                       style: TextStyle(
-                          color: Color(0xFF00E5FF),
+                          color: Color(0xFFFF6B00),
                           fontWeight: FontWeight.bold,
                           fontSize: 14)),
                   GestureDetector(
@@ -6066,10 +6533,10 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: const LinearGradient(
-                    colors: [Color(0xFF00E5FF), Color(0xFF3B4CCA)]),
+                    colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)]),
                 boxShadow: [
                   BoxShadow(
-                      color: const Color(0xFF00E5FF).withValues(alpha: 0.4),
+                      color: const Color(0xFFFF6B00).withValues(alpha: 0.4),
                       blurRadius: 15,
                       spreadRadius: 2,
                       offset: const Offset(0, 4))
@@ -6090,10 +6557,10 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(25),
         border:
-            Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5)),
+            Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
-              color: const Color(0xFF00E5FF).withValues(alpha: 0.2),
+              color: const Color(0xFFFF6B00).withValues(alpha: 0.2),
               blurRadius: 20)
         ],
       ),
@@ -6134,7 +6601,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           if (_isMapDarkMode && _mapLayer.allowsDarkMode)
             IgnorePointer(
                 child: Container(
-                    color: const Color(0xFF4A00E0).withValues(alpha: 0.2))),
+                    color: const Color(0xFFFF5C00).withValues(alpha: 0.2))),
 
           // Search Bar Overlay
           Positioned(
@@ -6450,7 +6917,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           return ListTile(
             dense: true,
             leading: const Icon(Icons.location_on,
-                color: Color(0xFF00E5FF), size: 18),
+                color: Color(0xFFFF6B00), size: 18),
             title: Text(loc['name'],
                 style: const TextStyle(
                     color: Colors.white,
@@ -6479,7 +6946,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     final lat = act['lat'] as double? ?? act['latitude'] as double? ?? 40.7128;
     final lng =
         act['lng'] as double? ?? act['longitude'] as double? ?? -74.0060;
-    // final accent = isRushIn ? const Color(0xFF00E5FF) : const Color(0xFFB388FF);
+    // final accent = isRushIn ? const Color(0xFFFF6B00) : const Color(0xFFB388FF);
 
     return Marker(
       point: LatLng(lat, lng),
@@ -6495,7 +6962,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         child: isRushIn
             ? _SparkingRushInMarker(userId: act['user_id']?.toString())
             : _StandardActivityMarker(
-                color: const Color(0xFF00E5FF),
+                color: const Color(0xFFFF6B00),
                 icon: Icons.event,
                 userId: act['user_id']?.toString()),
       ),
@@ -6511,10 +6978,10 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
       child: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFF00E5FF), width: 2),
+          border: Border.all(color: const Color(0xFFFF6B00), width: 2),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF00E5FF).withValues(alpha: 0.8), 
+              color: const Color(0xFFFF6B00).withValues(alpha: 0.8), 
               blurRadius: 10
             )
           ],
@@ -6684,8 +7151,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         return {
           'label': 'MUSIC',
           'icon': Icons.music_note,
-          'pill': const Color(0xFF8B5CF6),
-          'border': const Color(0xFF8B5CF6)
+          'pill': const Color(0xFFFF7E40),
+          'border': const Color(0xFFFF7E40)
         };
       case 'food':
         return {
@@ -6873,7 +7340,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                           child: Row(children: [
                             CircleAvatar(
                               radius: 15,
-                              backgroundColor: const Color(0xFF7C3AED),
+                              backgroundColor: const Color(0xFFFF5C00),
                               backgroundImage: hostAvatar.isNotEmpty
                                   ? _buildSafeImageProvider(hostAvatar)
                                   : null,
@@ -7064,7 +7531,7 @@ class _SinglePinMapScreen extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00E5FF),
+                        color: const Color(0xFFFF6B00),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(label,
@@ -7075,7 +7542,7 @@ class _SinglePinMapScreen extends StatelessWidget {
                           overflow: TextOverflow.ellipsis),
                     ),
                     const Icon(Icons.location_on,
-                        color: Color(0xFF00E5FF), size: 30),
+                        color: Color(0xFFFF6B00), size: 30),
                   ],
                 ),
               ),
@@ -7344,7 +7811,7 @@ class CosmicBackgroundPainter extends CustomPainter {
         size.width * (0.2 + 0.3 * math.sin(animationValue * math.pi * 2));
     final dy1 =
         size.height * (0.3 + 0.2 * math.cos(animationValue * math.pi * 2));
-    paint.color = const Color(0xFF00E5FF).withValues(alpha: 0.15);
+    paint.color = const Color(0xFFFF6B00).withValues(alpha: 0.15);
     canvas.drawCircle(Offset(dx1, dy1), 150, paint);
 
     // Orb 2 (Purple)
@@ -7352,7 +7819,7 @@ class CosmicBackgroundPainter extends CustomPainter {
         (0.8 + 0.2 * math.cos(animationValue * math.pi * 2 + math.pi));
     final dy2 = size.height *
         (0.7 + 0.3 * math.sin(animationValue * math.pi * 2 + math.pi));
-    paint.color = const Color(0xFF8B5CF6).withValues(alpha: 0.15);
+    paint.color = const Color(0xFFFF7E40).withValues(alpha: 0.15);
     canvas.drawCircle(Offset(dx2, dy2), 200, paint);
 
     // Orb 3 (Pink)
@@ -7360,7 +7827,7 @@ class CosmicBackgroundPainter extends CustomPainter {
         size.width * (0.5 + 0.4 * math.sin(animationValue * math.pi * 4));
     final dy3 =
         size.height * (0.1 + 0.1 * math.cos(animationValue * math.pi * 2));
-    paint.color = const Color(0xFFEC4899).withValues(alpha: 0.10);
+    paint.color = const Color(0xFFFF3D00).withValues(alpha: 0.10);
     canvas.drawCircle(Offset(dx3, dy3), 120, paint);
   }
 
@@ -7550,7 +8017,7 @@ class _SellerApplicationScreenState extends State<SellerApplicationScreen> {
                     Navigator.pop(context);
                   },
                   child: const Text('Got it!',
-                      style: TextStyle(color: Color(0xFF00E5FF)))),
+                      style: TextStyle(color: Color(0xFFFF6B00)))),
             ],
           ),
         );
@@ -7624,7 +8091,7 @@ class _SellerApplicationScreenState extends State<SellerApplicationScreen> {
               height: 56,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00E5FF),
+                  backgroundColor: const Color(0xFFFF6B00),
                   foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16)),
@@ -7933,3 +8400,4 @@ class _VibeCard extends StatelessWidget {
     ).animate().fadeIn(duration: 400.ms).scale(begin: const Offset(0.95, 0.95));
   }
 }
+

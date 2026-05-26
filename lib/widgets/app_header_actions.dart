@@ -22,6 +22,8 @@ class AppHeaderActions extends StatefulWidget {
   final bool showMessages;
   /// Whether to show the notifications button. Defaults to true.
   final bool showNotifications;
+  /// Whether we are inside Bolrooms (filters notifications)
+  final bool isBolroomMode;
 
   const AppHeaderActions({
     super.key,
@@ -30,8 +32,9 @@ class AppHeaderActions extends StatefulWidget {
     this.borderColor,
     this.radius,
     this.iconSize = 20,
-    this.showMessages = true,
+    this.showMessages = false,
     this.showNotifications = true,
+    this.isBolroomMode = false,
   });
 
   @override
@@ -62,14 +65,23 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
           .limit(99);
       final msgCount = (msgs as List).length;
 
-      // Unread notifications
+      // Unread notifications (need to filter based on isBolroomMode later if we want badge logic separated, 
+      // but for now we just get all unreads or rely on the query to get total unreads)
       final notifs = await Supabase.instance.client
           .from('notifications')
-          .select('id')
+          .select('id, type')
           .eq('user_id', uid)
           .eq('is_read', false)
           .limit(99);
-      final notifCount = (notifs as List).length;
+          
+      // Filter badges based on mode
+      int notifCount = 0;
+      for (var n in (notifs as List)) {
+        final type = n['type'] as String? ?? 'system';
+        final isBolroomType = type.startsWith('bolroom_');
+        if (widget.isBolroomMode && isBolroomType) notifCount++;
+        if (!widget.isBolroomMode && !isBolroomType) notifCount++;
+      }
 
       if (mounted) {
         setState(() {
@@ -92,11 +104,11 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
   void _openNotifications() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+      MaterialPageRoute(builder: (_) => NotificationsScreen(isBolroomMode: widget.isBolroomMode)),
     ).then((_) => _fetchBadgeCounts());
   }
 
-  Widget _btn({required IconData icon, required VoidCallback onTap, int badge = 0}) {
+  Widget _btn({required IconData icon, required VoidCallback onTap, int badge = 0, bool isDot = false}) {
     final bg = widget.containerColor ?? Colors.white.withValues(alpha: 0.08);
     final iconColor = widget.iconColor ?? Colors.white;
     final border = widget.borderColor ?? Colors.white.withValues(alpha: 0.12);
@@ -116,11 +128,13 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
     return GestureDetector(
       onTap: onTap,
       child: badge > 0
-          ? Badge(
-              label: Text(badge > 99 ? '99+' : '$badge',
-                  style: const TextStyle(fontSize: 9)),
-              child: container,
-            )
+          ? (isDot 
+              ? Badge(smallSize: 10, backgroundColor: Colors.red, child: container)
+              : Badge(
+                  label: Text(badge > 99 ? '99+' : '$badge',
+                      style: const TextStyle(fontSize: 9)),
+                  child: container,
+                ))
           : container,
     );
   }
@@ -142,6 +156,7 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
             icon: Icons.notifications_outlined,
             onTap: _openNotifications,
             badge: _unreadNotifs,
+            isDot: true, // Use a red dot instead of a number
           ),
       ],
     );

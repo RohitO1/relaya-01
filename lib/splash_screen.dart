@@ -205,7 +205,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     opacity: _wordOpacity,
                     child: ShaderMask(
                       shaderCallback: (bounds) => const LinearGradient(
-                        colors: [Color(0xFF00E5CC), Color(0xFF22C55E), Color(0xFF06B6D4)],
+                        colors: [Color(0xFFFF6B00), Color(0xFF22C55E), Color(0xFF06B6D4)],
                       ).createShader(bounds),
                       child: Text(
                         'MEETRA',
@@ -313,19 +313,19 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             Positioned(
               top: -120 + 25 * math.sin(t * math.pi),
               right: -100 + 30 * math.cos(t * math.pi),
-              child: _glowOrb(350, const Color(0xFF00E5CC), 0.12),
+              child: _glowOrb(350, const Color(0xFFFF6B00), 0.12),
             ),
             // Purple orb — bottom left
             Positioned(
               bottom: size.height * 0.12,
               left: -80 - 20 * math.cos(t * math.pi),
-              child: _glowOrb(300, const Color(0xFFA855F7), 0.10),
+              child: _glowOrb(300, const Color(0xFFFF7E40), 0.10),
             ),
             // Pink orb — mid-right
             Positioned(
               top: size.height * 0.35,
               right: -70 + 15 * math.sin(t * math.pi * 1.3),
-              child: _glowOrb(250, const Color(0xFFEC4899), 0.08),
+              child: _glowOrb(250, const Color(0xFFFF3D00), 0.08),
             ),
             // Orange orb — bottom center
             Positioned(
@@ -378,18 +378,18 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   // ═══════════════════════════════════════════════════════════
   Widget _buildFloatingIcons(Size size) {
     final icons = [
-      const _FloatingIcon(Icons.people_outline, Color(0xFF00E5CC), 0.12, 0.15, 0.7, 1.0),
-      const _FloatingIcon(Icons.chat_bubble_outline, Color(0xFFA855F7), 0.85, 0.20, 0.5, 1.3),
-      const _FloatingIcon(Icons.explore_outlined, Color(0xFFEC4899), 0.08, 0.65, 0.6, 0.8),
+      const _FloatingIcon(Icons.people_outline, Color(0xFFFF6B00), 0.12, 0.15, 0.7, 1.0),
+      const _FloatingIcon(Icons.chat_bubble_outline, Color(0xFFFF7E40), 0.85, 0.20, 0.5, 1.3),
+      const _FloatingIcon(Icons.explore_outlined, Color(0xFFFF3D00), 0.08, 0.65, 0.6, 0.8),
       const _FloatingIcon(Icons.favorite_outline, Color(0xFFF97316), 0.88, 0.70, 0.8, 1.1),
       const _FloatingIcon(Icons.music_note_outlined, Color(0xFF22C55E), 0.75, 0.40, 0.4, 1.5),
       const _FloatingIcon(Icons.sports_esports_outlined, Color(0xFF06B6D4), 0.20, 0.85, 0.9, 0.7),
-      const _FloatingIcon(Icons.camera_alt_outlined, Color(0xFF8B5CF6), 0.60, 0.10, 0.3, 1.2),
+      const _FloatingIcon(Icons.camera_alt_outlined, Color(0xFFFF7E40), 0.60, 0.10, 0.3, 1.2),
       const _FloatingIcon(Icons.flight_takeoff, Color(0xFF10B981), 0.40, 0.78, 0.55, 0.9),
       const _FloatingIcon(Icons.restaurant_outlined, Color(0xFFEF4444), 0.92, 0.50, 0.75, 1.4),
       const _FloatingIcon(Icons.menu_book_outlined, Color(0xFF3B82F6), 0.15, 0.42, 0.65, 1.0),
       const _FloatingIcon(Icons.rocket_launch_outlined, Color(0xFFF59E0B), 0.70, 0.88, 0.35, 0.8),
-      const _FloatingIcon(Icons.local_fire_department_outlined, Color(0xFFEC4899), 0.50, 0.30, 0.85, 1.2),
+      const _FloatingIcon(Icons.local_fire_department_outlined, Color(0xFFFF3D00), 0.50, 0.30, 0.85, 1.2),
     ];
 
     return AnimatedBuilder(
@@ -525,8 +525,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                               0.3 * math.cos(t * 2 * math.pi),
                             ),
                             colors: [
-                              const Color(0xFF00E5CC).withValues(alpha: 0.3),
-                              const Color(0xFFA855F7).withValues(alpha: 0.15),
+                              const Color(0xFFFF6B00).withValues(alpha: 0.3),
+                              const Color(0xFFFF7E40).withValues(alpha: 0.15),
                               Colors.transparent,
                             ],
                             stops: const [0.0, 0.4, 1.0],
@@ -559,12 +559,12 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF00E5CC).withValues(alpha: 0.3),
+                          color: const Color(0xFFFF6B00).withValues(alpha: 0.3),
                           blurRadius: 40,
                           spreadRadius: 5,
                         ),
                         BoxShadow(
-                          color: const Color(0xFFA855F7).withValues(alpha: 0.15),
+                          color: const Color(0xFFFF7E40).withValues(alpha: 0.15),
                           blurRadius: 60,
                           spreadRadius: 10,
                         ),
@@ -593,9 +593,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   // ═══════════════════════════════════════════════════════════
   List<Widget> _buildRings() {
     final ringData = [
-      (15.0, 0.0, const Color(0xFF00E5CC)),
-      (35.0, 0.12, const Color(0xFFA855F7)),
-      (55.0, 0.24, const Color(0xFFEC4899)),
+      (15.0, 0.0, const Color(0xFFFF6B00)),
+      (35.0, 0.12, const Color(0xFFFF7E40)),
+      (55.0, 0.24, const Color(0xFFFF3D00)),
       (75.0, 0.36, const Color(0xFF06B6D4)),
     ];
 
@@ -657,14 +657,14 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                         borderRadius: BorderRadius.circular(3),
                         gradient: LinearGradient(
                           colors: [
-                            const Color(0xFF00E5CC),
+                            const Color(0xFFFF6B00),
                             Color.lerp(const Color(0xFF22C55E), const Color(0xFF06B6D4), math.sin(t * math.pi).abs())!,
-                            const Color(0xFFA855F7),
+                            const Color(0xFFFF7E40),
                           ],
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF00E5CC).withValues(alpha: 0.4),
+                            color: const Color(0xFFFF6B00).withValues(alpha: 0.4),
                             blurRadius: 8,
                           ),
                         ],
@@ -722,9 +722,9 @@ class _Particle {
     speed = 0.3 + rng.nextDouble() * 0.7;
     phase = rng.nextDouble();
     final colors = [
-      const Color(0xFF00E5CC),
-      const Color(0xFFA855F7),
-      const Color(0xFFEC4899),
+      const Color(0xFFFF6B00),
+      const Color(0xFFFF7E40),
+      const Color(0xFFFF3D00),
       const Color(0xFF06B6D4),
       const Color(0xFF22C55E),
     ];

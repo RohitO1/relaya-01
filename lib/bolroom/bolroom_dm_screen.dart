@@ -28,7 +28,7 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
   static const Color textMuted = Color(0xFF8E8B99);
 
   static LinearGradient neonGradient = const LinearGradient(
-    colors: [Color(0xFFD433FF), Color(0xFF7B2CBF), Color(0xFF00E5FF)],
+    colors: [Color(0xFFD433FF), Color(0xFF7B2CBF), Color(0xFFFF6B00)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -74,11 +74,89 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
     return '${diff.inDays}d';
   }
 
-  void _openChat(Map<String, dynamic> convo, String otherName) {
+  void _openChat(Map<String, dynamic> convo, String otherName) async {
     HapticFeedback.lightImpact();
-    Navigator.push(context, BolroomTheme.slideRoute(BolroomDmChatScreen(
+    await Navigator.push(context, BolroomTheme.slideRoute(BolroomDmChatScreen(
       conversationId: convo['id'].toString(), partnerId: _otherUserId(convo), partnerName: otherName, partnerAvatarKey: 'default',
     )));
+    _loadConvos();
+  }
+
+  void _showContextMenu(BuildContext context, String partnerId, String name) {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cardColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 16),
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.push_pin_outlined, color: Colors.white),
+                title: const Text('Pin chat', style: TextStyle(color: Colors.white)),
+                onTap: () { Navigator.pop(ctx); },
+              ),
+              ListTile(
+                leading: const Icon(Icons.archive_outlined, color: Colors.white),
+                title: const Text('Archive chat', style: TextStyle(color: Colors.white)),
+                onTap: () { Navigator.pop(ctx); },
+              ),
+              ListTile(
+                leading: const Icon(Icons.notifications_off_outlined, color: Colors.white),
+                title: const Text('Mute notifications', style: TextStyle(color: Colors.white)),
+                onTap: () { Navigator.pop(ctx); },
+              ),
+              ListTile(
+                leading: const Icon(Icons.mark_chat_unread_outlined, color: Colors.white),
+                title: const Text('Mark as unread', style: TextStyle(color: Colors.white)),
+                onTap: () { Navigator.pop(ctx); },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
+                title: const Text('Delete chat', style: TextStyle(color: Color(0xFFEF4444))),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmDeleteChat(context, partnerId, name);
+                },
+              ),
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  void _confirmDeleteChat(BuildContext context, String partnerId, String name) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cardColor,
+        title: Text('Delete chat with $name?', style: const TextStyle(color: Colors.white)),
+        content: const Text('This will delete the chat only for you.', style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() {
+                _convos.removeWhere((e) => _otherUserId(e) == partnerId);
+              });
+            },
+            child: const Text('Delete', style: TextStyle(color: Color(0xFFEF4444))),
+          ),
+        ],
+      )
+    );
   }
 
   @override
@@ -96,10 +174,33 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                     setState(() => searchQuery = val);
                   }),
                   
+                  // Message Requests Banner
+                  if (searchQuery.isEmpty && _convos.isNotEmpty)
+                    GestureDetector(
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message Requests coming soon!')));
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: borderColor)),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.person_add_alt_1_outlined, color: purplePrimary, size: 24),
+                            const SizedBox(width: 12),
+                            const Expanded(child: Text('Message Requests', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14))),
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: purplePrimary, borderRadius: BorderRadius.circular(10)), child: const Text('1', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.arrow_forward_ios, color: textMuted, size: 14),
+                          ],
+                        ),
+                      ),
+                    ),
+
                   // Online / Active Users Scroll
                   if (searchQuery.isEmpty && _convos.isNotEmpty) ...[
                     const Padding(
-                      padding: EdgeInsets.only(left: 20, top: 16, bottom: 8),
+                      padding: EdgeInsets.only(left: 20, top: 4, bottom: 8),
                       child: Text("Active Now", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
                     ),
                     _buildActiveUsersRow(),
@@ -259,97 +360,140 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
         bool hasUnread = idx == 0; // Fake unread for top chat to show the beautiful UI
         bool isOnline = idx < 2;
 
-        return GestureDetector(
-          onTap: () => _openChat(chat, name),
-          child: Container(
+        return Dismissible(
+          key: Key(chat['id'].toString()),
+          background: Container(
             margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: hasUnread ? cardColor.withValues(alpha: 0.8) : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
-              border: hasUnread ? Border.all(color: borderColor) : null,
-            ),
-            child: Row(
-              children: [
-                Stack(
-                  children: [
-                    _buildGlowingAvatar(aura, 50),
-                    if (isOnline)
-                      Positioned(
-                        bottom: 2,
-                        right: 2,
-                        child: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00FF00), // Online Green
-                            shape: BoxShape.circle,
-                            border: Border.all(color: bgColor, width: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(16)),
+            alignment: Alignment.centerLeft,
+            child: const Icon(Icons.delete_outline, color: Colors.white, size: 28),
+          ),
+          secondaryBackground: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            decoration: BoxDecoration(color: const Color(0xFF8B95A5), borderRadius: BorderRadius.circular(16)),
+            alignment: Alignment.centerRight,
+            child: const Icon(Icons.notifications_off_outlined, color: Colors.white, size: 28),
+          ),
+          confirmDismiss: (direction) async {
+            if (direction == DismissDirection.endToStart) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chat muted')));
+              return false;
+            }
+            bool? confirm = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: cardColor,
+                title: Text('Delete chat with $name?', style: const TextStyle(color: Colors.white)),
+                content: const Text('This will delete the chat only for you.', style: TextStyle(color: Colors.white70)),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Color(0xFFEF4444)))),
+                ],
+              ),
+            );
+            return confirm == true;
+          },
+          onDismissed: (direction) {
+            setState(() {
+              _convos.removeWhere((e) => e['id'] == chat['id']);
+            });
+          },
+          child: InkWell(
+            onTap: () => _openChat(chat, name),
+            onLongPress: () => _showContextMenu(context, otherId, name),
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: hasUnread ? cardColor.withValues(alpha: 0.8) : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                border: hasUnread ? Border.all(color: borderColor) : null,
+              ),
+              child: Row(
+                children: [
+                  Stack(
+                    children: [
+                      _buildGlowingAvatar(aura, 50),
+                      if (isOnline)
+                        Positioned(
+                          bottom: 2,
+                          right: 2,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00FF00), // Online Green
+                              shape: BoxShape.circle,
+                              border: Border.all(color: bgColor, width: 2),
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        lastMsg,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: hasUnread ? Colors.white70 : textMuted,
-                          fontSize: 13,
-                        ),
-                      ),
                     ],
                   ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      timeStr.isEmpty ? 'now' : timeStr,
-                      style: TextStyle(
-                        color: hasUnread ? purplePrimary : textMuted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          lastMsg,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: hasUnread ? Colors.white70 : textMuted,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    if (hasUnread)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          gradient: neonGradient,
-                          borderRadius: BorderRadius.circular(10),
-                          boxShadow: [
-                            BoxShadow(
-                              color: purpleDark.withValues(alpha: 0.4),
-                              blurRadius: 8,
-                              spreadRadius: 1,
-                            )
-                          ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        timeStr.isEmpty ? 'now' : timeStr,
+                        style: TextStyle(
+                          color: hasUnread ? purplePrimary : textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
                         ),
-                        child: const Text(
-                          "1",
-                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                        ),
-                      )
-                  ],
-                )
-              ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (hasUnread)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            gradient: neonGradient,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: purpleDark.withValues(alpha: 0.4),
+                                blurRadius: 8,
+                                spreadRadius: 1,
+                              )
+                            ],
+                          ),
+                          child: const Text(
+                            "1",
+                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        )
+                    ],
+                  )
+                ],
+              ),
             ),
           ),
         );
@@ -394,8 +538,8 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
         children: [
           Container(
             width: 90, height: 90,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: cardColor, border: Border.all(color: Color(0xFF00E5FF).withValues(alpha: 0.15))),
-            child: Icon(Icons.send_rounded, size: 40, color: Color(0xFF00E5FF)),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: cardColor, border: Border.all(color: Color(0xFFFF6B00).withValues(alpha: 0.15))),
+            child: Icon(Icons.send_rounded, size: 40, color: Color(0xFFFF6B00)),
           ),
           SizedBox(height: 18),
           Text('No messages yet', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),

@@ -68,9 +68,9 @@ class _SocialHubScreenState extends State<SocialHubScreen> with SingleTickerProv
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFF00E5FF), Color(0xFF0077FF)]),
+                        gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF0077FF)]),
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: const Color(0xFF00E5FF).withValues(alpha: 0.3), blurRadius: 10)],
+                        boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 10)],
                       ),
                       child: const Icon(Icons.add, color: Colors.black, size: 24),
                     ),
@@ -96,7 +96,7 @@ class _SocialHubScreenState extends State<SocialHubScreen> with SingleTickerProv
                     if (!isDark) BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10)
                   ],
                 ),
-                labelColor: const Color(0xFF00E5FF),
+                labelColor: const Color(0xFFFF6B00),
                 unselectedLabelColor: Colors.white38,
                 labelStyle: const TextStyle(fontWeight: FontWeight.bold),
                 dividerColor: Colors.transparent,
@@ -139,7 +139,7 @@ class _SocialViewList extends StatelessWidget {
           .order('created_at', ascending: false),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)));
+          return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00)));
         }
 
         final items = (snapshot.data ?? [])
@@ -216,7 +216,7 @@ class _SocialCard extends StatelessWidget {
                       decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
                       child: Row(
                         children: [
-                          Icon(isRushIn ? Icons.flash_on : Icons.event, color: const Color(0xFF00E5FF), size: 14),
+                          Icon(isRushIn ? Icons.flash_on : Icons.event, color: const Color(0xFFFF6B00), size: 14),
                           const SizedBox(width: 4),
                           Text(isRushIn ? 'LIVE' : 'PLANNED', 
                             style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
@@ -241,7 +241,7 @@ class _SocialCard extends StatelessWidget {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      const Icon(Icons.location_on, color: Color(0xFF00E5FF), size: 14),
+                      const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 14),
                       const SizedBox(width: 4),
                       Expanded(child: Text(item['location_name'] ?? 'Near you', 
                         style: const TextStyle(color: Colors.white38, fontSize: 12))),

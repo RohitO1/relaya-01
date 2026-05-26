@@ -1,0 +1,62 @@
+  void _applyAgoraVoiceMask(String preset) {
+    if (_engine == null) return;
+    
+    // Always reset pitch to default 1.0 before applying new mask
+    _engine!.setLocalVoicePitch(1.0);
+    
+    AudioEffectPreset effect = AudioEffectPreset.roomAcoustics3dVoice;
+    
+    switch (preset) {
+      case 'robot':
+        // Works well
+        effect = AudioEffectPreset.voiceChangerEffectBoy;
+        break;
+      case 'alien':
+        // Works well
+        effect = AudioEffectPreset.voiceChangerEffectGirl;
+        break;
+      case 'giant':
+        // Works well
+        effect = AudioEffectPreset.voiceChangerEffectHulk;
+        break;
+      case 'sage':
+        // Works well
+        effect = AudioEffectPreset.voiceChangerEffectOldman;
+        break;
+      case 'vader':
+        // Extremely deep pitch + Giant effect
+        effect = AudioEffectPreset.voiceChangerEffectHulk;
+        _engine!.setLocalVoicePitch(0.5); 
+        break;
+      case 'chipmunk':
+        // Extremely high pitch
+        effect = AudioEffectPreset.roomAcoustics3dVoice;
+        _engine!.setLocalVoicePitch(2.0);
+        break;
+      case 'ghost':
+        // Ethereal echo + high pitch
+        effect = AudioEffectPreset.roomAcousticsEthereal;
+        _engine!.setLocalVoicePitch(1.6);
+        break;
+      case 'demon':
+        // Uncle effect + deep pitch
+        effect = AudioEffectPreset.voiceChangerEffectUncle;
+        _engine!.setLocalVoicePitch(0.6);
+        break;
+      case 'cartoon':
+        // Sister effect + high pitch
+        effect = AudioEffectPreset.voiceChangerEffectSister;
+        _engine!.setLocalVoicePitch(1.5);
+        break;
+      case 'radiodj':
+        // Vintage radio + deep pitch
+        effect = AudioEffectPreset.roomAcousticsPhonograph;
+        _engine!.setLocalVoicePitch(0.8);
+        break;
+      default:
+        effect = AudioEffectPreset.roomAcoustics3dVoice; // off/default
+        _engine!.setLocalVoicePitch(1.0);
+    }
+    
+    _engine!.setAudioEffectPreset(effect);
+  }

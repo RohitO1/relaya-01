@@ -21,7 +21,7 @@ import 'services/location_service.dart';
 
 const _bg = Color(0xFF000000);
 const _card = Color(0xFF1A1F2E);
-const _cyan = Color(0xFF00E5CC);
+const _cyan = Color(0xFFFF6B00);
 const _pink = Color(0xFFFF007F);
 const _green = Color(0xFF22C55E);
 const _txt = Color(0xFFF1F5F9);
@@ -37,7 +37,7 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   int _step = 0;
-  final int _totalSteps = 17;
+  final int _totalSteps = 3;
   bool _saving = false;
   final PageController _pageCtrl = PageController();
 
@@ -45,6 +45,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String? _photoUrl;
   final _displayNameCtrl = TextEditingController();
   final _dobCtrl = TextEditingController();
+  int _dobDay = 1;
+  int _dobMonth = 1;
+  int _dobYear = 2000;
+  bool _dobPickerExpanded = false;
+  static const _monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   final _bioCtrl = TextEditingController();
   String _gender = '';
   
@@ -144,36 +149,43 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       final uid = Supabase.instance.client.auth.currentUser!.id;
       final locationName = [_cityCtrl.text.trim(), _stateCtrl.text.trim()].where((s) => s.isNotEmpty).join(', ');
 
-      await Supabase.instance.client.from('profiles').upsert({
-        'id': uid,
-        'name': _displayNameCtrl.text.trim(),
-        'full_name': _displayNameCtrl.text.trim(),
-        'gender': _gender,
-        'city': _cityCtrl.text.trim(),
-        'district': _cityCtrl.text.trim(),
-        'state': _stateCtrl.text.trim(),
-        'lat': _lat ?? 0,
-        'lng': _lng ?? 0,
-        'avatar_url': _photoUrl ?? 'https://picsum.photos/seed/$uid/200',
-        'bio': _bioCtrl.text.trim(),
-        'height_cm': _heightCm.toInt(),
-        'smoking': _smoking,
-        'drinking': _drinking,
-        'weed': _weed,
-        'diet': _diet,
-        'exercise': _exercise,
-        'education': _education,
-        'job_title': _jobTitle,
-        'zodiac': _zodiac,
-        'relationship_type': _relationshipType,
-        'religion': _religion,
-        'match_gender': _matchGender,
-        'personality_traits': _selectedTraits.toList(),
-        'interests': _selectedInterests.toList(),
-        'visible_vibes': _selectedVibes.toList(),
-        'is_public': !_privateProfile,
-        'onboarding_complete': true,
-      }, onConflict: 'id');
+      try {
+        await Supabase.instance.client.from('profiles').upsert({
+          'id': uid,
+          'name': _displayNameCtrl.text.trim(),
+          'full_name': _displayNameCtrl.text.trim(),
+          'dob': _dobCtrl.text.trim(),
+          'gender': _gender,
+          'city': _cityCtrl.text.trim(),
+          'district': _cityCtrl.text.trim(),
+          'state': _stateCtrl.text.trim(),
+          'lat': _lat ?? 0,
+          'lng': _lng ?? 0,
+          'avatar_url': _photoUrl ?? 'https://picsum.photos/seed/$uid/200',
+          'onboarding_complete': true,
+        }, onConflict: 'id');
+      } on PostgrestException catch (e) {
+        if (e.message.contains('dob') || e.code == 'PGRST204') {
+          // Retry without 'dob' column if it does not exist in schema
+          await Supabase.instance.client.from('profiles').upsert({
+            'id': uid,
+            'name': _displayNameCtrl.text.trim(),
+            'full_name': _displayNameCtrl.text.trim(),
+            'gender': _gender,
+            'city': _cityCtrl.text.trim(),
+            'district': _cityCtrl.text.trim(),
+            'state': _stateCtrl.text.trim(),
+            'lat': _lat ?? 0,
+            'lng': _lng ?? 0,
+            'avatar_url': _photoUrl ?? 'https://picsum.photos/seed/$uid/200',
+            'onboarding_complete': true,
+          }, onConflict: 'id');
+        } else {
+          rethrow;
+        }
+      } catch (_) {
+        rethrow;
+      }
 
       if (_lat != null && _lng != null) {
         locationService.setLocation(locationName.isNotEmpty ? locationName : _cityCtrl.text, lat: _lat, lng: _lng);
@@ -242,20 +254,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   _s0BasicInfo(),
                   _s1Gender(),
                   _s2Location(),
-                  _s3Height(),
-                  _s4Lifestyle(),
-                  _s5Diet(),
-                  _s6Exercise(),
-                  _s7Education(),
-                  _s8Job(),
-                  _s9Zodiac(),
-                  _s10Relationship(),
-                  _s11Religion(),
-                  _s12MatchOrientation(),
-                  _s13Personality(),
-                  _s14Interests(),
-                  _s15Preferences(),
-                  _s16VibeVisibility(),
                 ],
               ),
             ),
@@ -309,6 +307,181 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   // ── HELPERS ──────────────────────────────────────────────────────────
+  int _daysInMonth(int month, int year) {
+    return DateTime(year, month + 1, 0).day;
+  }
+
+  void _commitDob() {
+    final maxDay = _daysInMonth(_dobMonth, _dobYear);
+    if (_dobDay > maxDay) _dobDay = maxDay;
+    _dobCtrl.text = '$_dobYear-${_dobMonth.toString().padLeft(2, '0')}-${_dobDay.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildDobPicker() {
+    final now = DateTime.now();
+    final maxYear = now.year - 16;
+    final years = List.generate(maxYear - 1950 + 1, (i) => 1950 + i);
+    final days = List.generate(_daysInMonth(_dobMonth, _dobYear), (i) => i + 1);
+    final months = List.generate(12, (i) => i + 1);
+
+    const itemH = 52.0;
+    const visibleItems = 3;
+
+    return StatefulBuilder(builder: (ctx, setLocal) {
+      FixedExtentScrollController dayCtrl2 = FixedExtentScrollController(initialItem: _dobDay - 1);
+      FixedExtentScrollController monthCtrl2 = FixedExtentScrollController(initialItem: _dobMonth - 1);
+      FixedExtentScrollController yearCtrl2 = FixedExtentScrollController(initialItem: years.indexOf(_dobYear).clamp(0, years.length - 1));
+
+      Widget col(FixedExtentScrollController c, List items, Function(int) onChange, {bool isYear = false}) {
+        return Expanded(
+          child: ListWheelScrollView.useDelegate(
+            controller: c,
+            itemExtent: itemH,
+            physics: const FixedExtentScrollPhysics(),
+            perspective: 0.003,
+            diameterRatio: 1.8,
+            onSelectedItemChanged: (i) {
+              onChange(i);
+              setLocal(() {});
+            },
+            childDelegate: ListWheelChildBuilderDelegate(
+              builder: (_, i) {
+                if (i < 0 || i >= items.length) return null;
+                final sel = c.hasClients && c.selectedItem == i;
+                final String label;
+                if (isYear) {
+                  label = '${items[i]}';
+                } else if (items == months) {
+                  label = _monthNames[items[i] - 1];
+                } else {
+                  label = '${items[i]}'.padLeft(2, '0');
+                }
+                return Center(
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 150),
+                    style: GoogleFonts.inter(
+                      fontSize: sel ? 26 : 20,
+                      fontWeight: sel ? FontWeight.w800 : FontWeight.w400,
+                      color: sel ? Colors.white : Colors.white.withValues(alpha: 0.35),
+                    ),
+                    child: Text(label),
+                  ),
+                );
+              },
+              childCount: items.length,
+            ),
+          ),
+        );
+      }
+
+      final localDays = List.generate(_daysInMonth(_dobMonth, _dobYear), (i) => i + 1);
+
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOutCubic,
+        margin: const EdgeInsets.only(top: 12),
+        decoration: BoxDecoration(
+          color: _bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _cyan.withValues(alpha: 0.25), width: 1.5),
+          boxShadow: [BoxShadow(color: _cyan.withValues(alpha: 0.08), blurRadius: 20, spreadRadius: 2)],
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  GestureDetector(
+                    onTap: () { setState(() => _dobPickerExpanded = false); },
+                    child: Text('Cancel', style: GoogleFonts.inter(color: Colors.white38, fontSize: 14)),
+                  ),
+                  Row(children: [
+                    const Icon(Icons.cake_outlined, color: _cyan, size: 16),
+                    const SizedBox(width: 6),
+                    Text('Date of Birth', style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                  ]),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _commitDob();
+                        _dobPickerExpanded = false;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [_cyan, _green]),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text('Done', style: GoogleFonts.inter(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                children: [
+                  Expanded(child: Center(child: Text('DAY', style: GoogleFonts.inter(color: _cyan.withValues(alpha: 0.6), fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w700)))),
+                  Expanded(child: Center(child: Text('MONTH', style: GoogleFonts.inter(color: _cyan.withValues(alpha: 0.6), fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w700)))),
+                  Expanded(child: Center(child: Text('YEAR', style: GoogleFonts.inter(color: _cyan.withValues(alpha: 0.6), fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w700)))),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              height: itemH * visibleItems,
+              child: Stack(
+                children: [
+                  Center(
+                    child: Container(
+                      height: itemH,
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(color: _cyan.withValues(alpha: 0.5), width: 1),
+                          bottom: BorderSide(color: _cyan.withValues(alpha: 0.5), width: 1),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(top: 0, left: 0, right: 0, height: itemH * 0.9,
+                    child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_bg, _bg.withValues(alpha: 0)])))),
+                  Positioned(bottom: 0, left: 0, right: 0, height: itemH * 0.9,
+                    child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [_bg, _bg.withValues(alpha: 0)])))),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        col(dayCtrl2, localDays, (i) { _dobDay = localDays[i]; }),
+                        col(monthCtrl2, months, (i) { _dobMonth = months[i]; }, isYear: false),
+                        col(yearCtrl2, years, (i) { _dobYear = years[i]; }, isYear: true),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  ImageProvider _buildSafeImage(String? url) {
+    if (url == null || url.isEmpty) return const NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
+    if (url.startsWith('http')) return NetworkImage(url);
+    try {
+      final base64Str = url.contains(',') ? url.split(',').last : url;
+      return MemoryImage(base64Decode(base64Str));
+    } catch (_) {
+      return const NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
+    }
+  }
+
   Widget _header(String title, String subtitle) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -377,7 +550,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 border: Border.all(color: _photoUrl != null ? _cyan : _gb, width: 2),
               ),
               child: _photoUrl != null
-                  ? ClipOval(child: Image.network(_photoUrl!, fit: BoxFit.cover))
+                  ? ClipOval(child: Image(image: _buildSafeImage(_photoUrl), fit: BoxFit.cover))
                   : const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.camera_alt, color: _muted, size: 30), SizedBox(height: 8), Text('Add Photo', style: TextStyle(color: _cyan, fontSize: 12))]),
             ),
           ),
@@ -385,12 +558,51 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _inputField('First Name', _displayNameCtrl, Icons.person),
           const SizedBox(height: 16),
           GestureDetector(
-            onTap: () async {
-              final d = await showDatePicker(context: context, initialDate: DateTime(2000), firstDate: DateTime(1950), lastDate: DateTime.now().subtract(const Duration(days: 365*16)));
-              if (d != null) setState(() => _dobCtrl.text = '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}');
-            },
-            child: AbsorbPointer(child: _inputField('Date of Birth (YYYY-MM-DD)', _dobCtrl, Icons.calendar_today)),
+            onTap: () => setState(() => _dobPickerExpanded = !_dobPickerExpanded),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              decoration: BoxDecoration(
+                color: _card,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: _dobPickerExpanded ? _cyan : (_dobCtrl.text.isNotEmpty ? _cyan.withValues(alpha: 0.5) : _gb),
+                  width: _dobPickerExpanded ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.cake_outlined, color: _dobCtrl.text.isNotEmpty ? _cyan : _muted, size: 22),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: _dobCtrl.text.isNotEmpty
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                (() {
+                                  try {
+                                    final d = DateTime.parse(_dobCtrl.text);
+                                    return '${_monthNames[d.month - 1]} ${d.day}, ${d.year}';
+                                  } catch (e) { return _dobCtrl.text; }
+                                })(),
+                                style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 2),
+                              Text('Date of birth', style: GoogleFonts.inter(color: _muted, fontSize: 11)),
+                            ],
+                          )
+                        : Text('Select Date of Birth', style: GoogleFonts.inter(color: _muted, fontSize: 16)),
+                  ),
+                  Icon(
+                    _dobPickerExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    color: _muted, size: 20,
+                  ),
+                ],
+              ),
+            ),
           ),
+          if (_dobPickerExpanded) _buildDobPicker(),
         ],
       ),
     );

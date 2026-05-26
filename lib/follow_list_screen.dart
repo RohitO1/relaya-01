@@ -21,8 +21,8 @@ class FollowListScreen extends StatelessWidget {
           title: const Text('Network', style: TextStyle(fontWeight: FontWeight.bold)),
           iconTheme: const IconThemeData(color: Colors.white),
           bottom: const TabBar(
-            indicatorColor: Color(0xFF00E5FF),
-            labelColor: Color(0xFF00E5FF),
+            indicatorColor: Color(0xFFFF6B00),
+            labelColor: Color(0xFFFF6B00),
             unselectedLabelColor: Colors.white54,
             tabs: [
               Tab(text: 'FOLLOWERS'),
@@ -93,7 +93,7 @@ class _FollowListHelperState extends State<_FollowListHelper> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)));
+      return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00)));
     }
 
     if (_users.isEmpty) {

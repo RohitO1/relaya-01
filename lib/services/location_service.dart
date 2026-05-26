@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LocationService {
   static final LocationService _instance = LocationService._internal();
@@ -10,6 +11,8 @@ class LocationService {
   LocationService._internal();
 
   final ValueNotifier<String> activeLocationNotifier = ValueNotifier<String>('');
+  final ValueNotifier<String> activeDistrictNotifier = ValueNotifier<String>('');
+  final ValueNotifier<String> activeStateNotifier = ValueNotifier<String>('');
   
   // Coordinate State Tracking
   double? _activeLat;
@@ -21,6 +24,8 @@ class LocationService {
   final ValueNotifier<int> coordinatesUpdateNotifier = ValueNotifier<int>(0);
 
   String get activeLocation => activeLocationNotifier.value;
+  String get activeDistrict => activeDistrictNotifier.value;
+  String get activeState => activeStateNotifier.value;
 
   /// Popular cities shown below the search bar for quick access
   static const List<Map<String, dynamic>> popularCities = [
@@ -45,7 +50,10 @@ class LocationService {
     if (prefs.containsKey('current_map_lat') && prefs.containsKey('current_map_lng')) {
       _activeLat = prefs.getDouble('current_map_lat');
       _activeLng = prefs.getDouble('current_map_lng');
-      activeLocationNotifier.value = prefs.getString('current_map_name') ?? 'Map Location';
+      final savedName = prefs.getString('current_map_name') ?? 'Map Location';
+      activeLocationNotifier.value = savedName;
+      activeDistrictNotifier.value = prefs.getString('current_map_district') ?? (savedName.split(',').first.trim());
+      activeStateNotifier.value = prefs.getString('current_map_state') ?? (savedName.split(',').length > 1 ? savedName.split(',')[1].trim() : '');
     } else {
       // First try to grab saved locations from old array format
       final savedLocRaw = prefs.getString('saved_locations');
@@ -54,7 +62,10 @@ class LocationService {
           final List<dynamic> locList = jsonDecode(savedLocRaw);
           if (locList.isNotEmpty) {
             final firstLoc = locList.first;
-            activeLocationNotifier.value = firstLoc['name']?.toString() ?? '';
+            final nameStr = firstLoc['name']?.toString() ?? '';
+            activeLocationNotifier.value = nameStr;
+            activeDistrictNotifier.value = nameStr.split(',').first.trim();
+            activeStateNotifier.value = nameStr.split(',').length > 1 ? nameStr.split(',')[1].trim() : '';
             _activeLat = (firstLoc['lat'] as num?)?.toDouble();
             _activeLng = (firstLoc['lng'] as num?)?.toDouble();
           }
@@ -66,8 +77,27 @@ class LocationService {
     coordinatesUpdateNotifier.value++;
   }
 
+  String sanitizeDistrict(String rawDistrict, String fullName) {
+    String d = rawDistrict.trim();
+    final invalidWords = ['institute', 'engineering', 'technology', 'university', 'college', 'school', 'hospital', 'station', 'airport', 'park', 'road', 'street', 'building', 'apartment', 'nagar', 'sector', 'colony', 'shop', 'mall', 'hotel', 'temple', 'house', 'office'];
+    
+    bool isInvalid = d.isEmpty || d.length > 25 || invalidWords.any((w) => d.toLowerCase().contains(w));
+    
+    if (isInvalid && fullName.isNotEmpty) {
+      final parts = fullName.split(',').map((p) => p.trim()).toList();
+      for (final p in parts) {
+        if (p.isNotEmpty && p.length <= 25 && !invalidWords.any((w) => p.toLowerCase().contains(w))) {
+          if (RegExp(r'^\d+$').hasMatch(p)) continue;
+          if (p.toLowerCase() == 'india') continue;
+          return p;
+        }
+      }
+    }
+    return d.isEmpty ? 'Unknown' : d;
+  }
+
   /// Search for locations using Nominatim (OpenStreetMap) API.
-  /// Returns a list of results with 'name', 'full_name', 'lat', 'lng'.
+  /// Returns a list of results with 'name', 'full_name', 'district', 'state', 'lat', 'lng'.
   Future<List<Map<String, dynamic>>> searchLocations(String query) async {
     if (query.trim().length < 2) return [];
     try {
@@ -83,9 +113,15 @@ class LocationService {
         final data = jsonDecode(res.body) as List;
         return data.map<Map<String, dynamic>>((it) {
           final displayName = it['display_name']?.toString() ?? '';
+          final addr = it['address'] as Map<String, dynamic>? ?? {};
+          final rawDistrict = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['municipality'] ?? addr['county'] ?? addr['state_district'] ?? addr['district'] ?? '';
+          final district = sanitizeDistrict(rawDistrict.toString(), displayName);
+          final state = addr['state'] ?? '';
           return {
             'name': displayName.split(',').first.trim(),
             'full_name': displayName,
+            'district': district,
+            'state': state.toString().trim(),
             'lat': double.tryParse(it['lat']?.toString() ?? '') ?? 0.0,
             'lng': double.tryParse(it['lon']?.toString() ?? '') ?? 0.0,
           };
@@ -120,7 +156,7 @@ class LocationService {
     };
   }
 
-  void setLocation(String newLocation, {double? lat, double? lng}) async {
+  void setLocation(String newLocation, {double? lat, double? lng, String? district, String? state}) async {
     _activeLat = lat ?? _activeLat;
     _activeLng = lng ?? _activeLng;
     
@@ -128,12 +164,51 @@ class LocationService {
       activeLocationNotifier.value = newLocation;
     }
     
+    final rawDistrict = district ?? (newLocation.split(',').first.trim());
+    final finalDistrict = sanitizeDistrict(rawDistrict, newLocation);
+    final finalState = state ?? (newLocation.split(',').length > 1 ? newLocation.split(',')[1].trim() : '');
+    
+    activeDistrictNotifier.value = finalDistrict;
+    activeStateNotifier.value = finalState;
+    
     if (lat != null && lng != null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble('current_map_lat', lat);
       await prefs.setDouble('current_map_lng', lng);
       await prefs.setString('current_map_name', newLocation);
+      await prefs.setString('current_map_district', finalDistrict);
+      await prefs.setString('current_map_state', finalState);
       coordinatesUpdateNotifier.value++;
+
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (uid != null) {
+        try {
+          await Supabase.instance.client.from('profiles').update({
+            'lat': lat,
+            'lng': lng,
+            'city': finalDistrict,
+          }).eq('id', uid);
+          debugPrint('LocationService: Instantly synced new location ($finalDistrict) to DB');
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// Syncs the cached location to the database if live GPS is unavailable.
+  Future<void> syncCachedLocationToDb() async {
+    if (_activeLat == null || _activeLng == null) return;
+    try {
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (uid == null) return;
+      final currentCity = activeDistrictNotifier.value.isNotEmpty ? activeDistrictNotifier.value : 'Unknown';
+      await Supabase.instance.client.from('profiles').update({
+        'lat': _activeLat,
+        'lng': _activeLng,
+        'city': currentCity,
+      }).eq('id', uid);
+      debugPrint('LocationService: Synced cached location to DB ($_activeLat, $_activeLng)');
+    } catch (e) {
+      debugPrint('LocationService: Failed to sync cached location: $e');
     }
   }
   /// Haversine formula to calculate distance in km

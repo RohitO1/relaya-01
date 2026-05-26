@@ -62,6 +62,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ── About Me ──
   final TextEditingController _bioController = TextEditingController();
   
+  // ── Navigation Transition ──
+  String _navTransition = 'Slide';
+  
   // ── Account Settings ──
   bool _isPublic = true;
 
@@ -166,6 +169,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           }
 
           // Local preferences
+          _navTransition = prefs.getString('nav_transition') ?? 'Slide';
           _distanceRadius = prefs.getDouble('discovery_radius') ?? 50;
           _isGlobal = prefs.getBool('is_global') ?? false;
           _ageRange = RangeValues(
@@ -230,6 +234,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveLocalPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('nav_transition', _navTransition);
     await prefs.setDouble('discovery_radius', _distanceRadius);
     await prefs.setBool('is_global', _isGlobal);
     await prefs.setDouble('age_range_min', _ageRange.start);
@@ -290,14 +295,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         decoration: const BoxDecoration(
           color: Color(0xFF0A0A0F),
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          border: Border(top: BorderSide(color: Color(0xFF00E5FF), width: 2)),
+          border: Border(top: BorderSide(color: Color(0xFFFF6B00), width: 2)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.diamond, color: Color(0xFF00E5FF), size: 48),
+            const Icon(Icons.diamond, color: Color(0xFFFF6B00), size: 48),
             const SizedBox(height: 16),
-            const Text('Meetra Elite', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+            const Text('Relaya Elite', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
             const SizedBox(height: 8),
             const Text('Unlock premium features', style: TextStyle(color: Colors.white38, fontSize: 13)),
             const SizedBox(height: 24),
@@ -308,11 +313,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _upgradeFeatureRow(Icons.favorite, 'See Who Likes You', 'See who sent you join requests'),
             const SizedBox(height: 24),
             GestureDetector(
-              onTap: () { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Elite upgrade coming soon!'), backgroundColor: Color(0xFF8B5CF6))); },
+              onTap: () { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Elite upgrade coming soon!'), backgroundColor: Color(0xFFFF7E40))); },
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF00E5FF), Color(0xFF8B5CF6)]), borderRadius: BorderRadius.circular(16)),
+                decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF7E40)]), borderRadius: BorderRadius.circular(16)),
                 child: const Center(child: Text('Upgrade — Coming Soon', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white))),
               ),
             ),
@@ -328,7 +333,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF00E5FF), size: 20),
+          Icon(icon, color: const Color(0xFFFF6B00), size: 20),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
@@ -345,7 +350,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return Scaffold(
         backgroundColor: const Color(0xFF050508),
         appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: IconButton(icon: const Icon(Icons.arrow_back_ios, size: 18), onPressed: () => Navigator.pop(context))),
-        body: const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF))),
+        body: const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00))),
       );
     }
 
@@ -407,6 +412,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 20),
 
             // ═══════════════════════════════════════════════
+            // 0.5. NAVIGATION (NEW STANDALONE)
+            // ═══════════════════════════════════════════════
+            _buildSectionCard(
+              borderColor: const Color(0xFF06B6D4), // Cyan
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(children: [Text('Navigation ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text('🧭', style: TextStyle(fontSize: 18))]),
+                  Text('Customize how you swipe between pages.', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.white38 : Colors.black38, fontSize: 11)),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF101015) : const Color(0xFFF3F4F6),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? Colors.white12 : Colors.black12),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _navTransition,
+                        isExpanded: true,
+                        dropdownColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1B202D) : Colors.white,
+                        icon: Icon(Icons.keyboard_arrow_down, color: Theme.of(context).brightness == Brightness.dark ? Colors.white54 : Colors.black54),
+                        style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black, fontSize: 14, fontWeight: FontWeight.w600),
+                        items: ['Slide', 'Fade', 'Scale', '3D Flip'].map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
+                        onChanged: (newValue) {
+                          if (newValue != null) {
+                            setState(() => _navTransition = newValue);
+                            _saveLocalPreferences();
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Navigation set to $newValue'), backgroundColor: const Color(0xFF06B6D4), duration: const Duration(seconds: 1)));
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // ═══════════════════════════════════════════════
             // 1. ACCOUNT PLAN
             // ═══════════════════════════════════════════════
             _buildSectionCard(
@@ -443,15 +494,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        gradient: LinearGradient(colors: [const Color(0xFF00E5FF).withValues(alpha: 0.15), const Color(0xFF8B5CF6).withValues(alpha: 0.15)]),
-                        border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3)),
+                        gradient: LinearGradient(colors: [const Color(0xFFFF6B00).withValues(alpha: 0.15), const Color(0xFFFF7E40).withValues(alpha: 0.15)]),
+                        border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3)),
                       ),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.diamond, color: Color(0xFF00E5FF), size: 16),
+                          Icon(Icons.diamond, color: Color(0xFFFF6B00), size: 16),
                           SizedBox(width: 8),
-                          Text('Upgrade to Elite', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF00E5FF))),
+                          Text('Upgrade to Elite', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFFFF6B00))),
                         ],
                       ),
                     ),
@@ -475,7 +526,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onTap: () {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                           content: Text('Verification is reviewed by our team. It may take up to 24 hours.'),
-                          backgroundColor: Color(0xFF3B4CCA),
+                          backgroundColor: Color(0xFFFF8A00),
                         ));
                       }),
                   const Divider(color: Colors.white10, height: 24),
@@ -484,7 +535,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onTap: () {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                           content: Text('Account linking (Google, Apple) coming soon!'),
-                          backgroundColor: Color(0xFF3B4CCA),
+                          backgroundColor: Color(0xFFFF8A00),
                         ));
                       }),
                 ],
@@ -496,7 +547,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // 3. LOCATION — search-based, PAN India
             // ═══════════════════════════════════════════════
             _buildSectionCard(
-              borderColor: const Color(0xFF00E5FF),
+              borderColor: const Color(0xFFFF6B00),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -504,7 +555,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFF00E5CC), Color(0xFF3B82F6)]),
+                        gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF3B82F6)]),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.explore, color: Colors.white, size: 18),
@@ -526,15 +577,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     builder: (context, activeLoc, _) => Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00E5CC).withValues(alpha: 0.07),
+                        color: const Color(0xFFFF6B00).withValues(alpha: 0.07),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFF00E5CC).withValues(alpha: activeLoc.isEmpty ? 0.1 : 0.4)),
+                        border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: activeLoc.isEmpty ? 0.1 : 0.4)),
                       ),
                       child: Row(
                         children: [
                           Icon(
                             activeLoc.isEmpty ? Icons.location_off_outlined : Icons.my_location,
-                            color: activeLoc.isEmpty ? Colors.white24 : const Color(0xFF00E5CC),
+                            color: activeLoc.isEmpty ? Colors.white24 : const Color(0xFFFF6B00),
                             size: 20,
                           ),
                           const SizedBox(width: 12),
@@ -553,7 +604,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                 ),
                                 if (activeLoc.isNotEmpty)
-                                  const Text('Active · Feeds filtered to this area', style: TextStyle(color: Color(0xFF00E5CC), fontSize: 10, fontWeight: FontWeight.w600)),
+                                  const Text('Active · Feeds filtered to this area', style: TextStyle(color: Color(0xFFFF6B00), fontSize: 10, fontWeight: FontWeight.w600)),
                               ],
                             ),
                           ),
@@ -561,10 +612,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF00E5CC).withValues(alpha: 0.15),
+                                color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Text('ACTIVE', style: TextStyle(color: Color(0xFF00E5CC), fontSize: 9, fontWeight: FontWeight.w900)),
+                              child: const Text('ACTIVE', style: TextStyle(color: Color(0xFFFF6B00), fontSize: 9, fontWeight: FontWeight.w900)),
                             ),
                         ],
                       ),
@@ -580,9 +631,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFF00E5CC), Color(0xFF3B82F6)]),
+                        gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF3B82F6)]),
                         borderRadius: BorderRadius.circular(14),
-                        boxShadow: [BoxShadow(color: const Color(0xFF00E5CC).withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))],
+                        boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))],
                       ),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -626,7 +677,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       Switch(
                         value: _isPublic,
-                        activeThumbColor: const Color(0xFF00E5FF),
+                        activeThumbColor: const Color(0xFFFF6B00),
                         onChanged: (val) async {
                           setState(() => _isPublic = val);
                           final uid = Supabase.instance.client.auth.currentUser?.id;
@@ -648,7 +699,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // 5. DISCOVERY SETTINGS
             // ═══════════════════════════════════════════════
             _buildSectionCard(
-              borderColor: const Color(0xFF00E5FF),
+              borderColor: const Color(0xFFFF6B00),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -664,8 +715,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Switch(
                       value: _showMe,
                       onChanged: (v) { setState(() => _showMe = v); _saveLocalPreferences(); },
-                      activeThumbColor: const Color(0xFF00E5FF),
-                      activeTrackColor: const Color(0xFF00E5FF).withValues(alpha: 0.3),
+                      activeThumbColor: const Color(0xFFFF6B00),
+                      activeTrackColor: const Color(0xFFFF6B00).withValues(alpha: 0.3),
                     ),
                     ],
                   ),
@@ -679,33 +730,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Switch(
                         value: _isGlobal,
                         onChanged: (v) { setState(() => _isGlobal = v); _saveLocalPreferences(); },
-                        activeThumbColor: const Color(0xFF00E5FF),
-                        activeTrackColor: const Color(0xFF00E5FF).withValues(alpha: 0.3),
+                        activeThumbColor: const Color(0xFFFF6B00),
+                        activeTrackColor: const Color(0xFFFF6B00).withValues(alpha: 0.3),
                       ),
                     ],
                   ),
                   if (!_isGlobal) ...[
                     const Divider(color: Colors.white10, height: 16),
-                    Text('Distance Radius: ${_distanceRadius.round()} km', style: const TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.w600, fontSize: 13)),
+                    Text('Distance Radius: ${_distanceRadius.round()} km', style: const TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.w600, fontSize: 13)),
                     SliderTheme(
                       data: SliderThemeData(
-                        activeTrackColor: const Color(0xFF00E5FF),
-                        inactiveTrackColor: const Color(0xFF00E5FF).withValues(alpha: 0.15),
-                        thumbColor: const Color(0xFF00E5FF),
-                        overlayColor: const Color(0xFF00E5FF).withValues(alpha: 0.2),
+                        activeTrackColor: const Color(0xFFFF6B00),
+                        inactiveTrackColor: const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                        thumbColor: const Color(0xFFFF6B00),
+                        overlayColor: const Color(0xFFFF6B00).withValues(alpha: 0.2),
                         trackHeight: 4,
                       ),
                       child: Slider(value: _distanceRadius, min: 1, max: 200, onChanged: (v) => setState(() => _distanceRadius = v), onChangeEnd: (_) => _saveLocalPreferences()),
                     ),
                   ],
                   const SizedBox(height: 8),
-                  Text('Age Range: ${_ageRange.start.round()} - ${_ageRange.end.round()}', style: const TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text('Age Range: ${_ageRange.start.round()} - ${_ageRange.end.round()}', style: const TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.w600, fontSize: 13)),
                   SliderTheme(
                     data: SliderThemeData(
-                      activeTrackColor: const Color(0xFF00E5FF),
-                      inactiveTrackColor: const Color(0xFF00E5FF).withValues(alpha: 0.15),
-                      thumbColor: const Color(0xFF00E5FF),
-                      overlayColor: const Color(0xFF00E5FF).withValues(alpha: 0.2),
+                      activeTrackColor: const Color(0xFFFF6B00),
+                      inactiveTrackColor: const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                      thumbColor: const Color(0xFFFF6B00),
+                      overlayColor: const Color(0xFFFF6B00).withValues(alpha: 0.2),
                       trackHeight: 4,
                     ),
                     child: RangeSlider(values: _ageRange, min: 18, max: 65, onChanged: (v) => setState(() => _ageRange = v), onChangeEnd: (_) => _saveLocalPreferences()),
@@ -721,7 +772,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // 5. NOTIFICATION SETTINGS
             // ═══════════════════════════════════════════════
             _buildSectionCard(
-              borderColor: const Color(0xFF8B5CF6),
+              borderColor: const Color(0xFFFF7E40),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -753,11 +804,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onTap: () async { await _saveProfileToDb(); if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bio saved!'), backgroundColor: Color(0xFF10B981))); }, // ignore: use_build_context_synchronously
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.4))),
+                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.4))),
                         child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.save_outlined, color: Color(0xFF00E5FF), size: 14),
+                          Icon(Icons.save_outlined, color: Color(0xFFFF6B00), size: 14),
                           SizedBox(width: 6),
-                          Text('Save', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text('Save', style: TextStyle(color: Color(0xFFFF6B00), fontSize: 11, fontWeight: FontWeight.bold)),
                         ]),
                       ),
                     ),
@@ -835,7 +886,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         decoration: BoxDecoration(color: const Color(0xFF101015), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white10)),
                         child: _galleryUrls[i].isNotEmpty
                             ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image(image: _safeImageProvider(_galleryUrls[i]), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()))
-                            : const Center(child: Icon(Icons.add, color: Color(0xFF00E5FF), size: 24)),
+                            : const Center(child: Icon(Icons.add, color: Color(0xFFFF6B00), size: 24)),
                       ),
                     )),
                   ),
@@ -857,9 +908,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildStatColumn(Icons.event, 'Activities', '$_activityCount', const Color(0xFF00E5FF)),
+                      _buildStatColumn(Icons.event, 'Activities', '$_activityCount', const Color(0xFFFF6B00)),
                       Container(width: 1, height: 50, color: Colors.white10),
-                      _buildStatColumn(Icons.people, 'Connections', '$_connectionCount', const Color(0xFF8B5CF6)),
+                      _buildStatColumn(Icons.people, 'Connections', '$_connectionCount', const Color(0xFFFF7E40)),
                     ],
                   ),
                 ],
@@ -885,16 +936,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         margin: const EdgeInsets.only(bottom: 10),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                         decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFF00E5FF).withValues(alpha: 0.08) : const Color(0xFF101015),
+                          color: isSelected ? const Color(0xFFFF6B00).withValues(alpha: 0.08) : const Color(0xFF101015),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: isSelected ? const Color(0xFF00E5FF).withValues(alpha: 0.4) : Colors.white10),
+                          border: Border.all(color: isSelected ? const Color(0xFFFF6B00).withValues(alpha: 0.4) : Colors.white10),
                         ),
                         child: Row(children: [
-                          Icon(opt['icon'] as IconData, color: isSelected ? const Color(0xFF00E5FF) : Colors.white54, size: 22),
+                          Icon(opt['icon'] as IconData, color: isSelected ? const Color(0xFFFF6B00) : Colors.white54, size: 22),
                           const SizedBox(width: 14),
-                          Text(opt['label'] as String, style: TextStyle(color: isSelected ? const Color(0xFF00E5FF) : Colors.white70, fontWeight: FontWeight.w500, fontSize: 14)),
+                          Text(opt['label'] as String, style: TextStyle(color: isSelected ? const Color(0xFFFF6B00) : Colors.white70, fontWeight: FontWeight.w500, fontSize: 14)),
                           const Spacer(),
-                          if (isSelected) const Icon(Icons.check_circle, color: Color(0xFF00E5FF), size: 18),
+                          if (isSelected) const Icon(Icons.check_circle, color: Color(0xFFFF6B00), size: 18),
                         ]),
                       ),
                     );
@@ -923,14 +974,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFF00E5FF).withValues(alpha: 0.12) : const Color(0xFF101015),
+                            color: isSelected ? const Color(0xFFFF6B00).withValues(alpha: 0.12) : const Color(0xFF101015),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: isSelected ? const Color(0xFF00E5FF).withValues(alpha: 0.5) : Colors.white12),
+                            border: Border.all(color: isSelected ? const Color(0xFFFF6B00).withValues(alpha: 0.5) : Colors.white12),
                           ),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(opt['icon'] as IconData, color: isSelected ? const Color(0xFF00E5FF) : Colors.white54, size: 16),
+                            Icon(opt['icon'] as IconData, color: isSelected ? const Color(0xFFFF6B00) : Colors.white54, size: 16),
                             const SizedBox(width: 8),
-                            Text(opt['label'] as String, style: TextStyle(color: isSelected ? const Color(0xFF00E5FF) : Colors.white70, fontWeight: FontWeight.w600, fontSize: 13)),
+                            Text(opt['label'] as String, style: TextStyle(color: isSelected ? const Color(0xFFFF6B00) : Colors.white70, fontWeight: FontWeight.w600, fontSize: 13)),
                           ]),
                         ),
                       );
@@ -950,9 +1001,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF00E5FF), Color(0xFF3B4CCA)]),
+                  gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)]),
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: const Color(0xFF00E5FF).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 6))],
+                  boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 6))],
                 ),
                 child: const Center(child: Text('Save All Changes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white))),
               ),
@@ -968,9 +1019,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3)),
+                  border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3)),
                 ),
-                child: const Center(child: Text('Sign Out', style: TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.bold, fontSize: 14))),
+                child: const Center(child: Text('Sign Out', style: TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.bold, fontSize: 14))),
               ),
             ),
 
@@ -1019,7 +1070,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Sign Out', style: TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.bold)),
+            child: const Text('Sign Out', style: TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -1074,7 +1125,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             setState(() => _notifSettings[key] = v);
             _saveProfileToDb();
           },
-          activeThumbColor: const Color(0xFF8B5CF6),
+          activeThumbColor: const Color(0xFFFF7E40),
         ),
       ],
     );
@@ -1117,26 +1168,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
           color: isSelected 
-              ? (label == 'Day' ? Colors.amber.withValues(alpha: 0.1) : const Color(0xFF3B4CCA).withValues(alpha: 0.1))
+              ? (label == 'Day' ? Colors.amber.withValues(alpha: 0.1) : const Color(0xFFFF8A00).withValues(alpha: 0.1))
               : (isDarkNow ? const Color(0xFF101015) : Colors.black.withValues(alpha: 0.03)),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected 
-                ? (label == 'Day' ? Colors.amber : const Color(0xFF3B4CCA))
+                ? (label == 'Day' ? Colors.amber : const Color(0xFFFF8A00))
                 : (isDarkNow ? Colors.white10 : Colors.black12),
           ),
         ),
         child: Column(
           children: [
             Icon(icon, color: isSelected 
-                ? (label == 'Day' ? Colors.amber : const Color(0xFF3B4CCA))
+                ? (label == 'Day' ? Colors.amber : const Color(0xFFFF8A00))
                 : (isDarkNow ? Colors.white38 : Colors.black38), size: 24),
             const SizedBox(height: 8),
             Text(label, style: TextStyle(
               fontWeight: FontWeight.bold, 
               fontSize: 14,
               color: isSelected 
-                  ? (label == 'Day' ? Colors.amber : const Color(0xFF3B4CCA))
+                  ? (label == 'Day' ? Colors.amber : const Color(0xFFFF8A00))
                   : (isDarkNow ? Colors.white38 : Colors.black38),
             )),
           ],
@@ -1287,14 +1338,14 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
                           children: [
                             TileLayer(userAgentPackageName: 'com.meetra.app', urlTemplate: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'),
                             MarkerLayer(markers: [
-                              Marker(point: _selectedPoint, width: 60, height: 60, child: const Icon(Icons.location_on, color: Color(0xFF00E5FF), size: 45, shadows: [Shadow(color: Color(0xFF00E5FF), blurRadius: 15)])),
+                              Marker(point: _selectedPoint, width: 60, height: 60, child: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 45, shadows: [Shadow(color: Color(0xFFFF6B00), blurRadius: 15)])),
                             ]),
                           ],
                         ),
                       ),
 
                       // Dark Wash
-                      if (_isMapDarkMode) Container(color: const Color(0xFF4A00E0).withValues(alpha: 0.1)),
+                      if (_isMapDarkMode) Container(color: const Color(0xFFFF5C00).withValues(alpha: 0.1)),
 
                       // Glassmorphic Search
                       Positioned(
@@ -1311,7 +1362,7 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
                                 controller: _searchCtrl,
                                 onChanged: _onSearchChanged,
                                 style: const TextStyle(color: Colors.white, fontSize: 13),
-                                decoration: const InputDecoration(hintText: 'Search city...', hintStyle: TextStyle(color: Colors.white38, fontSize: 13), border: InputBorder.none, icon: Icon(Icons.search, color: Color(0xFF00E5FF), size: 18)),
+                                decoration: const InputDecoration(hintText: 'Search city...', hintStyle: TextStyle(color: Colors.white38, fontSize: 13), border: InputBorder.none, icon: Icon(Icons.search, color: Color(0xFFFF6B00), size: 18)),
                               ),
                             ),
                           ),
@@ -1341,14 +1392,14 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
                               filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                               child: Container(
                                 constraints: const BoxConstraints(maxHeight: 180),
-                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3))),
+                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3))),
                                 child: ListView.separated(
                                   shrinkWrap: true, padding: EdgeInsets.zero, itemCount: _searchResults.length,
                                   separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1),
                                   itemBuilder: (ctx, i) {
                                     final r = _searchResults[i];
                                     return ListTile(
-                                      dense: true, leading: const Icon(Icons.location_on, color: Color(0xFF00E5FF), size: 16),
+                                      dense: true, leading: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 16),
                                       title: Text(r['name'], style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                                       subtitle: Text(r['full_name'], style: const TextStyle(color: Colors.white38, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
                                       onTap: () => _selectSearchResult(r),
@@ -1370,11 +1421,11 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03), borderRadius: BorderRadius.circular(16)),
                 child: Row(children: [
-                  const Icon(Icons.map_outlined, color: Color(0xFF00E5FF), size: 18),
+                  const Icon(Icons.map_outlined, color: Color(0xFFFF6B00), size: 18),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _isResolving
-                        ? const LinearProgressIndicator(backgroundColor: Colors.white10, color: Color(0xFF00E5FF))
+                        ? const LinearProgressIndicator(backgroundColor: Colors.white10, color: Color(0xFFFF6B00))
                         : Text(_resolvedName.isEmpty ? 'Tap map to select' : _resolvedName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   ),
                 ]),
@@ -1398,7 +1449,7 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
                     },
                     child: Container(
                       height: 54, alignment: Alignment.center,
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), gradient: const LinearGradient(colors: [Color(0xFF00E5FF), Color(0xFF3B4CCA)])),
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)])),
                       child: const Text('Add Location', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
                     ),
                   ),

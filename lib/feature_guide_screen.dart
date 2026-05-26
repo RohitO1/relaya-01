@@ -25,13 +25,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> with TickerProv
       emoji: '🏠',
       title: 'Your Personalized Feed',
       desc: 'Discover posts from people who share your interests. Filter by location and topics. Connect with your community!',
-      color: Color(0xFF00E5CC),
+      color: Color(0xFFFF6B00),
     ),
     _SlideData(
       emoji: '🤖',
       title: 'AI-Powered Matching',
       desc: 'Our AI analyzes your interests and activities to find your perfect matches. See compatibility scores and reasons why you\'d click!',
-      color: Color(0xFFA855F7),
+      color: Color(0xFFFF7E40),
     ),
     _SlideData(
       emoji: '⚡',
@@ -43,7 +43,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> with TickerProv
       emoji: '🎪',
       title: 'Experience: Events & Companions',
       desc: 'Book premium events — date nights, trips, concerts. Or connect with verified companions — therapists, musicians, coaches & more!',
-      color: Color(0xFFEC4899),
+      color: Color(0xFFFF3D00),
     ),
     _SlideData(
       emoji: '🚀',
@@ -160,7 +160,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> with TickerProv
                         height: 8,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(4),
-                          color: isActive ? const Color(0xFF00E5CC) : Colors.white.withValues(alpha: 0.15),
+                          color: isActive ? const Color(0xFFFF6B00) : Colors.white.withValues(alpha: 0.15),
                         ),
                       ),
                     );
@@ -197,10 +197,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> with TickerProv
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(colors: [Color(0xFF00E5CC), Color(0xFF22C55E)]),
+                              gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF22C55E)]),
                               borderRadius: BorderRadius.circular(14),
                               boxShadow: [
-                                BoxShadow(color: const Color(0xFF00E5CC).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 6)),
+                                BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 6)),
                               ],
                             ),
                             child: Row(
@@ -282,7 +282,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> with TickerProv
     return Stack(
       children: [
         Positioned(top: -80, right: -60, child: _orb(250, accentColor.withValues(alpha: 0.12))),
-        Positioned(bottom: 100, left: -40, child: _orb(200, const Color(0xFFA855F7).withValues(alpha: 0.08))),
+        Positioned(bottom: 100, left: -40, child: _orb(200, const Color(0xFFFF7E40).withValues(alpha: 0.08))),
       ],
     );
   }

@@ -2,6 +2,10 @@
 // Deploy with: npx supabase functions deploy livekit-token
 // Set secrets: npx supabase secrets set LIVEKIT_API_KEY=xxx LIVEKIT_API_SECRET=xxx
 
+// @ts-ignore: Deno environment variable bypass for standard TS
+declare const Deno: any;
+
+// @ts-ignore: npm specifier bypass for standard TS
 import { AccessToken } from "npm:livekit-server-sdk@^2.0.0";
 
 const corsHeaders = {
@@ -16,7 +20,15 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { roomName, userId, userName, avatarUrl } = await req.json();
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed. Must be a POST request." }), { 
+        status: 405, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      });
+    }
+
+    const body = await req.json();
+    const { roomName, userId, userName, avatarUrl } = body;
 
     if (!roomName || !userId) {
       return new Response(

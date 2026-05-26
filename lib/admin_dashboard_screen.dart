@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
+import 'dart:convert';
 
 
 // =============================================================================
@@ -31,6 +32,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _chatrooms = [];
   List<Map<String, dynamic>> _chatroomMembers = [];
+  List<Map<String, dynamic>> _posts = [];
 
   // ── Navigation items ──
   static const _navItems = [
@@ -42,7 +44,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     {'icon': Icons.swap_horiz_rounded, 'label': 'Requests'},
     {'icon': Icons.storefront_rounded, 'label': 'Seller Apps'},
     {'icon': Icons.message_rounded, 'label': 'Messages'},
-    {'icon': Icons.mic_rounded, 'label': 'BolRooms'},
+    {'icon': Icons.mic_rounded, 'label': 'Chatrooms'},
+    {'icon': Icons.feed_rounded, 'label': 'Posts'},
     {'icon': Icons.settings_rounded, 'label': 'Settings'},
   ];
 
@@ -50,10 +53,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   static const _bg = Color(0xFF0A0A12);
   static const _card = Color(0xFF12121E);
   static const _cardBorder = Color(0xFF1E1E30);
-  static const _accent = Color(0xFF00E5FF);
+  static const _accent = Color(0xFFFF6B00);
   static const _accentPink = Color(0xFFFF007F);
   static const _accentGreen = Color(0xFF10B981);
-  static const _accentPurple = Color(0xFF8B5CF6);
+  static const _accentPurple = Color(0xFFFF7E40);
   static const _accentOrange = Color(0xFFF59E0B);
   static const _accentRed = Color(0xFFEF4444);
 
@@ -108,6 +111,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       List cmData = [];
       try { cmData = await client.from('chatroom_members').select(); } catch (_) {}
 
+      List postsData = [];
+      try { postsData = await client.from('posts').select().order('created_at', ascending: false); } catch (_) {}
+
       final acts = List<Map<String, dynamic>>.from(aData);
 
       if (mounted) {
@@ -120,6 +126,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           _messages = List<Map<String, dynamic>>.from(mData);
           _chatrooms = List<Map<String, dynamic>>.from(crData);
           _chatroomMembers = List<Map<String, dynamic>>.from(cmData);
+          _posts = List<Map<String, dynamic>>.from(postsData);
           _isLoading = false;
         });
       }
@@ -238,6 +245,46 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       await _fetchAllData();
     } catch (e) {
       if (mounted) _showSnack('Delete failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _deleteAllRushIns() async {
+    final ok = await _confirmAction('Delete ALL Rush-Ins?', 'This will permanently wipe every Rush-In and all associated requests. This action cannot be undone.');
+    if (!ok || _adminClient == null) return;
+    if (mounted) setState(() => _isProcessing = true);
+    try {
+      if (_rushIns.isNotEmpty) {
+        final ids = _rushIns.map((r) => r['id'].toString()).toList();
+        await _adminClient!.from('requests').delete().inFilter('target_id', ids);
+        await _adminClient!.from('hidden_feed').delete().inFilter('rush_in_id', ids);
+        await _adminClient!.from('activities').delete().inFilter('id', ids);
+      }
+      if (mounted) _showSnack('All Rush-Ins purged.');
+      await _fetchAllData();
+    } catch (e) {
+      if (mounted) _showSnack('Purge failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _deleteAllActivities() async {
+    final ok = await _confirmAction('Delete ALL Activities?', 'This will permanently wipe every standard Activity and all associated requests. This action cannot be undone.');
+    if (!ok || _adminClient == null) return;
+    if (mounted) setState(() => _isProcessing = true);
+    try {
+      if (_activities.isNotEmpty) {
+        final ids = _activities.map((r) => r['id'].toString()).toList();
+        await _adminClient!.from('requests').delete().inFilter('target_id', ids);
+        await _adminClient!.from('hidden_feed').delete().inFilter('rush_in_id', ids);
+        await _adminClient!.from('activities').delete().inFilter('id', ids);
+      }
+      if (mounted) _showSnack('All Activities purged.');
+      await _fetchAllData();
+    } catch (e) {
+      if (mounted) _showSnack('Purge failed: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -432,7 +479,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       case 6: return _buildSellerApplicationsSection();
       case 7: return _buildMessagesSection();
       case 8: return _buildBolRoomsSection();
-      case 9: return _buildSettingsSection();
+      case 9: return _buildPostsSection();
+      case 10: return _buildSettingsSection();
       default: return _buildDashboard();
     }
   }
@@ -472,12 +520,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             _drawerItem(3, badge: _rushIns.length),
             _drawerItem(4, badge: _companions.length),
             _drawerItem(8, badge: _chatrooms.length),
+            _drawerItem(9, badge: _posts.length),
 
             // GOVERNANCE section
             _drawerSectionLabel('GOVERNANCE'),
             _drawerItem(5, badge: _requests.length),
-            _drawerItem(6, badge: _messages.length),
-            _drawerItem(7),
+            _drawerItem(6, badge: _requests.where((r) => r['target_type'] == 'seller_application').length),
+            _drawerItem(7, badge: _messages.length),
+            _drawerItem(10),
 
             const Spacer(),
             const Divider(color: _cardBorder, height: 1),
@@ -568,6 +618,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             childAspectRatio: 1.6,
             children: [
               _statCard('Total Users', _profiles.length.toString(), Icons.people_alt_rounded, _accent, '+${_profiles.length}'),
+              _statCard('Chatrooms', _chatrooms.length.toString(), Icons.forum_rounded, _accentPurple, 'active rooms'),
+              _statCard('Posts', _posts.length.toString(), Icons.feed_rounded, const Color(0xFFFF6B00), 'user posts'),
               _statCard('Activities', activeActivities.toString(), Icons.event_rounded, _accentGreen, '${_activities.length} total'),
               _statCard('Rush-Ins Live', liveRushIns.toString(), Icons.flash_on_rounded, _accentPink, '${_rushIns.length} total'),
               _statCard('Companions', activeCompanions.toString(), Icons.volunteer_activism_rounded, _accentPurple, '${_companions.length} total'),
@@ -825,10 +877,44 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _buildActivitiesSection() {
     if (_activities.isEmpty) return _emptyState('No activities found');
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _activities.length,
-      itemBuilder: (ctx, i) => _activityTile(_activities[i]),
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: _card,
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: _accentGreen.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                child: Row(children: [
+                  const Icon(Icons.event_rounded, color: _accentGreen, size: 14),
+                  const SizedBox(width: 4),
+                  Text('${_activities.length} Activit${_activities.length == 1 ? 'y' : 'ies'}', style: const TextStyle(color: _accentGreen, fontWeight: FontWeight.bold, fontSize: 12)),
+                ]),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _deleteAllActivities,
+                icon: const Icon(Icons.delete_sweep_rounded, color: _accentRed, size: 16),
+                label: const Text('Purge All', style: TextStyle(color: _accentRed, fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+        const Divider(color: _cardBorder, height: 1),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _fetchAllData,
+            color: _accent,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _activities.length,
+              itemBuilder: (ctx, i) => _activityTile(_activities[i]),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -838,10 +924,44 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _buildRushInsSection() {
     if (_rushIns.isEmpty) return _emptyState('No rush-ins found');
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _rushIns.length,
-      itemBuilder: (ctx, i) => _activityTile(_rushIns[i], isRushIn: true),
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: _card,
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: _accentPink.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                child: Row(children: [
+                  const Icon(Icons.flash_on_rounded, color: _accentPink, size: 14),
+                  const SizedBox(width: 4),
+                  Text('${_rushIns.length} Rush-In${_rushIns.length == 1 ? '' : 's'}', style: const TextStyle(color: _accentPink, fontWeight: FontWeight.bold, fontSize: 12)),
+                ]),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _deleteAllRushIns,
+                icon: const Icon(Icons.delete_sweep_rounded, color: _accentRed, size: 16),
+                label: const Text('Purge All', style: TextStyle(color: _accentRed, fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+        const Divider(color: _cardBorder, height: 1),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _fetchAllData,
+            color: _accent,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _rushIns.length,
+              itemBuilder: (ctx, i) => _activityTile(_rushIns[i], isRushIn: true),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1166,6 +1286,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               _settingsRow('companions', '${_companions.length} rows', Colors.white54),
               _settingsRow('requests', '${_requests.length} rows', Colors.white54),
               _settingsRow('messages', '${_messages.length} rows', Colors.white54),
+              _settingsRow('chatrooms', '${_chatrooms.length} rows', Colors.white54),
+              _settingsRow('posts', '${_posts.length} rows', Colors.white54),
             ]),
           ),
         ),
@@ -1495,6 +1617,218 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
     );
   }
+
+  String _getUserAvatar(String uid) {
+    final p = _profiles.firstWhere((e) => e['id']?.toString() == uid, orElse: () => {});
+    return p['avatar_url']?.toString() ?? '';
+  }
+
+  Widget _buildSafeImage(String url) {
+    if (url.startsWith('data:image')) {
+      final b64 = url.split(',').last;
+      return Image.memory(
+        base64Decode(b64),
+        height: 160,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      );
+    }
+    return Image.network(
+      url,
+      height: 160,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    );
+  }
+
+  Future<void> _deletePost(String postId) async {
+    final ok = await _confirmAction('Delete Post?', 'This will permanently remove this post from the feed.');
+    if (!ok || _adminClient == null) return;
+    if (mounted) setState(() => _isProcessing = true);
+    try {
+      await _adminClient!.from('posts').delete().eq('id', postId);
+      if (mounted) _showSnack('Post deleted.');
+      await _fetchAllData();
+    } catch (e) {
+      if (mounted) _showSnack('Delete failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _deleteAllPosts() async {
+    final ok = await _confirmAction('Delete ALL Posts?', 'This will permanently wipe every user post in the system. This action cannot be undone.');
+    if (!ok || _adminClient == null) return;
+    if (mounted) setState(() => _isProcessing = true);
+    try {
+      await _adminClient!.from('posts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (mounted) _showSnack('All posts purged.');
+      await _fetchAllData();
+    } catch (e) {
+      if (mounted) _showSnack('Purge failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Widget _buildPostsSection() {
+    if (_posts.isEmpty) return _emptyState('No posts found');
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: _card,
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: const Color(0xFFFF6B00).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                child: Row(children: [
+                  const Icon(Icons.feed_rounded, color: Color(0xFFFF6B00), size: 14),
+                  const SizedBox(width: 4),
+                  Text('${_posts.length} Post${_posts.length == 1 ? '' : 's'}', style: const TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.bold, fontSize: 12)),
+                ]),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _deleteAllPosts,
+                icon: const Icon(Icons.delete_sweep_rounded, color: _accentRed, size: 16),
+                label: const Text('Purge All', style: TextStyle(color: _accentRed, fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+        const Divider(color: _cardBorder, height: 1),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _fetchAllData,
+            color: _accent,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _posts.length,
+              itemBuilder: (ctx, i) {
+                final rp = _posts[i];
+                final postId = rp['id']?.toString() ?? '';
+                final userId = rp['user_id']?.toString() ?? '';
+                final userName = _getUserName(userId);
+                final userAvatar = _getUserAvatar(userId);
+                final createdAt = rp['created_at']?.toString() ?? '';
+                final contentRaw = rp['content'] as String? ?? '';
+                final district = rp['district']?.toString() ?? '';
+                final state = rp['state']?.toString() ?? '';
+
+                String postContent = contentRaw;
+                String? imageUrl = rp['image_url']?.toString();
+                String interestTag = '';
+
+                if (contentRaw.startsWith('{')) {
+                  try {
+                    final data = jsonDecode(contentRaw);
+                    postContent = data['text'] ?? '';
+                    final cImg = data['image_url'];
+                    if (cImg != null && cImg.toString().isNotEmpty) {
+                      imageUrl = cImg.toString();
+                    }
+                    interestTag = data['interest'] ?? '';
+                  } catch (_) {}
+                }
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: _card,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _cardBorder),
+                  ),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    leading: CircleAvatar(
+                      radius: 20,
+                      backgroundImage: userAvatar.isNotEmpty ? NetworkImage(userAvatar) : null,
+                      backgroundColor: Colors.white10,
+                      child: userAvatar.isEmpty ? const Icon(Icons.person, color: Colors.white38, size: 18) : null,
+                    ),
+                    title: Row(
+                      children: [
+                        Expanded(child: Text(userName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            interestTag.isNotEmpty ? interestTag : 'General',
+                            style: const TextStyle(color: Color(0xFFF59E0B), fontSize: 9, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    subtitle: Text(
+                      _timeAgo(createdAt),
+                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                    ),
+                    iconColor: Colors.white38,
+                    collapsedIconColor: Colors.white24,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Divider(color: _cardBorder),
+                            const SizedBox(height: 8),
+                            if (imageUrl != null && imageUrl.isNotEmpty) ...[
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: _buildSafeImage(imageUrl),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            if (postContent.isNotEmpty) ...[
+                              Text(
+                                postContent,
+                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            if (district.isNotEmpty || state.isNotEmpty) ...[
+                              Row(
+                                children: [
+                                  const Icon(Icons.location_on, color: _accentPink, size: 12),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      '${district.isNotEmpty ? district : ''}${district.isNotEmpty && state.isNotEmpty ? ', ' : ''}${state.isNotEmpty ? state : ''}',
+                                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            Row(children: [
+                              _actionChip('Copy Post ID', Icons.copy_rounded, Colors.white38, () => _showSnack('Post ID: $postId')),
+                              const SizedBox(width: 8),
+                              _actionChip('Delete Post', Icons.delete_forever_rounded, _accentRed, () => _deletePost(postId)),
+                            ]),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1571,7 +1905,7 @@ extension _SellerAdminExtensions on _AdminDashboardScreenState {
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(color: const Color(0xFF12121E), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1E1E30))),
           child: ExpansionTile(
-            leading: CircleAvatar(backgroundColor: const Color(0xFF00E5FF).withValues(alpha: 0.1), child: const Icon(Icons.storefront_rounded, color: Color(0xFF00E5FF), size: 20)),
+            leading: CircleAvatar(backgroundColor: const Color(0xFFFF6B00).withValues(alpha: 0.1), child: const Icon(Icons.storefront_rounded, color: Color(0xFFFF6B00), size: 20)),
             title: Text(bizName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
             subtitle: Text('Category: $category · Applied by ${_getUserName(uid)}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
             trailing: Container(

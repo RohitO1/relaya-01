@@ -8,6 +8,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'services/notification_service.dart';
 import 'services/location_service.dart';
 
@@ -17,9 +19,9 @@ import 'services/location_service.dart';
 // =============================================================================
 
 enum MapLayerHost {
-  street('Street Mode', Icons.map, 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', Color(0xFF00E5FF), true),
+  street('Street Mode', Icons.map, 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', Color(0xFFFF6B00), true),
   satellite('Satellite', Icons.satellite_alt, 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', Color(0xFFFF007F), false),
-  terrain('Terrain', Icons.terrain, 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', Color(0xFF00E676), false);
+  terrain('Terrain', Icons.terrain, 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', Color(0xFF4ADE80), false);
 
   final String label;
   final IconData icon;
@@ -57,6 +59,8 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   late bool _isRushIn;
   bool _saving = false;
   bool _fetchingGps = false;
+  String? _uploadedImageUrl;
+  bool _isUploadingBanner = false;
 
   // ── RUSH-IN DATA ──
   final List<String> _selectedVibes = [];
@@ -86,16 +90,72 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   final _searchCtrl = TextEditingController();
   List<dynamic> _searchResults = [];
   Timer? _debounce;
+  Timer? _geocodeDebounce;
   bool _isSearching = false;
   bool _showDropdown = false;
+
+  void _debounceReverseGeocode(LatLng target) {
+    _geocodeDebounce?.cancel();
+    _geocodeDebounce = Timer(const Duration(milliseconds: 600), () {
+      if (mounted) {
+        setState(() {
+          _pinLocation = target;
+        });
+      }
+      _reverseGeocode(target);
+    });
+  }
+
+  Future<void> _pickAndUploadBannerImage() async {
+    try {
+      final picker = ImagePicker();
+      final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80, maxWidth: 1200);
+      if (file == null) return;
+
+      setState(() {
+        _isUploadingBanner = true;
+      });
+
+      final bytes = await file.readAsBytes();
+      final ext = file.path.split('.').last.toLowerCase().replaceAll(RegExp(r'[^a-zA-Z0-9]'), 'jpg');
+      final uid = Supabase.instance.client.auth.currentUser?.id ?? 'anon';
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'banners/$uid-$timestamp.$ext';
+
+      try {
+        await Supabase.instance.client.storage.from('avatars').uploadBinary(
+          fileName,
+          bytes,
+          fileOptions: const FileOptions(contentType: 'image/jpeg', upsert: true),
+        );
+        final url = Supabase.instance.client.storage.from('avatars').getPublicUrl(fileName);
+        if (mounted) {
+          setState(() {
+            _uploadedImageUrl = url;
+            _isUploadingBanner = false;
+          });
+        }
+      } catch (e) {
+        final b64 = base64Encode(bytes);
+        if (mounted) {
+          setState(() {
+            _uploadedImageUrl = 'data:image/jpeg;base64,$b64';
+            _isUploadingBanner = false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isUploadingBanner = false);
+    }
+  }
 
   // ── LOOKUP MAPS ──
   final List<String> _categories = ['Music', 'Fitness', 'Tech', 'Art', 'Gaming', 'Food', 'Social', 'Chill', 'Wild', 'Deep Talks'];
   final List<String> _moods = ['🔥', '🎉', '😎', '🌙', '💀', '🧘', '🎶', '⚡', '🍕', '💬'];
   final Map<String, Map<String, dynamic>> _vibeData = {
     'Music':      {'icon': Icons.music_note, 'color': const Color(0xFFE040FB)},
-    'Fitness':    {'icon': Icons.fitness_center, 'color': const Color(0xFF00E676)},
-    'Tech':       {'icon': Icons.computer, 'color': const Color(0xFF00E5FF)},
+    'Fitness':    {'icon': Icons.fitness_center, 'color': const Color(0xFF4ADE80)},
+    'Tech':       {'icon': Icons.computer, 'color': const Color(0xFFFF6B00)},
     'Art':        {'icon': Icons.palette, 'color': const Color(0xFFFFAB40)},
     'Gaming':     {'icon': Icons.sports_esports, 'color': const Color(0xFF7C4DFF)},
     'Food':       {'icon': Icons.restaurant, 'color': const Color(0xFFFF5252)},
@@ -141,6 +201,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
     _mapController.dispose();
     _pulseCtrl.dispose();
     _debounce?.cancel();
+    _geocodeDebounce?.cancel();
     super.dispose();
   }
 
@@ -203,7 +264,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
         _reverseGeocode(_pinLocation);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Row(children: [const Icon(Icons.check_circle, color: Colors.white, size: 18), const SizedBox(width: 8), Text('Location pinned: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}')]),
-          backgroundColor: const Color(0xFF00E5CC), behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFFF6B00), behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), duration: const Duration(seconds: 3),
         ));
       }
@@ -303,7 +364,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
       initialDate: DateTime.now().add(const Duration(days: 1)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 90)),
-      builder: (c, ch) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFF00E5FF), surface: Color(0xFF101015), onSurface: Colors.white)), child: ch!),
+      builder: (c, ch) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFFFF6B00), surface: Color(0xFF101015), onSurface: Colors.white)), child: ch!),
     );
     if (d != null) setState(() => _selectedDate = d);
   }
@@ -312,7 +373,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
     final t = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
-      builder: (c, ch) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFF00E5FF), surface: Color(0xFF101015), onSurface: Colors.white)), child: ch!),
+      builder: (c, ch) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFFFF6B00), surface: Color(0xFF101015), onSurface: Colors.white)), child: ch!),
     );
     if (t != null) setState(() => _selectedTime = t);
   }
@@ -359,7 +420,11 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   Future<void> _submit() async {
     setState(() => _saving = true);
     try {
-      final uid = Supabase.instance.client.auth.currentUser!.id;
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        throw Exception('User is not authenticated. Please log in.');
+      }
+      final uid = user.id;
       final now = DateTime.now();
       final dt = _isRushIn
           ? (_selectedTime != null 
@@ -397,13 +462,65 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
         payload['radius_km'] = _radiusKm;
       }
 
+      String activityId;
+      final safeKeys = ['user_id', 'title', 'description', 'category', 'activity_time', 'lat', 'lng', 'location_name', 'district', 'state', 'is_active'];
+      final safePayload = <String, dynamic>{};
+      String extraData = '';
+      
+      if (_uploadedImageUrl != null) {
+        extraData += '\n[image_url:$_uploadedImageUrl]';
+      }
+      
+      for (final key in payload.keys) {
+        if (safeKeys.contains(key)) {
+          safePayload[key] = payload[key];
+        } else {
+          if (payload[key] != null) {
+            extraData += '\n[$key:${payload[key]}]';
+          }
+        }
+      }
+      
+      safePayload['description'] = '${safePayload['description'] ?? ''}$extraData';
+      
       final response = await Supabase.instance.client
           .from('activities')
-          .insert(payload)
+          .insert(safePayload)
           .select('id')
           .single();
+      activityId = response['id'].toString();
 
-      final String activityId = response['id'].toString();
+      String hostName = 'Someone';
+      try {
+        final profileRes = await Supabase.instance.client
+            .from('profiles')
+            .select('name')
+            .eq('id', uid)
+            .maybeSingle();
+        if (profileRes != null && profileRes['name'] != null) {
+          hostName = profileRes['name'].toString();
+        } else {
+          final profileRes2 = await Supabase.instance.client
+              .from('profiles')
+              .select('full_name')
+              .eq('id', uid)
+              .maybeSingle();
+          if (profileRes2 != null && profileRes2['full_name'] != null) {
+            hostName = profileRes2['full_name'].toString();
+          }
+        }
+      } catch (_) {
+        try {
+          final profileRes2 = await Supabase.instance.client
+              .from('profiles')
+              .select('full_name')
+              .eq('id', uid)
+              .maybeSingle();
+          if (profileRes2 != null && profileRes2['full_name'] != null) {
+            hostName = profileRes2['full_name'].toString();
+          }
+        } catch (_) {}
+      }
 
       // Trigger nearby notifications
       NotificationService.notifyNearbyActivity(
@@ -411,8 +528,11 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
         activityId: activityId,
         title: _titleCtrl.text.trim(),
         locationName: _locationNameCtrl.text.trim(),
+        hostName: hostName,
         lat: _pinLocation.latitude,
         lng: _pinLocation.longitude,
+        isRushIn: _isRushIn,
+        activityCity: locationService.activeLocation.split(',').first.trim(),
         radiusKm: _isRushIn ? _radiusKm.toDouble() : 50.0,
       );
 
@@ -456,7 +576,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFFFF007F), Color(0xFF8B5CF6)]),
+                    gradient: const LinearGradient(colors: [Color(0xFFFF007F), Color(0xFFFF7E40)]),
                     borderRadius: BorderRadius.circular(30),
                   ),
                   child: const Text('RETURN TO MAP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
@@ -475,8 +595,8 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   @override
   Widget build(BuildContext context) {
     const pink = Color(0xFFFF007F);
-    const purple = Color(0xFF8B5CF6);
-    const actPrimary = Color(0xFF00E5FF);
+    const purple = Color(0xFFFF7E40);
+    const actPrimary = Color(0xFFFF6B00);
     const actSecondary = Color(0xFF2962FF);
     final accent = _isRushIn ? pink : actPrimary;
     final accentSecondary = _isRushIn ? purple : actSecondary;
@@ -631,6 +751,8 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
           _sectionHeader('EXTRA NOTE (OPTIONAL)', 'Add details only participants will see.'),
           const SizedBox(height: 16),
           _neonTextField(_noteCtrl, 'Bring your own gear. Parking available.', Icons.sticky_note_2_outlined, Colors.white38, maxLines: 3),
+          const SizedBox(height: 32),
+          _buildBannerImageSection(accent),
         ],
       ),
     );
@@ -838,12 +960,12 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   // RUSH-IN STEP 3: DROP ZONE
   // ===========================================================================
   Widget _rushStep3Location(Color accent) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _sectionHeader('THE DROP ZONE', 'Pin your exact location on the map.'),
@@ -854,12 +976,18 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
               ]),
             ],
           ),
-          const SizedBox(height: 16),
-          _locationMap(accent),
-          const SizedBox(height: 20),
-          _neonTextField(_locationNameCtrl, 'Name this spot... (e.g. Rooftop, Gate 3)', Icons.edit_location_alt, accent),
-        ],
-      ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: _locationMap(accent),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: _neonTextField(_locationNameCtrl, 'Name this spot... (e.g. Rooftop, Gate 3)', Icons.edit_location_alt, accent),
+        ),
+      ],
     );
   }
 
@@ -874,87 +1002,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
         children: [
           _sectionHeader('PREVIEW YOUR RUSH-IN', 'This is exactly how others will see it on the map.'),
           const SizedBox(height: 24),
-
-          // Preview Card
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: const Color(0xFF101015),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: accent.withValues(alpha: 0.3)),
-              boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.15), blurRadius: 30)],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: accent.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(8)),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.circle, color: accent, size: 8), const SizedBox(width: 4),
-                        Text('LIVE', style: TextStyle(color: accent, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1)),
-                      ]),
-                    ),
-                    const Spacer(),
-                    Text('${_durationHours}h', style: const TextStyle(color: Colors.white38, fontWeight: FontWeight.bold, fontSize: 12)),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.access_time, color: Colors.white38, size: 14),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Text(_selectedMood, style: const TextStyle(fontSize: 28)),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(_titleCtrl.text.isEmpty ? 'Your Rush-In Title' : _titleCtrl.text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20))),
-                  ],
-                ),
-                if (_hookCtrl.text.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text('"${_hookCtrl.text}"', style: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic, fontSize: 14)),
-                ],
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: _selectedVibes.map((v) {
-                    final clr = (_vibeData[v]?['color'] as Color?) ?? Colors.white24;
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: clr.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: clr.withValues(alpha: 0.3))),
-                      child: Text(v.toUpperCase(), style: TextStyle(color: clr, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                const Divider(color: Colors.white12),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(Icons.place, color: accent, size: 16),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text(_locationNameCtrl.text.isEmpty ? 'Location' : _locationNameCtrl.text, style: const TextStyle(color: Colors.white54, fontSize: 13))),
-                    const SizedBox(width: 12),
-                    Icon(Icons.people, color: accent, size: 16),
-                    const SizedBox(width: 4),
-                    Text('$_participantLimit', style: const TextStyle(color: Colors.white54, fontSize: 13)),
-                    const SizedBox(width: 16),
-                    Icon(Icons.radar, color: accent, size: 16),
-                    const SizedBox(width: 4),
-                    Text('${_radiusKm.round()}km', style: const TextStyle(color: Colors.white54, fontSize: 13)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    if (_isGhostMode) _previewBadge('GHOST', Icons.visibility_off),
-                    if (_autoAccept) _previewBadge('AUTO', Icons.verified),
-                    if (_inviteOnly) _previewBadge('INVITE', Icons.lock),
-                    if (_entryType == 'paid') _previewBadge('EXCLUSIVE', Icons.diamond),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          _buildLaunchPreviewCard(accent, secondary),
           const SizedBox(height: 24),
           Center(child: Text('Tap LAUNCH to go live.', style: TextStyle(color: accent.withValues(alpha: 0.6), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1))),
         ],
@@ -991,6 +1039,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
           ] else 
             const SizedBox(height: 32),
         ],
+        _buildBannerImageSection(accent),
       ]),
     );
   }
@@ -1074,58 +1123,487 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   }
 
   Widget _stdStep2Location(Color accent) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          _sectionHeader('LOCATION', 'Where is it happening?'),
-          Row(children: [
-            _mapStyleToggle(accent),
-            const SizedBox(width: 8),
-            _gpsButton(accent),
-          ]),
-        ]),
-        const SizedBox(height: 16),
-        _locationMap(accent),
-        const SizedBox(height: 20),
-        _neonTextField(_locationNameCtrl, 'Name this location...', Icons.edit_location_alt, accent),
-      ]),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _sectionHeader('LOCATION', 'Where is it happening?'),
+              Row(children: [
+                _mapStyleToggle(accent),
+                const SizedBox(width: 8),
+                _gpsButton(accent),
+              ]),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: _locationMap(accent),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: _neonTextField(_locationNameCtrl, 'Name this location...', Icons.edit_location_alt, accent),
+        ),
+      ],
     );
   }
 
   Widget _stdStep3Launch(Color accent, Color secondary) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _sectionHeader('READY TO PUBLISH', 'Review and launch your activity.'),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(color: const Color(0xFF101015), borderRadius: BorderRadius.circular(28), border: Border.all(color: accent.withValues(alpha: 0.3)), boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.1), blurRadius: 20)]),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_titleCtrl.text.isEmpty ? 'Activity Title' : _titleCtrl.text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20)),
-            const SizedBox(height: 8),
-            Text(_selectedCategory, style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 12)),
-            const SizedBox(height: 12),
-            Text(_descCtrl.text.isEmpty ? 'No description.' : _descCtrl.text, style: const TextStyle(color: Colors.white54, fontSize: 14)),
-            const SizedBox(height: 16),
-            const Divider(color: Colors.white12),
-            const SizedBox(height: 12),
-            Row(children: [
-              Icon(Icons.calendar_today, color: accent, size: 16), const SizedBox(width: 8),
-              Text(_selectedDate == null ? 'No date' : '${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}', style: const TextStyle(color: Colors.white54)),
-              const SizedBox(width: 20),
-              Icon(Icons.access_time, color: accent, size: 16), const SizedBox(width: 8),
-              Text(_selectedTime == null ? 'No time' : _selectedTime!.format(context), style: const TextStyle(color: Colors.white54)),
-            ]),
-            const SizedBox(height: 8),
-            Row(children: [
-              Icon(Icons.place, color: accent, size: 16), const SizedBox(width: 8),
-              Text(_locationNameCtrl.text.isEmpty ? 'No location' : _locationNameCtrl.text, style: const TextStyle(color: Colors.white54)),
-            ]),
-          ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader('READY TO PUBLISH', 'Review and launch your activity.'),
+          const SizedBox(height: 24),
+          _buildLaunchPreviewCard(accent, secondary),
+          const SizedBox(height: 24),
+          Center(child: Text('Tap PUBLISH to launch event.', style: TextStyle(color: accent.withValues(alpha: 0.6), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBannerImageSection(Color accent) {
+    final List<Map<String, String>> presets = [
+      {'name': 'Music', 'url': 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800&auto=format&fit=crop'},
+      {'name': 'Cafe', 'url': 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800&auto=format&fit=crop'},
+      {'name': 'Sports', 'url': 'https://images.unsplash.com/photo-1517649763962-0c623066013b?w=800&auto=format&fit=crop'},
+      {'name': 'Nature', 'url': 'https://images.unsplash.com/photo-1533240332313-0db49b439ad3?w=800&auto=format&fit=crop'},
+      {'name': 'Tech', 'url': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800&auto=format&fit=crop'},
+      {'name': 'Party', 'url': 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop'},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionHeader('EVENT BANNER IMAGE', 'Select a preset premium banner or upload directly from your gallery.'),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 100,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: presets.length,
+            itemBuilder: (context, index) {
+              final preset = presets[index];
+              final isSelected = _uploadedImageUrl == preset['url'];
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _uploadedImageUrl = preset['url'];
+                  });
+                },
+                child: Container(
+                  width: 140,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected ? accent : Colors.white10,
+                      width: isSelected ? 2.5 : 1,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.network(
+                          preset['url']!,
+                          fit: BoxFit.cover,
+                        ),
+                        Container(
+                          color: isSelected ? Colors.black26 : Colors.black45,
+                        ),
+                        Center(
+                          child: Text(
+                            preset['name']!.toUpperCase(),
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                        ),
+                        if (isSelected)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: CircleAvatar(
+                              radius: 10,
+                              backgroundColor: accent,
+                              child: const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 12,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
-      ]),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: _isUploadingBanner ? null : _pickAndUploadBannerImage,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.02),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.5),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_isUploadingBanner)
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: accent,
+                      strokeWidth: 2,
+                    ),
+                  )
+                else ...[
+                  Icon(Icons.photo_library, color: accent.withValues(alpha: 0.8), size: 20),
+                  const SizedBox(width: 10),
+                  Text(
+                    'UPLOAD FROM GALLERY',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (_uploadedImageUrl != null && _uploadedImageUrl!.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Container(
+            height: 140,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: accent.withValues(alpha: 0.3), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.1),
+                  blurRadius: 16,
+                )
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: _uploadedImageUrl!.startsWith('data:')
+                  ? Image.memory(
+                      base64Decode(_uploadedImageUrl!.split(',').last),
+                      fit: BoxFit.cover,
+                    )
+                  : Image.network(
+                      _uploadedImageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.white.withValues(alpha: 0.02),
+                          alignment: Alignment.center,
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.broken_image, color: Colors.white24),
+                              SizedBox(width: 8),
+                              Text('Failed to load image', style: TextStyle(color: Colors.white24, fontSize: 13)),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLaunchPreviewCard(Color accent, Color secondary) {
+    final bannerUrl = _uploadedImageUrl;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF101015),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: accent.withValues(alpha: 0.3), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.15),
+            blurRadius: 30,
+            spreadRadius: -5,
+          )
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Banner Image Section
+          if (bannerUrl != null && bannerUrl.isNotEmpty)
+            SizedBox(
+              height: 180,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  bannerUrl.startsWith('data:')
+                      ? Image.memory(
+                          base64Decode(bannerUrl.split(',').last),
+                          fit: BoxFit.cover,
+                        )
+                      : Image.network(
+                          bannerUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade900),
+                        ),
+                  // Sleek gradient overlay
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.8),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Active indicator pill
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: accent.withValues(alpha: 0.5), width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.circle, color: accent, size: 8),
+                          const SizedBox(width: 6),
+                          Text(
+                            _isRushIn ? 'LIVE RUSH-IN' : 'UPCOMING',
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_isRushIn)
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.access_time, color: Colors.white70, size: 12),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${_durationHours}H LIVE',
+                              style: GoogleFonts.inter(
+                                color: Colors.white70,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+          // Content section
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_isRushIn) ...[
+                      Text(_selectedMood, style: const TextStyle(fontSize: 28)),
+                      const SizedBox(width: 12),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _titleCtrl.text.isEmpty ? 'Untitled Event' : _titleCtrl.text,
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 20,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _isRushIn
+                                ? _selectedVibes.join(' • ').toUpperCase()
+                                : _selectedCategory.toUpperCase(),
+                            style: GoogleFonts.inter(
+                              color: accent,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 10,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (_isRushIn && _hookCtrl.text.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.02),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
+                    ),
+                    child: Text(
+                      '"${_hookCtrl.text}"',
+                      style: GoogleFonts.inter(
+                        color: Colors.white70,
+                        fontStyle: FontStyle.italic,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ] else if (!_isRushIn && _descCtrl.text.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _descCtrl.text,
+                    style: GoogleFonts.inter(
+                      color: Colors.white60,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 20),
+                const Divider(color: Colors.white10, height: 1),
+                const SizedBox(height: 16),
+
+                // Info Rows
+                _infoRow(Icons.place, 'Location', _locationNameCtrl.text.isEmpty ? 'Drop Zone Pinned' : _locationNameCtrl.text, accent),
+                if (!_isRushIn) ...[
+                  const SizedBox(height: 10),
+                  _infoRow(
+                    Icons.calendar_today,
+                    'Date & Time',
+                    '${_selectedDate?.day}/${_selectedDate?.month}/${_selectedDate?.year} at ${_selectedTime?.format(context) ?? ""}',
+                    accent,
+                  ),
+                ],
+                const SizedBox(height: 10),
+                _infoRow(
+                  Icons.people,
+                  'Max Crew',
+                  '$_participantLimit People',
+                  accent,
+                ),
+                if (_isRushIn) ...[
+                  const SizedBox(height: 10),
+                  _infoRow(
+                    Icons.radar,
+                    'Broadcast Radius',
+                    '${_radiusKm.round()} km radius',
+                    accent,
+                  ),
+                ],
+
+                // Badge status pills
+                if (_isGhostMode || _autoAccept || _inviteOnly || _entryType == 'paid' || _isPackage) ...[
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (_isGhostMode) _previewBadge('GHOST MODE', Icons.visibility_off),
+                      if (_autoAccept) _previewBadge('AUTO-ACCEPT', Icons.verified),
+                      if (_inviteOnly) _previewBadge('INVITE ONLY', Icons.lock),
+                      if (_entryType == 'paid' || _isPackage)
+                        _previewBadge(
+                          _isPackage ? 'COMMERCIAL (₹${_priceCtrl.text})' : 'EXCLUSIVE',
+                          Icons.diamond,
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value, Color accent) {
+    return Row(
+      children: [
+        Icon(icon, color: accent.withValues(alpha: 0.8), size: 16),
+        const SizedBox(width: 10),
+        Text(
+          '$label: ',
+          style: GoogleFonts.inter(color: Colors.white30, fontSize: 12, fontWeight: FontWeight.bold),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: GoogleFonts.inter(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1247,7 +1725,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: _fetchingGps
-          ? const Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 3))
+          ? const Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(color: Color(0xFFFF6B00), strokeWidth: 3))
           : const Icon(Icons.my_location, color: Color(0xFF0077FF), size: 24),
       ),
     );
@@ -1294,7 +1772,9 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
             // Neon wash overlay
             if (!_isLightMode && _mapLayer.allowsDarkMode)
-              Container(color: const Color(0xFF4A00E0).withValues(alpha: 0.15)),
+              IgnorePointer(
+                child: Container(color: const Color(0xFFFF5C00).withValues(alpha: 0.15)),
+              ),
 
             // Search Bar (Glassmorphic)
             Positioned(
@@ -1373,11 +1853,15 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
         options: MapOptions(
           initialCenter: _pinLocation, 
           initialZoom: 15.0, 
-          onTap: (_, pt) { setState(() => _pinLocation = pt); _reverseGeocode(pt); },
+          onTap: (_, pt) { 
+            _mapController.move(pt, _mapController.camera.zoom);
+            setState(() => _pinLocation = pt); 
+            _debounceReverseGeocode(pt); 
+          },
           onPositionChanged: (pos, hasGesture) {
             if (hasGesture) {
-              setState(() => _pinLocation = pos.center);
-              _reverseGeocode(pos.center); 
+              _pinLocation = pos.center; // Update coordinate in memory to prevent janky gesture resets
+              _debounceReverseGeocode(pos.center); 
             }
           },
           interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),

@@ -244,7 +244,7 @@ class BlindDateGameState extends State<BlindDateGame> with TickerProviderStateMi
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _sessionTimeRemaining < 30 ? _GC.red.withOpacity(0.2) : _GC.neon.withOpacity(0.2),
+                    color: _sessionTimeRemaining < 30 ? _GC.red.withValues(alpha: 0.2) : _GC.neon.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -270,7 +270,7 @@ class BlindDateGameState extends State<BlindDateGame> with TickerProviderStateMi
                 onPressed: _isLoadingGenders ? null : _openPlayerSelection,
               )
             else
-              Text('Waiting for host to start...', style: TextStyle(color: _GC.txt.withOpacity(0.5), fontStyle: FontStyle.italic)),
+              Text('Waiting for host to start...', style: TextStyle(color: _GC.txt.withValues(alpha: 0.5), fontStyle: FontStyle.italic)),
           ],
 
           if (_gameState == 'session_active') ...[
@@ -308,7 +308,7 @@ class BlindDateGameState extends State<BlindDateGame> with TickerProviderStateMi
             shape: BoxShape.circle,
             color: isP1 ? _GC.blue : _GC.red,
             border: Border.all(color: _GC.neon, width: 2),
-            boxShadow: [BoxShadow(color: _GC.neon.withOpacity(0.5), blurRadius: 10)],
+            boxShadow: [BoxShadow(color: _GC.neon.withValues(alpha: 0.5), blurRadius: 10)],
           ),
           child: Center(child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold))),
         ),
@@ -379,7 +379,7 @@ class BlindDateGameState extends State<BlindDateGame> with TickerProviderStateMi
                       return ListTile(
                         leading: CircleAvatar(child: Text(m.name[0])),
                         title: Text(m.name, style: const TextStyle(color: Colors.white)),
-                        subtitle: Text(gender, style: TextStyle(color: _GC.txt.withOpacity(0.5))),
+                        subtitle: Text(gender, style: TextStyle(color: _GC.txt.withValues(alpha: 0.5))),
                         trailing: isSelected ? const Icon(Icons.check_circle, color: _GC.neon) : null,
                         onTap: () {
                           setModalState(() {
@@ -494,7 +494,7 @@ class BlindDateGameState extends State<BlindDateGame> with TickerProviderStateMi
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.2) : _GC.bg,
+          color: isSelected ? color.withValues(alpha: 0.2) : _GC.bg,
           border: Border.all(color: isSelected ? color : _GC.border, width: 2),
           borderRadius: BorderRadius.circular(16),
         ),
@@ -502,7 +502,7 @@ class BlindDateGameState extends State<BlindDateGame> with TickerProviderStateMi
           children: [
             Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Text(sub, style: TextStyle(color: _GC.txt.withOpacity(0.7), fontSize: 10)),
+            Text(sub, style: TextStyle(color: _GC.txt.withValues(alpha: 0.7), fontSize: 10)),
           ],
         ),
       ),
@@ -569,7 +569,7 @@ class BlindDateGameState extends State<BlindDateGame> with TickerProviderStateMi
             const SizedBox(height: 20),
             Text('✨ Compatibility: ${(firePct * 0.6 + 40).clamp(0, 100).toStringAsFixed(0)}%', style: const TextStyle(color: Colors.white, fontSize: 16)),
             const SizedBox(height: 4),
-            Text('This score is for fun only. Real compatibility takes more than 3 minutes 😄', style: TextStyle(color: _GC.txt.withOpacity(0.5), fontSize: 10, fontStyle: FontStyle.italic), textAlign: TextAlign.center),
+            Text('This score is for fun only. Real compatibility takes more than 3 minutes 😄', style: TextStyle(color: _GC.txt.withValues(alpha: 0.5), fontSize: 10, fontStyle: FontStyle.italic), textAlign: TextAlign.center),
           ],
           const SizedBox(height: 20),
           ElevatedButton(

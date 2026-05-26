@@ -1,6 +1,10 @@
 // ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables, use_build_context_synchronously
 import 'dart:async';
 import 'dart:math';
+
+import '../services/notification_service.dart';
+
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -75,7 +79,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   static const Color purplePrimary = Color(0xFFB983FF);
   static const Color purpleDark = Color(0xFF7B2CBF);
   static const Color textMuted = Color(0xFF8E8B99);
-  static const Color cyanBright = Color(0xFF00E5FF);
+  static const Color cyanBright = Color(0xFFFF6B00);
 
   @override
   void initState() {
@@ -136,7 +140,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   Color _getAuraColor(String hostId) {
     // Generate a consistent pseudo-random neon color based on host ID
     final colors = [
-      const Color(0xFF00E5FF),
+      const Color(0xFFFF6B00),
       const Color(0xFFFF00FF),
       const Color(0xFF8A2BE2),
       const Color(0xFFFF4655),
@@ -395,6 +399,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                 iconColor: purplePrimary,
                 borderColor: Colors.white.withValues(alpha: 0.3),
                 showMessages: false,
+                isBolroomMode: true,
               ),
               const SizedBox(width: 12),
               GestureDetector(
@@ -1026,6 +1031,31 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                               await _sb.from('bolroom_profiles').update({'rooms_hosted': (p['rooms_hosted'] ?? 0) + 1}).eq('id', myId);
                             }
                           } catch (_) {}
+                          
+                          // Notify followers/followings
+                          if (!isScheduled) {
+                            try {
+                              final reqs = await _sb.from('requests').select('sender_id, target_id').eq('target_type', 'follow').eq('status', 'approved').or('sender_id.eq.$myId,target_id.eq.$myId');
+                              
+                              final Set<String> usersToNotify = {};
+                              for (var r in (reqs as List)) {
+                                final sId = r['sender_id']?.toString();
+                                final tId = r['target_id']?.toString();
+                                if (sId != null && sId != myId) usersToNotify.add(sId);
+                                if (tId != null && tId != myId) usersToNotify.add(tId);
+                              }
+                              
+                              for (var uId in usersToNotify) {
+                                NotificationService.sendNotification(
+                                  userId: uId,
+                                  type: NotificationType.system,
+                                  title: '$hostName is Live! 🎙️',
+                                  body: 'Hop in to BolRoom: $name',
+                                  payload: {'bolroom_live': true, 'room_id': res['id'].toString()},
+                                );
+                              }
+                            } catch (_) {}
+                          }
 
                           _loadRooms();
                           Navigator.pop(ctx);

@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'rush_in_consumer_detail_view.dart';
 
 // ─── globals ───────────────────────────────────────────────────────────────
 SupabaseClient get _sb => Supabase.instance.client;
@@ -12,13 +11,12 @@ String? get _uid => _sb.auth.currentUser?.id;
 
 // ─── design tokens ─────────────────────────────────────────────────────────
 const _bg    = Color(0xFF0A0A0F);
-const _bg2   = Color(0xFF111827);
 const _card  = Color(0xFF141C2E);
-const _cyan  = Color(0xFF00E5FF);
+const _cyan  = Color(0xFFFF6B00);
 const _green = Color(0xFF10B981);
 const _amber = Color(0xFFF59E0B);
 const _red   = Color(0xFFEF4444);
-const _pink  = Color(0xFFEC4899);
+const _pink  = Color(0xFFFF3D00);
 const _rush  = Color(0xFF00BFFF);   // live-rush accent colour
 
 // ─── helpers ───────────────────────────────────────────────────────────────
@@ -60,8 +58,8 @@ class ActivitySummaryScreen extends StatelessWidget {
 
   Future<Map<String,int>> _stats() async {
     try {
-      final all  = await _sb.from('activities').select('id,is_rush_in').eq('user_id', _uid!);
-      final rush = all.where((x) => x['is_rush_in'] == true).length;
+      final all  = await _sb.from('activities').select('id,description').eq('user_id', _uid!);
+      final rush = all.where((x) => x['is_rush_in'] == true || (x['description']?.toString().contains('[is_rush_in:true]') ?? false)).length;
       final ids  = all.map((x) => x['id']).toList();
       int pCount = 0;
       if (ids.isNotEmpty) { final p = await _sb.from('requests').select('id').inFilter('target_id', ids).eq('status','approved'); pCount = p.length; }
@@ -127,14 +125,18 @@ class _ParticipantRequestCard extends StatelessWidget {
     final sColor = status == 'approved' ? const Color(0xFF10B981) : status == 'rejected' ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
 
     return FutureBuilder<Map<String,dynamic>?>(
-      future: _sb.from('activities').select('title,description,category').eq('id', req['target_id']).maybeSingle(),
+      future: _sb.from('activities').select('*').eq('id', req['target_id']).maybeSingle(),
       builder: (_, snap) {
         final act = snap.data;
         final title = act?['title'] as String? ?? 'Untitled';
         final desc  = act?['category'] as String? ?? act?['description'] as String? ?? '...'; // using category or desc as the subtext like 'football'
 
         return GestureDetector(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ParticipantActivityDetailScreen(request: req, targetType: targetType))),
+          onTap: () {
+            if (act != null) {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => RushInConsumerDetailView(activity: act, onInteraction: () {})));
+            }
+          },
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -148,10 +150,10 @@ class _ParticipantRequestCard extends StatelessWidget {
               Container(
                 width: 48, height: 48,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00E5FF).withValues(alpha: 0.1), // light blue tint like in screenshot
+                  color: const Color(0xFFFF6B00).withValues(alpha: 0.1), // light blue tint like in screenshot
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.radar, color: Color(0xFF00E5FF), size: 24), // @ icon style or radar
+                child: const Icon(Icons.radar, color: Color(0xFFFF6B00), size: 24), // @ icon style or radar
               ),
               const SizedBox(width: 16),
               // Title + desc
@@ -198,7 +200,6 @@ class ParticipantActivityDetailScreen extends StatefulWidget {
 }
 class _PADS extends State<ParticipantActivityDetailScreen> {
   Map<String,dynamic>? _act;
-  Map<String,dynamic>? _host;
   bool _loading = true;
 
   @override void initState() { super.initState(); _fetch(); }
@@ -207,240 +208,20 @@ class _PADS extends State<ParticipantActivityDetailScreen> {
     try {
       final act  = await _sb.from('activities').select('*').eq('id', widget.request['target_id']).maybeSingle();
       if (act != null) {
-        final host = await _sb.from('profiles').select('id,name,avatar_url,is_ghost_mode').eq('id', act['user_id']).maybeSingle();
-        if (mounted) setState(() { _act = act; _host = host; });
+        if (mounted) setState(() { _act = act; });
       }
     } catch(_) {}
     if (mounted) setState(() => _loading = false);
-  }
-
-  Future<void> _delete() async {
-    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      backgroundColor: _bg2, title: const Text('Leave event?', style: TextStyle(color: Colors.white)),
-      content: const Text('This will withdraw your request. Are you sure?', style: TextStyle(color: Colors.white60)),
-      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('CANCEL')), TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('CONFIRM', style: TextStyle(color: _red)))],
-    ));
-    if (ok == true) {
-      await _sb.from('requests').delete().eq('id', widget.request['id']);
-      if (mounted) Navigator.pop(context);
-    }
   }
 
   @override Widget build(BuildContext context) {
     if (_loading) return Scaffold(backgroundColor: _bg, appBar: _appBar('Loading...'), body: const Center(child: CircularProgressIndicator(color: _cyan)));
     if (_act == null) return Scaffold(backgroundColor: _bg, appBar: _appBar('Not Found'), body: _empty(Icons.error_outline, 'This event no longer exists'));
 
-    final status   = widget.request['status'] as String? ?? 'pending';
-    final isApproved = status == 'approved';
-    final isRush   = _act!['is_rush_in'] == true;
-    final sColor   = isApproved ? _green : status == 'rejected' ? _red : _amber;
-    final hostName  = _host?['name'] as String? ?? 'Host';
-    final hostAvatar = _host?['avatar_url'] as String?;
-    final locName   = _act!['location_name'] as String? ?? 'Unknown';
-    final lat = double.tryParse(_act!['lat']?.toString() ?? '');
-    final lng = double.tryParse(_act!['lng']?.toString() ?? '');
-
-    return Scaffold(
-      backgroundColor: _bg,
-      appBar: _appBar(''),
-      body: ListView(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8), children: [
-
-        // ── Badge ──
-        Row(children: [
-          Icon(isRush ? Icons.flash_on : Icons.event, color: _rush, size: 14),
-          const SizedBox(width: 5),
-          Text(isRush ? 'LIVE RUSH-IN' : 'ACTIVITY', style: GoogleFonts.inter(color: _rush, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
-        ]),
-        const SizedBox(height: 10),
-
-        // ── Title ──
-        Text(_act!['title'] as String? ?? 'Untitled',
-          style: GoogleFonts.poppins(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
-        Text('"${_act!['description'] as String? ?? ''}"',
-          style: GoogleFonts.inter(color: Colors.white38, fontSize: 14, fontStyle: FontStyle.italic)),
-        const SizedBox(height: 20),
-
-        // ── Host row ──
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white10)),
-          child: Row(children: [
-            CircleAvatar(radius: 22, backgroundImage: hostAvatar != null ? NetworkImage(hostAvatar) : null,
-              backgroundColor: _cyan.withValues(alpha: 0.2),
-              child: hostAvatar == null ? Text(hostName[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)) : null),
-            const SizedBox(width: 12),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(hostName, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
-              Text('Public Profile', style: GoogleFonts.inter(color: Colors.white38, fontSize: 11)),
-            ]),
-            const Spacer(),
-            const Icon(Icons.verified, color: _green, size: 22),
-          ]),
-        ),
-        const SizedBox(height: 14),
-
-        // ── Approval banner + delete btn ──
-        Row(children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              decoration: BoxDecoration(
-                color: sColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: sColor.withValues(alpha: 0.4)),
-              ),
-              alignment: Alignment.center,
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(isApproved ? Icons.check_circle : status == 'rejected' ? Icons.cancel : Icons.hourglass_top, color: sColor, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  isApproved ? 'You are Approved! 🎉' : status == 'rejected' ? 'Request Rejected' : 'Pending Approval...',
-                  style: GoogleFonts.poppins(color: sColor, fontWeight: FontWeight.w600, fontSize: 14),
-                ),
-              ]),
-            ),
-          ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: _delete,
-            child: Container(width: 48, height: 48,
-              decoration: BoxDecoration(color: _red.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12), border: Border.all(color: _red.withValues(alpha: 0.35))),
-              child: const Icon(Icons.delete_outline, color: _red)),
-          ),
-        ]),
-        const SizedBox(height: 14),
-
-        // ── Location card ──
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isApproved ? _bg2 : _bg,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: isApproved ? _cyan.withValues(alpha: 0.4) : Colors.white12),
-          ),
-          child: Column(children: [
-            Icon(Icons.location_on, color: isApproved ? _cyan : Colors.white24, size: 32),
-            const SizedBox(height: 8),
-            Text(isApproved ? 'LOCATION UNLOCKED' : 'LOCATION LOCKED',
-              style: GoogleFonts.inter(color: isApproved ? _cyan : Colors.white24, fontWeight: FontWeight.w700, letterSpacing: 1.2, fontSize: 12)),
-            const SizedBox(height: 4),
-            Text(isApproved ? locName : 'Revealed on approval',
-              style: GoogleFonts.inter(color: Colors.white54, fontSize: 13)),
-            if (isApproved && lat != null && lng != null) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: _cyan, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                  icon: const Icon(Icons.map_outlined, size: 18),
-                  label: Text('VIEW ON MAP', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
-                  onPressed: () => _openMap(context, lat, lng, locName),
-                ),
-              ),
-            ],
-          ]),
-        ),
-        const SizedBox(height: 24),
-
-        // ── Approved participants ──
-        _sectionHeader('Approved Participants', stream: _sb.from('requests').stream(primaryKey: ['id']).eq('target_id', _act!['id']!).order('created_at'),
-          filter: (r) => r['status'] == 'approved'),
-
-        const SizedBox(height: 20),
-
-        // ── Waitlist ──
-        _waitlistSection(_act!['id']),
-      ]),
+    return RushInConsumerDetailView(
+      activity: _act!,
+      onInteraction: () {},
     );
-  }
-
-  Widget _sectionHeader(String title, {required Stream<List<Map<String,dynamic>>> stream, required bool Function(Map<String,dynamic>) filter}) {
-    return StreamBuilder<List<Map<String,dynamic>>>(
-      stream: stream,
-      builder: (_, snap) {
-        final items = (snap.data ?? []).where(filter).toList();
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text(title, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
-            const Spacer(),
-            Text('${items.length}', style: GoogleFonts.poppins(color: _green, fontWeight: FontWeight.w700, fontSize: 15)),
-          ]),
-          const SizedBox(height: 10),
-          if (items.isEmpty)
-            Text('None yet', style: GoogleFonts.inter(color: Colors.white30, fontSize: 12))
-          else
-            _AvatarRow(items: items),
-        ]);
-      },
-    );
-  }
-
-  Widget _waitlistSection(String actId) => StreamBuilder<List<Map<String,dynamic>>>(
-    stream: _sb.from('requests').stream(primaryKey: ['id']).eq('target_id', actId).order('created_at'),
-    builder: (_, snap) {
-      final wl = (snap.data ?? []).where((r) => r['status'] == 'pending').toList();
-      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text('Public Waitlist', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
-          const Spacer(),
-          Text('${wl.length}', style: GoogleFonts.poppins(color: _amber, fontWeight: FontWeight.w700, fontSize: 15)),
-        ]),
-        const SizedBox(height: 6),
-        if (wl.isEmpty)
-          Text('Waitlist is empty.', style: GoogleFonts.inter(color: Colors.white30, fontSize: 12))
-        else
-          _AvatarRow(items: wl),
-      ]);
-    },
-  );
-
-  void _openMap(BuildContext ctx, double lat, double lng, String label) {
-    showModalBottomSheet(
-      context: ctx, isScrollControlled: true, backgroundColor: Colors.transparent,
-      builder: (_) => SizedBox(height: MediaQuery.of(ctx).size.height * 0.65,
-        child: ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          child: Stack(children: [
-            FlutterMap(options: MapOptions(initialCenter: LatLng(lat, lng), initialZoom: 15),
-              children: [
-                TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.meetra.app'),
-                MarkerLayer(markers: [Marker(point: LatLng(lat, lng), width: 48, height: 48,
-                  child: const Icon(Icons.location_on, color: _cyan, size: 48))]),
-              ]),
-            Positioned(top: 12, left: 16,
-              child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(8)),
-                child: Text(label, style: GoogleFonts.inter(color: Colors.white, fontSize: 13)))),
-          ])),
-      ),
-    );
-  }
-}
-
-// Small avatar row widget reused in participant detail
-class _AvatarRow extends StatelessWidget {
-  final List<Map<String,dynamic>> items;
-  const _AvatarRow({required this.items});
-  @override Widget build(BuildContext context) {
-    final shown = items.take(6).toList();
-    return Row(children: [
-      for (final r in shown)
-        FutureBuilder<Map<String,dynamic>?>(
-          future: Supabase.instance.client.from('profiles').select('avatar_url,name').eq('id', r['sender_id']).maybeSingle(),
-          builder: (_, s) {
-            final av = s.data?['avatar_url'] as String?;
-            final nm = s.data?['name'] as String? ?? '?';
-            return Container(
-              margin: const EdgeInsets.only(right: 8),
-              child: CircleAvatar(radius: 20, backgroundImage: av != null ? NetworkImage(av) : null,
-                backgroundColor: _cyan.withValues(alpha: 0.2),
-                child: av == null ? Text(nm[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 12)) : null),
-            );
-          },
-        ),
-      if (items.length > 6) Padding(padding: const EdgeInsets.only(left: 4),
-        child: Text('+${items.length - 6}', style: GoogleFonts.inter(color: Colors.white38, fontSize: 12))),
-    ]);
   }
 }
 
@@ -453,86 +234,10 @@ class HostActivityDetailScreen extends StatefulWidget {
   @override State<HostActivityDetailScreen> createState() => _HADS();
 }
 class _HADS extends State<HostActivityDetailScreen> {
-  final _key = GlobalKey<ScaffoldState>();
-
-  void _openMap(BuildContext ctx) {
-    final lat = double.tryParse(widget.activity['lat']?.toString() ?? '');
-    final lng = double.tryParse(widget.activity['lng']?.toString() ?? '');
-    if (lat == null || lng == null) {
-      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('No location set')));
-      return;
-    }
-    final loc = widget.activity['location_name'] as String? ?? 'Event';
-    showModalBottomSheet(
-      context: ctx, isScrollControlled: true, backgroundColor: Colors.transparent,
-      builder: (_) => SizedBox(height: MediaQuery.of(ctx).size.height * 0.65,
-        child: ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          child: FlutterMap(options: MapOptions(initialCenter: LatLng(lat, lng), initialZoom: 15),
-            children: [
-              TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.meetra.app'),
-              MarkerLayer(markers: [Marker(point: LatLng(lat, lng), width: 48, height: 48, child: const Icon(Icons.location_on, color: _green, size: 48))]),
-              SimpleAttributionWidget(source: Text(loc, style: const TextStyle(color: Colors.white70, fontSize: 12))),
-            ]),
-        )));
-  }
-
   @override Widget build(BuildContext context) {
-    final act    = widget.activity;
-    final actId  = act['id'];
-    final isRush = act['is_rush_in'] == true;
-
-    return Scaffold(
-      key: _key,
-      backgroundColor: _bg,
-      appBar: _appBar('Manage ${isRush ? 'Rush-In' : 'Activity'}', actions: [
-        IconButton(icon: const Icon(Icons.map_outlined, color: _cyan), onPressed: () => _openMap(context)),
-      ]),
-      body: CustomScrollView(slivers: [
-
-        // ── Header info ──
-        SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(isRush ? Icons.flash_on : Icons.event, color: _rush, size: 14),
-            const SizedBox(width: 5),
-            Text(isRush ? 'LIVE RUSH-IN' : 'ACTIVITY', style: GoogleFonts.inter(color: _rush, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
-          ]),
-          const SizedBox(height: 8),
-          Text(act['title'] as String? ?? 'Untitled', style: GoogleFonts.poppins(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text(act['description'] as String? ?? '', style: GoogleFonts.inter(color: Colors.white38, fontSize: 13)),
-          const SizedBox(height: 16),
-
-          // Location chip
-          Row(children: [
-            const Icon(Icons.location_on, color: _cyan, size: 14),
-            const SizedBox(width: 4),
-            Expanded(child: Text(act['location_name'] as String? ?? 'No location', style: GoogleFonts.inter(color: Colors.white54, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
-          ]),
-          const SizedBox(height: 20),
-
-          const Text('REQUESTS & PARTICIPANTS', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
-          const SizedBox(height: 10),
-        ]))),
-
-        // ── Live participant stream ──
-        StreamBuilder<List<Map<String,dynamic>>>(
-          stream: _sb.from('requests').stream(primaryKey: ['id']).eq('target_id', actId).order('created_at', ascending: false),
-          builder: (_, snap) {
-            final reqs = snap.data ?? [];
-            if (snap.connectionState == ConnectionState.waiting && reqs.isEmpty) {
-              return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator(color: _cyan)));
-            }
-            if (reqs.isEmpty) {
-              return SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(32), child: _empty(Icons.group_off, 'No participants yet')));
-            }
-            return SliverList(delegate: SliverChildBuilderDelegate(
-              (_, i) => _HostParticipantCard(req: reqs[i]),
-              childCount: reqs.length,
-            ));
-          },
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 40)),
-      ]),
+    return RushInConsumerDetailView(
+      activity: widget.activity,
+      onInteraction: () {},
     );
   }
 }

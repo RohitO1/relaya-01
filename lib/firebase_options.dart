@@ -41,20 +41,20 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'dummy-api-key-web',
-    appId: '1:1234567890:web:abcdef123456',
-    messagingSenderId: '1234567890',
-    projectId: 'meetra-mock-project',
-    authDomain: 'meetra-mock-project.firebaseapp.com',
-    storageBucket: 'meetra-mock-project.appspot.com',
+    apiKey: 'AIzaSyDWD5TXC2wetAqhULay7ziB8eJ0pufFWw4',
+    appId: '1:488610187435:android:11ded936dcc1580ac90fee', // Using the registered project App ID
+    messagingSenderId: '488610187435',
+    projectId: 'relaya-f7ba4',
+    authDomain: 'relaya-f7ba4.firebaseapp.com',
+    storageBucket: 'relaya-f7ba4.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'dummy-api-key-android',
-    appId: '1:1234567890:android:abcdef123456',
-    messagingSenderId: '1234567890',
-    projectId: 'meetra-mock-project',
-    storageBucket: 'meetra-mock-project.appspot.com',
+    apiKey: 'AIzaSyDWD5TXC2wetAqhULay7ziB8eJ0pufFWw4',
+    appId: '1:488610187435:android:11ded936dcc1580ac90fee',
+    messagingSenderId: '488610187435',
+    projectId: 'relaya-f7ba4',
+    storageBucket: 'relaya-f7ba4.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
