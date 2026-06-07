@@ -134,7 +134,7 @@ class _MeetraAppState extends State<MeetraApp> {
             pageTransitionsTheme: const PageTransitionsTheme(
               builders: <TargetPlatform, PageTransitionsBuilder>{
                 TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-                TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+                TargetPlatform.iOS: ZoomPageTransitionsBuilder(),
               },
             ),
           ),
@@ -149,7 +149,7 @@ class _MeetraAppState extends State<MeetraApp> {
             pageTransitionsTheme: const PageTransitionsTheme(
               builders: <TargetPlatform, PageTransitionsBuilder>{
                 TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-                TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+                TargetPlatform.iOS: ZoomPageTransitionsBuilder(),
               },
             ),
             textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme)

@@ -1795,22 +1795,26 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
         color: Colors.black,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            ValueListenableBuilder<String>(
-              valueListenable: locationService.activeDistrictNotifier,
-              builder: (context, district, _) {
-                return Text(
-                  district.isNotEmpty ? '$district Posts' : 'Nearby Posts',
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    letterSpacing: -0.2,
-                  ),
-                );
-              },
+            Flexible(
+              child: ValueListenableBuilder<String>(
+                valueListenable: locationService.activeDistrictNotifier,
+                builder: (context, district, _) {
+                  return Text(
+                    district.isNotEmpty ? district : 'Nearby',
+                    style: GoogleFonts.inter(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -0.2,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  );
+                },
+              ),
             ),
+            const SizedBox(width: 10),
             Row(
               children: [
                 _buildFilterChip('Near Me', activeFilter == 'Near Me' || activeFilter == null, () => onFilterChanged('Near Me')),
