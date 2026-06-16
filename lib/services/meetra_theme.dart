@@ -115,7 +115,7 @@ class MeetraGradients {
   /// Primary accent gradient (buttons, highlights)
   static LinearGradient primaryAccent(BuildContext context) {
     return _isDark(context)
-        ? const LinearGradient(colors: [Color(0xFFFF5C00), Color(0xFFFF8A00)])
+        ? const LinearGradient(colors: [Color(0xFFFF3D00), Color(0xFFFF8A00), Color(0xFFFFC107)])
         : const LinearGradient(colors: [Color(0xFF8A2BE2), Color(0xFFD4A574)]);
   }
 
@@ -126,8 +126,8 @@ class MeetraGradients {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              const Color(0xFFFF6B00).withValues(alpha: 0.15),
-              const Color(0xFFFF8A00).withValues(alpha: 0.1),
+              const Color(0xFFFF3D00).withValues(alpha: 0.15),
+              const Color(0xFF8A2BE2).withValues(alpha: 0.1),
               Colors.transparent,
             ],
           )
@@ -183,8 +183,8 @@ class MeetraGradients {
       center: Alignment.center,
       radius: 1.5,
       colors: [
-        const Color(0xFFFF6B00).withValues(alpha: 0.08),
-        const Color(0xFFFF8A00).withValues(alpha: 0.04),
+        const Color(0xFFFF3D00).withValues(alpha: 0.08),
+        const Color(0xFF8A2BE2).withValues(alpha: 0.05),
         Colors.transparent,
       ],
     );
@@ -221,10 +221,10 @@ class MeetraTypography {
   }
 
   static TextStyle displayLg(BuildContext context) => _base(context).copyWith(
-        fontSize: 32,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.5,
-        height: 1.2,
+        fontSize: 34,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -1.0,
+        height: 1.1,
       );
 
   static TextStyle headlineMd(BuildContext context) => _base(context).copyWith(
@@ -557,9 +557,9 @@ class MeetraThemeBuilder {
 
   static ThemeData dark() {
     const primary = Color(0xFFFF6B00);
-    const secondary = Color(0xFFFF5C00);
-    const surface = Color(0xFF050508);
-    const onSurface = Color(0xFFEEDDEE);
+    const secondary = Color(0xFFFFC107);
+    const surface = Color(0xFF0A0C12);
+    const onSurface = Color(0xFFFFFFFF);
 
     return ThemeData(
       brightness: Brightness.dark,

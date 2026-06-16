@@ -12,6 +12,7 @@ import 'bolroom/bolroom_dm_chat_screen.dart';
 import 'chatroom_live_screen.dart'; // for BolRoomManager
 import 'profile_screen.dart';
 import 'messages_screen.dart';
+import 'knocks_list_screen.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
@@ -273,11 +274,17 @@ class PushNotificationManager {
 
         if (senderId != null) {
           try {
-            if (notifType == 'match' || title.contains('knock') || title.contains('match')) {
-              // It's a knock notification -> Go to their profile
-              debugPrint('Knock notification tapped. Navigating to ProfileScreen: $senderId');
+            if (notifType == 'match' || title.contains('match')) {
+              // It's a match notification -> Go to their profile
+              debugPrint('Match notification tapped. Navigating to ProfileScreen: $senderId');
               navState.push(MaterialPageRoute(
                 builder: (_) => ProfileScreen(userId: senderId),
+              ));
+            } else if (notifType == 'knock' || title.contains('knock')) {
+              // It's a knock notification -> Go to KnocksListScreen
+              debugPrint('Knock notification tapped. Navigating to KnocksListScreen.');
+              navState.push(MaterialPageRoute(
+                builder: (_) => const KnocksListScreen(),
               ));
             } else {
               // It's a chat message -> Go to ChatDetailScreen

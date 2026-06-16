@@ -122,7 +122,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   final ScrollController _scrollController = ScrollController();
   
   // State
-  String _activeTab = 'rush'; // 'rush' or 'act'
+  
   String _activeView = 'map'; // 'list' or 'map'
   String _searchQuery = '';
   Set<String> _selectedCategories = {};
@@ -131,13 +131,13 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   // Live data from Supabase
   List<SparkItem> _rushIns = [];
-  List<SparkItem> _activities = [];
+  
 
   // My personal dashboard data
   List<Map<String, dynamic>> _myHostedRushIns = [];
   List<Map<String, dynamic>> _myJoinedRushIns = [];
-  List<Map<String, dynamic>> _myHostedActivities = [];
-  List<Map<String, dynamic>> _myJoinedActivities = [];
+  
+  
 
   // Overlays
   OverlayEntry? _toastEntry;
@@ -251,7 +251,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
       // Fetch participant counts
       final List<SparkItem> rushIns = [];
-      final List<SparkItem> acts = [];
+      
 
       for (final row in (rows as List)) {
         final id = row['id']?.toString() ?? '';
@@ -364,15 +364,13 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
         if (isRushIn) {
           rushIns.add(item);
-        } else {
-          acts.add(item);
         }
       }
 
       if (mounted) {
         setState(() {
           _rushIns = rushIns;
-          _activities = acts;
+          
           _loadingData = false;
         });
       }
@@ -391,7 +389,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
       // 1) Fetch MY hosted activities
       final hosted = await sb.from('activities').select('*').eq('user_id', uid).eq('is_active', true).order('created_at', ascending: false);
       final hostedRush = <Map<String, dynamic>>[];
-      final hostedAct = <Map<String, dynamic>>[];
+      
 
       // Batch fetch requests for hosted activities
       final List<String> hostedIds = (hosted as List).map((h) => h['id'].toString()).toList();
@@ -423,17 +421,15 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         final enriched = Map<String, dynamic>.from(row);
         enriched['_joinedCount'] = joinedCount;
         enriched['_pendingCount'] = pendingCount;
-        if (row['is_rush_in'] == true || (row['description']?.toString().contains('[is_rush_in:true]') ?? false)) {
+        if (row["is_rush_in"] == true || (row["description"]?.toString().contains("[is_rush_in:true]") ?? false)) {
           hostedRush.add(enriched);
-        } else {
-          hostedAct.add(enriched);
         }
       }
 
       // 2) Fetch activities I JOINED / REQUESTED
       final myReqs = await sb.from('requests').select('target_id, status').eq('sender_id', uid);
       final joinedRush = <Map<String, dynamic>>[];
-      final joinedAct = <Map<String, dynamic>>[];
+      
 
       final List<String> joinedTargetIds = (myReqs as List).map((r) => r['target_id']?.toString() ?? '').where((id) => id.isNotEmpty).toList();
 
@@ -461,10 +457,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
             final hostId = row['user_id']?.toString() ?? '';
             enriched['_hostName'] = hostNameMap[hostId] ?? 'Someone';
             
-            if (enriched['is_rush_in'] == true || (enriched['description']?.toString().contains('[is_rush_in:true]') ?? false)) {
+            if (enriched["is_rush_in"] == true || (enriched["description"]?.toString().contains("[is_rush_in:true]") ?? false)) {
               joinedRush.add(enriched);
-            } else {
-              joinedAct.add(enriched);
             }
           }
         } catch (_) {}
@@ -474,8 +468,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         setState(() {
           _myHostedRushIns = hostedRush;
           _myJoinedRushIns = joinedRush;
-          _myHostedActivities = hostedAct;
-          _myJoinedActivities = joinedAct;
+          
+          
         });
       }
     } catch (e) {
@@ -500,7 +494,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   // --- View Switchers ---
   void _setTab(String tab) {
     setState(() {
-      _activeTab = tab;
+      
       _searchQuery = '';
     });
   }
@@ -529,7 +523,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.7),
-      builder: (context) => _SparkCreateModal(initialTab: _activeTab),
+      builder: (context) => _SparkCreateModal(initialTab: "rush"),
     ).then((val) {
       if (val is Map) {
         _showToast(val['title'], val['desc']);
@@ -554,14 +548,14 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
       await sb.from('requests').insert({
         'sender_id': uid,
         'target_id': item.id,
-        'target_type': item.type == 'rush' ? 'rush_in' : 'activity',
+        'target_type': 'rush_in',
         'status': 'pending',
       });
 
-      final title = item.type == 'rush' ? '⚡ Request Sent!' : '✋ Join Request Sent!';
-      final desc = item.type == 'rush' 
-          ? 'The anonymous host will review your request. You\'ll be notified!' 
-          : 'Your request to join "${item.title}" has been sent to ${item.host}. Await approval.';
+      if (!mounted) return;
+
+      final title = '⚡ Request Sent!';
+      final desc = 'The anonymous host will review your request. You\'ll be notified!';
       _showToast(title, desc);
       _refreshAll(); // Refresh to show "Requested" status
     } catch (e) {
@@ -579,7 +573,9 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         'user_id': uid,
         'item_id': item.id,
       });
-      _showToast('🚫 Hidden', 'You won\'t see this ${item.type == 'rush' ? 'rush-in' : 'activity'} anymore.');
+
+      if (!mounted) return;
+      _showToast('🚫 Hidden', 'You won\'t see this rush-in anymore.');
       _refreshAll(); // Refresh feed and counts
     } catch (e) {
       _showToast('Error', 'Failed to hide item: $e');
@@ -742,7 +738,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
                 const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 22),
                 const SizedBox(width: 8),
                 Text(
-                  'SPARK',
+                  "RUSH-IN",
                   style: GoogleFonts.inter(
                     fontSize: 28,
                     fontWeight: FontWeight.w900,
@@ -779,7 +775,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   // --- LIST VIEW COMPONENTS ---
   Widget _buildListView() {
-    final list = _activeTab == 'rush' ? _rushIns : _activities;
+    final list = _rushIns;
     final filteredList = list.where((e) => e.title.toLowerCase().contains(_searchQuery)).toList();
     
     final remainingItems = filteredList;
@@ -788,9 +784,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 16).copyWith(bottom: 120),
       children: [
-        _buildSearchBar('Search sparks...'),
-        const SizedBox(height: 8),
-        _buildTabSwitcher(),
+        _buildSearchBar('Search rush-ins...'),
         const SizedBox(height: 24),
         _buildDashboardOverview(),
         const SizedBox(height: 28),
@@ -830,8 +824,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
             children: [
               _buildListTile(SparkItem(
                 id: 'mock_item_1',
-                type: _activeTab,
-                title: _activeTab == 'rush' ? 'Neon Art Gallery Crawl' : 'Rooftop DJ Set',
+                type: "rush",
+                title: "Neon Art Gallery Crawl",
                 desc: 'Exploring local art spots in Soho.',
                 tags: ['Art'],
                 slots: '6/10',
@@ -842,8 +836,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
               )),
               _buildListTile(SparkItem(
                 id: 'mock_item_2',
-                type: _activeTab,
-                title: _activeTab == 'rush' ? 'Midnight Run Crew' : 'Sunset Yoga Sessions',
+                type: "rush",
+                title: "Midnight Run Crew",
                 desc: 'A quick run across the Brooklyn Bridge.',
                 tags: ['Fitness'],
                 slots: '3/8',
@@ -859,88 +853,6 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
             children: remainingItems.map((item) => _buildListTile(item)).toList(),
           ),
       ],
-    );
-  }
-
-  Widget _buildTabSwitcher() {
-    final isRush = _activeTab == 'rush';
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _setTab('rush'),
-              child: Container(
-                height: 48,
-                decoration: BoxDecoration(
-                  color: isRush ? const Color(0xFFFF6B00) : Colors.black.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: isRush ? const Color(0xFFFF6B00) : Colors.white.withValues(alpha: 0.15),
-                    width: 1.5,
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.bolt,
-                      color: isRush ? Colors.black : Colors.white,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Rush-in',
-                      style: GoogleFonts.inter(
-                        color: isRush ? Colors.black : Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _setTab('act'),
-              child: Container(
-                height: 48,
-                decoration: BoxDecoration(
-                  color: !isRush ? const Color(0xFFFF6B00) : Colors.black.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: !isRush ? const Color(0xFFFF6B00) : Colors.white.withValues(alpha: 0.15),
-                    width: 1.5,
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.calendar_today,
-                      color: !isRush ? Colors.black : Colors.white,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Activities',
-                      style: GoogleFonts.inter(
-                        color: !isRush ? Colors.black : Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1237,7 +1149,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
           Row(
             children: [
               Text('Your ', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-              Text(_activeTab == 'act' ? 'Activities' : 'Rush-Ins', style: GoogleFonts.plusJakartaSans(color: SparkColors.orange, fontSize: 24, fontWeight: FontWeight.bold)),
+              Text("Rush-Ins", style: GoogleFonts.plusJakartaSans(color: SparkColors.orange, fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(width: 8),
               const Icon(Icons.auto_awesome, color: SparkColors.purple, size: 20),
             ],
@@ -1250,7 +1162,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
               Expanded(
                 child: _buildHeroCard(
                   title: 'Events I\'m\nHosting',
-                  subtitle: '${_myHostedRushIns.length + _myHostedActivities.length} Active Event(s)',
+                  subtitle: '${_myHostedRushIns.length + 0} Active Event(s)',
                   desc: 'Events you created\nand are hosting.',
                   colors: [SparkColors.orange.withValues(alpha: 0.15), SparkColors.orange.withValues(alpha: 0.05)],
                   borderColor: SparkColors.orange.withValues(alpha: 0.3),
@@ -1264,7 +1176,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
               Expanded(
                 child: _buildHeroCard(
                   title: 'Upcoming\nEvents',
-                  subtitle: '${_myJoinedRushIns.length + _myJoinedActivities.length} Upcoming',
+                  subtitle: '${_myJoinedRushIns.length + 0} Upcoming',
                   desc: 'Events you\'re going to\nor have joined.',
                   colors: [SparkColors.blue.withValues(alpha: 0.15), SparkColors.purple.withValues(alpha: 0.05)],
                   borderColor: SparkColors.blue.withValues(alpha: 0.3),
@@ -1367,7 +1279,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   // ---- BOTTOM SHEETS ----
   void _showHostedSheet() {
-    final items = [..._myHostedRushIns, ..._myHostedActivities];
+    final items = [..._myHostedRushIns];
     items.sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
     
     final accent = SparkColors.orange;
@@ -1453,7 +1365,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   }
 
   void _showJoinedSheet() {
-    final items = [..._myJoinedRushIns, ..._myJoinedActivities];
+    final items = [..._myJoinedRushIns];
     items.sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
     
     final accent = SparkColors.purple;
@@ -1678,7 +1590,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     if (_loadingData) {
       return [const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator(color: SparkColors.actPrimary, strokeWidth: 2)))];
     }
-    var list = _activities.where((e) => e.title.toLowerCase().contains(_searchQuery)).toList();
+    var list = _rushIns.where((e) => e.title.toLowerCase().contains(_searchQuery)).toList();
     if (_selectedCategories.isNotEmpty && !_selectedCategories.contains('All')) {
       list = list.where((e) => e.tags.any((t) => _selectedCategories.contains(t))).toList();
     }

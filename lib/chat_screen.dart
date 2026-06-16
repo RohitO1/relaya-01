@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'messages_screen.dart';
 import 'communities_screen.dart';
+import 'knocks_list_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final bool isBolroomMode;
@@ -21,6 +22,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, Map<String, String>> _profileCache = {};
   final Map<String, int> _unreadCounts = {};
   final Set<String> _locallyDeletedChats = {};
+  int _pendingKnocksCount = 0;
   Timer? _pollingTimer;
 
   // UI state matching reference image
@@ -65,6 +67,14 @@ class _ChatScreenState extends State<ChatScreen> {
           .or('sender_id.eq.$_myUid,receiver_id.eq.$_myUid')
           .order('created_at', ascending: false)
           .limit(200);
+
+      final requestsRes = await Supabase.instance.client
+          .from('requests')
+          .select('id')
+          .eq('target_id', _myUid)
+          .eq('status', 'pending')
+          .eq('target_type', 'profile');
+      final knocksCount = (requestsRes as List).length;
 
       final Map<String, Map<String, dynamic>> convos = {};
       final Map<String, int> unreads = {};
@@ -112,6 +122,7 @@ class _ChatScreenState extends State<ChatScreen> {
             final dateB = DateTime.tryParse(b.value['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
             return dateB.compareTo(dateA);
           });
+          _pendingKnocksCount = knocksCount;
           _isLoading = false;
         });
       }
@@ -286,14 +297,20 @@ class _ChatScreenState extends State<ChatScreen> {
                   ? const Center(child: Text('Please sign in to see messages', style: TextStyle(color: Colors.white54)))
                   : _isLoading
                     ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00)))
-                    : _conversations.isEmpty
+                    : (_conversations.isEmpty && _pendingKnocksCount == 0)
                         ? _buildEmptyState()
                         : ListView.builder(
-                            itemCount: _conversations.length,
+                            itemCount: _conversations.length + (_pendingKnocksCount > 0 ? 1 : 0),
                             padding: const EdgeInsets.only(top: 4, bottom: 100),
                             itemBuilder: (context, index) {
-                              final convo = _conversations[index];
-                              return _buildConversationRow(convo.key, convo.value, index);
+                              if (_pendingKnocksCount > 0) {
+                                if (index == 0) return _buildKnocksRow();
+                                final convo = _conversations[index - 1];
+                                return _buildConversationRow(convo.key, convo.value, index - 1);
+                              } else {
+                                final convo = _conversations[index];
+                                return _buildConversationRow(convo.key, convo.value, index);
+                              }
                             },
                           ),
             ),
@@ -414,6 +431,81 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Text('Start a chat', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Knocks Row ──
+  Widget _buildKnocksRow() {
+    return InkWell(
+      onTap: () async {
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => const KnocksListScreen()));
+        _fetchConversations(); // Refresh knocks count when returning
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Row(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: const Icon(Icons.person_add_outlined, color: Colors.white70),
+                ),
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    width: 20, height: 20,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFF6B00),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$_pendingKnocksCount',
+                        style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Knock Requests',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '$_pendingKnocksCount pending request${_pendingKnocksCount == 1 ? '' : 's'}',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFFFF6B00),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white38),
+          ],
+        ),
       ),
     );
   }

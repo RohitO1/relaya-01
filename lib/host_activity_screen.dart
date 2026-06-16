@@ -56,7 +56,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
   // ── STATE ──
   int _currentStep = 0;
-  late bool _isRushIn;
+  bool _isRushIn = true;
   bool _saving = false;
   bool _fetchingGps = false;
   String? _uploadedImageUrl;
@@ -166,14 +166,12 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   };
 
   // ── STEPS ──
-  List<String> get _stepTitles => _isRushIn
-    ? ['IDENTITY', 'VIBES', 'RULES', 'DROP ZONE', 'LAUNCH']
-    : ['DETAILS', 'VIBES', 'SCHEDULE', 'RULES', 'LOCATION', 'LAUNCH'];
+  List<String> get _stepTitles => ['IDENTITY', 'VIBES', 'RULES', 'DROP ZONE', 'LAUNCH'];
 
   @override
   void initState() {
     super.initState();
-    _isRushIn = widget.initialIsRushIn;
+    _isRushIn = true;
     _pinLocation = widget.initialLocation;
     _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
@@ -357,17 +355,6 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
     _mapController.move(_pinLocation, 16.0);
   }
 
-  // ── DATE / TIME ──
-  Future<void> _pickDate() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now().add(const Duration(days: 1)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 90)),
-      builder: (c, ch) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFFFF6B00), surface: Color(0xFF101015), onSurface: Colors.white)), child: ch!),
-    );
-    if (d != null) setState(() => _selectedDate = d);
-  }
 
   Future<void> _pickTime() async {
     final t = await showTimePicker(
@@ -389,17 +376,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
         case 4: return true; // Launch preview is always valid
         default: return false;
       }
-    } else {
-      switch (_currentStep) {
-        case 0: return _titleCtrl.text.trim().isNotEmpty && _descCtrl.text.trim().isNotEmpty;
-        case 1: return _selectedVibes.isNotEmpty;
-        case 2: return _selectedDate != null && _selectedTime != null;
-        case 3: return true; 
-        case 4: return _locationNameCtrl.text.trim().isNotEmpty;
-        case 5: return true;
-        default: return false;
-      }
-    }
+    } return false;
   }
 
   void _nextStep() {
@@ -668,9 +645,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                   child: PageView(
                     controller: _pageCtrl,
                     physics: const NeverScrollableScrollPhysics(),
-                    children: _isRushIn
-                      ? [_rushStep0Identity(accent, accentSecondary), _rushStep1Vibes(accent), _rushStep2Rules(accent, accentSecondary), _rushStep3Location(accent), _rushStep4Launch(accent, accentSecondary)]
-                      : [_stdStep0Details(accent), _stdStep1Vibes(accent), _stdStep2Schedule(accent), _stdStep3Rules(accent, accentSecondary), _stdStep4Location(accent), _stdStep5Launch(accent, accentSecondary)],
+                    children: [_rushStep0Identity(accent, accentSecondary), _rushStep1Vibes(accent), _rushStep2Rules(accent, accentSecondary), _rushStep3Location(accent), _rushStep4Launch(accent, accentSecondary)],
                   ),
                 ),
 
@@ -1013,163 +988,6 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   // ===========================================================================
   // STANDARD ACTIVITY STEPS
   // ===========================================================================
-  Widget _stdStep0Details(Color accent) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _sectionHeader('ACTIVITY NAME', 'Give your event a clear title.'),
-        const SizedBox(height: 16),
-        _neonTextField(_titleCtrl, 'E.g., Weekend Hiking Trip', Icons.event, accent),
-        const SizedBox(height: 32),
-        _sectionHeader('DESCRIPTION', 'What will you be doing?'),
-        const SizedBox(height: 16),
-        _neonTextField(_descCtrl, 'Describe the activity in detail...', Icons.description, accent, maxLines: 4),
-        const SizedBox(height: 32),
-        
-        if (_isSeller) ...[
-          _sectionHeader('PREMIUM PACKAGE', 'Is this an official commercial event?'),
-          const SizedBox(height: 12),
-          _ruleToggle(Icons.verified, 'MARK AS PACKAGE', 'List this in the Events marketplace.', _isPackage, (v) => setState(() => _isPackage = v)),
-          if (_isPackage) ...[
-            const SizedBox(height: 20),
-            _sectionHeader('PACKAGE PRICE (₹)', 'Set a price for this experience.'),
-            const SizedBox(height: 12),
-            _neonTextField(_priceCtrl, '0', Icons.payments, const Color(0xFF10B981), keyboardType: TextInputType.number),
-            const SizedBox(height: 32),
-          ] else 
-            const SizedBox(height: 32),
-        ],
-        _buildBannerImageSection(accent),
-      ]),
-    );
-  }
-
-  Widget _stdStep1Vibes(Color accent) {
-    return _rushStep1Vibes(accent);
-  }
-
-  Widget _stdStep2Schedule(Color accent) {
-    return _stdStep1Schedule(accent);
-  }
-
-  Widget _stdStep3Rules(Color accent, Color secondary) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHeader('PARTICIPANT LIMIT', 'How many people can join your event?'),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [5, 10, 25, 50, 100].map((n) {
-              final sel = _participantLimit == n;
-              return GestureDetector(
-                onTap: () => setState(() => _participantLimit = n),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: 50, height: 50,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: sel ? LinearGradient(colors: [accent, secondary]) : null,
-                    color: sel ? null : Colors.white.withValues(alpha: 0.04),
-                  ),
-                  child: Text('$n', style: TextStyle(color: sel ? Colors.white : Colors.white54, fontWeight: FontWeight.bold)),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 32),
-          _sectionHeader('SETTINGS', 'Automate your activity management.'),
-          const SizedBox(height: 16),
-          _ruleToggle(Icons.verified, 'AUTO-ACCEPT', 'Instantly approve all join requests.', _autoAccept, (v) => setState(() => _autoAccept = v)),
-          const SizedBox(height: 12),
-          _ruleToggle(Icons.lock_outline, 'INVITE ONLY', 'Only people with the link can request to join.', _inviteOnly, (v) => setState(() => _inviteOnly = v)),
-          const SizedBox(height: 32),
-          _sectionHeader('ENTRY TYPE', 'Is this event free or paid?'),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _entryPill('free', 'FREE', Icons.lock_open, accent),
-              const SizedBox(width: 12),
-              _entryPill('paid', 'PAID/EXCL', Icons.diamond, secondary),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _stdStep4Location(Color accent) {
-    return _stdStep2Location(accent);
-  }
-
-  Widget _stdStep5Launch(Color accent, Color secondary) {
-    return _stdStep3Launch(accent, secondary);
-  }
-
-  Widget _stdStep1Schedule(Color accent) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _sectionHeader('DATE & TIME', 'When is this happening?'),
-        const SizedBox(height: 24),
-        GestureDetector(onTap: _pickDate, child: _dateTile(Icons.calendar_today, 'DATE', _selectedDate == null ? 'Tap to select' : '${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}', accent)),
-        const SizedBox(height: 16),
-        GestureDetector(onTap: _pickTime, child: _dateTile(Icons.access_time, 'TIME', _selectedTime == null ? 'Tap to select' : _selectedTime!.format(context), accent)),
-      ]),
-    );
-  }
-
-  Widget _stdStep2Location(Color accent) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _sectionHeader('LOCATION', 'Where is it happening?'),
-              Row(children: [
-                _mapStyleToggle(accent),
-                const SizedBox(width: 8),
-                _gpsButton(accent),
-              ]),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: _locationMap(accent),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-          child: _neonTextField(_locationNameCtrl, 'Name this location...', Icons.edit_location_alt, accent),
-        ),
-      ],
-    );
-  }
-
-  Widget _stdStep3Launch(Color accent, Color secondary) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHeader('READY TO PUBLISH', 'Review and launch your activity.'),
-          const SizedBox(height: 24),
-          _buildLaunchPreviewCard(accent, secondary),
-          const SizedBox(height: 24),
-          Center(child: Text('Tap PUBLISH to launch event.', style: TextStyle(color: accent.withValues(alpha: 0.6), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1))),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBannerImageSection(Color accent) {
     final List<Map<String, String>> presets = [
       {'name': 'Music', 'url': 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800&auto=format&fit=crop'},

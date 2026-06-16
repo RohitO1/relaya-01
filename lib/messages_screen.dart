@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shimmer/shimmer.dart';
 import 'image_upload_service.dart';
 import 'bot_chat_screen.dart';
+import 'knock_review_screen.dart';
 import 'services/notification_service.dart';
 import 'main.dart'; // For CosmicBackgroundPainter
 import 'communities_screen.dart';
@@ -1097,7 +1098,7 @@ class _KnocksViewState extends State<_KnocksView> {
     try {
       final reqs = await Supabase.instance.client
           .from('requests')
-          .select('sender_id, target_id, target_type, status')
+          .select('id, sender_id, target_id, target_type, status, knock_answers, is_super, created_at, expires_at')
           .inFilter('target_type', ['profile', 'hangout'])
           .or('sender_id.eq.$_myUid,target_id.eq.$_myUid');
 
@@ -1146,6 +1147,52 @@ class _KnocksViewState extends State<_KnocksView> {
     }
   }
 
+  void _openKnockReview(Map<String, dynamic> req, Map<String, dynamic> profile) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => KnockReviewScreen(
+        knockRequest: req,
+        senderProfile: profile,
+      ),
+    )).then((_) => _loadKnocks()); // Refresh list when returning
+  }
+
+  Future<void> _acceptKnock(String reqId, String senderId, String senderName, Map<String, dynamic> profile) async {
+    try {
+      await Supabase.instance.client.from('requests').update({'status': 'approved'}).eq('id', reqId);
+      
+      // Send message notification
+      await NotificationService.sendNotification(
+        userId: senderId,
+        type: NotificationType.knock_accepted,
+        title: 'Knock Accepted! 🎉',
+        body: 'Someone accepted your knock. Start chatting!',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Knock accepted!'), backgroundColor: Color(0xFF00E676)));
+        _loadKnocks(); // refresh list
+        
+        // Open Chat Detail directly
+        Navigator.push(context, MaterialPageRoute(
+          builder: (_) => ChatDetailScreen(targetUserId: senderId, name: senderName, avatarUrl: profile['avatar_url']?.toString() ?? ''),
+        ));
+      }
+    } catch (e) {
+      debugPrint('Error accepting knock: $e');
+    }
+  }
+
+  Future<void> _rejectKnock(String reqId) async {
+    try {
+      await Supabase.instance.client.from('requests').update({'status': 'rejected'}).eq('id', reqId);
+      if (mounted) {
+        _loadKnocks(); // refresh list
+      }
+    } catch (e) {
+      debugPrint('Error rejecting knock: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00)));
@@ -1171,140 +1218,326 @@ class _KnocksViewState extends State<_KnocksView> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
       itemCount: filtered.length,
       itemBuilder: (ctx, i) {
-        final profile = filtered[i];
+        final profile   = filtered[i];
         final partnerId = profile['id'] as String;
-        final name = profile['name'] ?? profile['full_name'] ?? 'User';
-        final avatar = profile['avatar_url']?.toString() ?? '';
-        final lastMsg = _lastMessages[partnerId];
+        final name      = profile['name'] ?? profile['full_name'] ?? 'User';
+        final avatar    = profile['avatar_url']?.toString() ?? '';
+        final lastMsg   = _lastMessages[partnerId];
+        final req       = _requestsMap[partnerId];
 
-        String preview = 'Tap to start chatting';
-        bool isRead = true;
+        final status     = req?['status']?.toString() ?? 'approved';
+        final isIncoming = req != null && req['sender_id'] != _myUid;
+        final isPending  = status == 'pending';
+        final isApproved = status == 'approved';
+        final isRejected = status == 'rejected';
+        final isSuper    = req?['is_super'] == true;
+
+        // Compute expiry
+        String? expiryLabel;
+        bool isExpiringSoon = false;
+        if (isPending && req?['expires_at'] != null) {
+          try {
+            final exp = DateTime.parse(req!['expires_at']).toLocal();
+            final rem = exp.difference(DateTime.now());
+            if (rem.isNegative) {
+              expiryLabel = 'Expired';
+            } else if (rem.inHours < 4) {
+              expiryLabel = '${rem.inHours}h left';
+              isExpiringSoon = true;
+            } else if (rem.inHours < 24) {
+              expiryLabel = '${rem.inHours}h left';
+            }
+          } catch (_) {}
+        }
+
+        // Preview text
+        String preview = '';
         String timeLabel = '';
         int unreadCount = 0;
 
         if (lastMsg != null) {
-          final isMe = lastMsg['sender_id'] == _myUid;
+          final isMe    = lastMsg['sender_id'] == _myUid;
           final isImage = lastMsg['is_image'] == true;
-          final isHang = lastMsg['text'] != null && (lastMsg['text'] as String).startsWith('⚡HANGOUT_INVITE|');
-          if (isHang) {
-            final parts = (lastMsg['text'] as String).split('|');
-            final act = parts.length > 2 ? parts[2] : 'hangout';
-            preview = isMe ? '⚡ Invited to hang for $act' : '⚡ Invited you to hang for $act';
-          } else {
-            preview = isImage ? '📸 Photo' : (lastMsg['text'] as String? ?? '');
-          }
-          isRead = lastMsg['is_read'] == true;
+          preview    = isImage ? '📸 Photo' : (lastMsg['text'] as String? ?? '');
+          final isRead = lastMsg['is_read'] == true;
           unreadCount = (!isMe && !isRead) ? 1 : 0;
-          
           final createdAt = lastMsg['created_at'] as String?;
           if (createdAt != null) {
             try {
-              final dt = DateTime.parse(createdAt).toLocal();
+              final dt   = DateTime.parse(createdAt).toLocal();
               final diff = DateTime.now().difference(dt);
               if (diff.inDays == 0) {
                 int hour = dt.hour;
                 final String period = hour >= 12 ? 'pm' : 'am';
                 if (hour > 12) hour -= 12;
                 if (hour == 0) hour = 12;
-                final minute = dt.minute.toString().padLeft(2, '0');
-                timeLabel = '$hour:$minute $period';
+                timeLabel = '$hour:${dt.minute.toString().padLeft(2, '0')} $period';
               } else if (diff.inDays == 1) {
                 timeLabel = 'Yesterday';
               } else {
-                timeLabel = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+                timeLabel = '${dt.day}/${dt.month}';
               }
             } catch (_) {}
           }
-        } else {
-          final req = _requestsMap[partnerId];
-          if (req != null) {
-            final isHangoutReq = req['target_type'] == 'hangout';
-            final isPending = req['status'] == 'pending';
-            final isIncoming = req['sender_id'] != _myUid;
-            
-            if (isHangoutReq && isPending) {
-              preview = isIncoming ? '⚡ Invited you to hang out!' : '⚡ Invited to hang out';
-              unreadCount = isIncoming ? 1 : 0;
-            } else {
-              preview = isIncoming ? '👋 Knocked to connect' : '👋 Sent knock request';
-              unreadCount = isIncoming ? 1 : 0;
-            }
-            final createdAt = req['created_at'] as String?;
-            if (createdAt != null) {
-              try {
-                final dt = DateTime.parse(createdAt).toLocal();
-                final diff = DateTime.now().difference(dt);
-                if (diff.inDays == 0) {
-                  int hour = dt.hour;
-                  final String period = hour >= 12 ? 'pm' : 'am';
-                  if (hour > 12) hour -= 12;
-                  if (hour == 0) hour = 12;
-                  final minute = dt.minute.toString().padLeft(2, '0');
-                  timeLabel = '$hour:$minute $period';
-                } else if (diff.inDays == 1) {
-                  timeLabel = 'Yesterday';
-                } else {
-                  timeLabel = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
-                }
-              } catch (_) {}
-            }
+        } else if (req != null) {
+          if (isPending && isIncoming) {
+            preview = isSuper ? '⚡ Super Knocked you!' : '👋 Knocked to connect';
+            unreadCount = 1;
+          } else if (isPending && !isIncoming) {
+            preview = 'Waiting for response…';
+          } else if (isApproved) {
+            preview = 'Knock accepted — start chatting!';
+          } else if (isRejected) {
+            preview = 'Knock passed';
+          }
+          final createdAt = req['created_at'] as String?;
+          if (createdAt != null) {
+            try {
+              final dt   = DateTime.parse(createdAt).toLocal();
+              final diff = DateTime.now().difference(dt);
+              if (diff.inDays == 0) {
+                int hour = dt.hour;
+                final String period = hour >= 12 ? 'pm' : 'am';
+                if (hour > 12) hour -= 12;
+                if (hour == 0) hour = 12;
+                timeLabel = '$hour:${dt.minute.toString().padLeft(2, '0')} $period';
+              } else if (diff.inDays == 1) {
+                timeLabel = 'Yesterday';
+              } else {
+                timeLabel = '${dt.day}/${dt.month}';
+              }
+            } catch (_) {}
           }
         }
 
-        return InkWell(
+        // Colors per state
+        Color borderColor = Colors.white.withValues(alpha: 0.07);
+        Color? glowColor;
+        if (isPending && isIncoming) {
+          borderColor = isSuper
+              ? const Color(0xFFFFB300).withValues(alpha: 0.7)
+              : const Color(0xFFFF6B00).withValues(alpha: 0.6);
+          glowColor = isSuper ? const Color(0xFFFFB300) : const Color(0xFFFF6B00);
+        } else if (isApproved) {
+          borderColor = const Color(0xFF22C55E).withValues(alpha: 0.3);
+        } else if (isRejected) {
+          borderColor = Colors.white.withValues(alpha: 0.04);
+        }
+
+        return GestureDetector(
           onTap: () {
-            Navigator.push(context, MaterialPageRoute(
-              builder: (_) => ChatDetailScreen(targetUserId: partnerId, name: name, avatarUrl: avatar),
-            ));
+            HapticFeedback.lightImpact();
+            if (req != null && isPending && isIncoming) {
+              _openKnockReview(req, profile);
+              return;
+            }
+            if (req != null && isPending && !isIncoming) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Waiting for ${(name as String).split(' ').first} to review your knock…',
+                    style: GoogleFonts.outfit(color: Colors.white)),
+                backgroundColor: const Color(0xFF1B202D),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ));
+              return;
+            }
+            if (isApproved) {
+              Navigator.push(ctx, MaterialPageRoute(
+                builder: (_) => ChatDetailScreen(
+                  targetUserId: partnerId, name: name, avatarUrl: avatar, isUnlocked: true),
+              ));
+            }
           },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isPending && isIncoming
+                  ? (isSuper
+                      ? const Color(0xFFFFB300).withValues(alpha: 0.06)
+                      : const Color(0xFFFF6B00).withValues(alpha: 0.05))
+                  : const Color(0xFF0F0F16),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: borderColor, width: isPending && isIncoming ? 1.5 : 1),
+              boxShadow: glowColor != null
+                  ? [BoxShadow(color: glowColor.withValues(alpha: 0.12), blurRadius: 14, spreadRadius: 1)]
+                  : null,
+            ),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 26,
-                  backgroundImage: avatar.isNotEmpty ? _safeImageProvider(avatar) : null,
-                  backgroundColor: const Color(0xFF1B202D),
-                  child: avatar.isEmpty ? const Icon(Icons.person, color: Colors.white38) : null,
+                // Avatar
+                Stack(
+                  children: [
+                    Container(
+                      width: 54, height: 54,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isPending && isIncoming
+                              ? (isSuper ? const Color(0xFFFFB300) : const Color(0xFFFF6B00))
+                              : Colors.white.withValues(alpha: 0.1),
+                          width: 2,
+                        ),
+                      ),
+                      child: ClipOval(
+                        child: avatar.isNotEmpty
+                            ? Image(image: _safeImageProvider(avatar), fit: BoxFit.cover)
+                            : Container(
+                                color: const Color(0xFF1B202D),
+                                child: const Icon(Icons.person, color: Colors.white38, size: 26),
+                              ),
+                      ),
+                    ),
+                    // Super badge
+                    if (isSuper)
+                      Positioned(
+                        top: 0, right: 0,
+                        child: Container(
+                          width: 18, height: 18,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFB300),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFF0F0F16), width: 1.5),
+                          ),
+                          child: const Icon(Icons.bolt, color: Colors.black, size: 11),
+                        ),
+                      ),
+                    // Unread dot
+                    if (unreadCount > 0 && !isSuper)
+                      Positioned(
+                        top: 0, right: 0,
+                        child: Container(
+                          width: 14, height: 14,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF6B00),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFF0F0F16), width: 1.5),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 14),
+
+                // Content
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
-                            child: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            child: Text(name,
+                                style: GoogleFonts.outfit(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
                           ),
-                          const SizedBox(width: 8),
-                          Text(timeLabel, style: TextStyle(color: unreadCount > 0 ? const Color(0xFFFF6B00) : const Color(0xFF8B95A5), fontSize: 12, fontWeight: unreadCount > 0 ? FontWeight.w600 : FontWeight.normal)),
+                          if (timeLabel.isNotEmpty)
+                            Text(timeLabel,
+                                style: GoogleFonts.outfit(
+                                  color: unreadCount > 0
+                                      ? const Color(0xFFFF6B00)
+                                      : Colors.white38,
+                                  fontSize: 11, fontWeight: FontWeight.w600)),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              preview,
-                              style: TextStyle(color: lastMsg != null ? const Color(0xFF8B95A5) : const Color(0xFFFF6B00), fontSize: 14, fontStyle: lastMsg != null ? FontStyle.normal : FontStyle.italic),
-                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                      Text(preview,
+                          style: GoogleFonts.outfit(
+                            color: isPending && isIncoming
+                                ? (isSuper ? const Color(0xFFFFB300) : const Color(0xFFFF6B00))
+                                : Colors.white38,
+                            fontSize: 13,
+                            fontStyle: lastMsg == null ? FontStyle.italic : FontStyle.normal,
+                          ),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 8),
+                      // Status row
+                      Row(children: [
+                        // Status badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isApproved
+                                ? const Color(0xFF22C55E).withValues(alpha: 0.12)
+                                : isPending && isIncoming
+                                    ? (isSuper
+                                        ? const Color(0xFFFFB300).withValues(alpha: 0.15)
+                                        : const Color(0xFFFF6B00).withValues(alpha: 0.12))
+                                    : isPending
+                                        ? Colors.white.withValues(alpha: 0.06)
+                                        : Colors.white.withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isApproved
+                                  ? const Color(0xFF22C55E).withValues(alpha: 0.4)
+                                  : isPending && isIncoming
+                                      ? (isSuper
+                                          ? const Color(0xFFFFB300).withValues(alpha: 0.5)
+                                          : const Color(0xFFFF6B00).withValues(alpha: 0.4))
+                                      : Colors.white.withValues(alpha: 0.08),
                             ),
                           ),
-                          if (unreadCount > 0) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(color: Color(0xFFFF6B00), shape: BoxShape.circle),
-                              child: Text('$unreadCount', style: const TextStyle(color: Color(0xFF0D0F14), fontSize: 10, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            isApproved
+                                ? '✓ CONNECTED'
+                                : isSuper && isPending && isIncoming
+                                    ? '⚡ SUPER KNOCK'
+                                    : isPending && isIncoming
+                                        ? '🚪 PENDING'
+                                        : isPending
+                                            ? '⏳ AWAITING'
+                                            : isRejected
+                                                ? 'PASSED'
+                                                : 'CONNECTED',
+                            style: GoogleFonts.outfit(
+                              color: isApproved
+                                  ? const Color(0xFF22C55E)
+                                  : isPending && isIncoming
+                                      ? (isSuper ? const Color(0xFFFFB300) : const Color(0xFFFF6B00))
+                                      : isPending
+                                          ? Colors.white38
+                                          : Colors.white24,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
                             ),
-                          ],
+                          ),
+                        ),
+                        if (expiryLabel != null) ...[
+                          const SizedBox(width: 8),
+                          Text(expiryLabel,
+                              style: GoogleFonts.outfit(
+                                color: isExpiringSoon ? Colors.red.shade300 : Colors.white24,
+                                fontSize: 10, fontWeight: FontWeight.w600)),
                         ],
-                      ),
+                        const Spacer(),
+                        // Action arrow
+                        if (isPending && isIncoming)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: isSuper
+                                    ? [const Color(0xFFFFB300), const Color(0xFFFF6B00)]
+                                    : [const Color(0xFFFF6B00), const Color(0xFFFF0055)],
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text('Review',
+                                style: GoogleFonts.outfit(
+                                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                          )
+                        else if (isApproved)
+                          const Icon(Icons.arrow_forward_ios_rounded,
+                              color: Colors.white24, size: 14),
+                      ]),
                     ],
                   ),
                 ),
@@ -1316,6 +1549,8 @@ class _KnocksViewState extends State<_KnocksView> {
     );
   }
 }
+
+
 
 // =============================================================================
 // COMPANION VIEW
@@ -2770,14 +3005,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                     ),
-                    child: const Column(
+                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.lock_outline, color: Color(0xFFFF7E40), size: 32),
-                        SizedBox(height: 12),
-                        Text('Connection Required', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                        SizedBox(height: 6),
-                        Text('Both users must mutually connect and accept the Knock request before chatting is unlocked.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.4)),
+                        const Icon(Icons.lock_rounded, color: Color(0xFFFF7E40), size: 32),
+                        const SizedBox(height: 12),
+                        const Text('Accept Knock to Chat', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 6),
+                        Text('You need to accept their knock request before you can start messaging.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.54), fontSize: 13, height: 1.4)),
                       ],
                     ),
                   ),

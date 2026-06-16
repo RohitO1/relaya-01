@@ -14,8 +14,8 @@ const _bg2 = Color(0xFF111827);
 const _card = Color(0xFF1A1F2E);
 const _cyan = Color(0xFFFF6B00);
 const _green = Color(0xFF22C55E);
-const _purple = Color(0xFFFF7E40);
-const _pink = Color(0xFFFF3D00);
+const _purple = Color(0xFFFF5C00);
+const _pink = Color(0xFFFF8A00);
 const _orange = Color(0xFFF97316);
 const _red = Color(0xFFEF4444);
 const _yellow = Color(0xFFEAB308);
@@ -302,10 +302,12 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                   AnimatedBuilder(
                     animation: _floatAnim,
                     builder: (_, child) => Transform.translate(offset: Offset(0, _floatAnim.value), child: child),
-                    child: Image.asset(
-                      'assets/images/meetra_logo.jpg',
-                      height: 120, // Enough height for the stacked logo
-                      fit: BoxFit.contain,
+                    child: SizedBox(
+                      width: 100,
+                      height: 100,
+                      child: CustomPaint(
+                        painter: YinYangCrescentPainter(),
+                      ),
                     ),
                   ),
 
@@ -696,3 +698,49 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 }
 
 
+
+class YinYangCrescentPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+
+    final paint1 = Paint()
+      ..shader = const LinearGradient(
+        colors: [Color(0xFFFF8A00), Color(0xFFFF5C00)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..style = PaintingStyle.fill;
+
+    final paint2 = Paint()
+      ..shader = const LinearGradient(
+        colors: [Color(0xFFFF5C00), Color(0xFFFF2A00)],
+        begin: Alignment.bottomRight,
+        end: Alignment.topLeft,
+      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..style = PaintingStyle.fill;
+
+    final path1 = Path();
+    path1.moveTo(center.dx - radius + 5, center.dy);
+    path1.arcToPoint(Offset(center.dx + radius - 5, center.dy), radius: Radius.circular(radius - 5), clockwise: true);
+    path1.arcToPoint(Offset(center.dx, center.dy), radius: Radius.circular((radius - 5) / 2), clockwise: true);
+    path1.arcToPoint(Offset(center.dx - radius + 5, center.dy), radius: Radius.circular((radius - 5) / 2), clockwise: false);
+
+    final path2 = Path();
+    path2.moveTo(center.dx + radius - 5, center.dy);
+    path2.arcToPoint(Offset(center.dx - radius + 5, center.dy), radius: Radius.circular(radius - 5), clockwise: true);
+    path2.arcToPoint(Offset(center.dx, center.dy), radius: Radius.circular((radius - 5) / 2), clockwise: true);
+    path2.arcToPoint(Offset(center.dx + radius - 5, center.dy), radius: Radius.circular((radius - 5) / 2), clockwise: false);
+
+    canvas.drawPath(path1, paint1);
+    canvas.drawPath(path2, paint2);
+
+    final dotPaint = Paint()..color = const Color(0xFF0A0A0A);
+    canvas.drawCircle(Offset(center.dx + (radius - 5) / 2, center.dy), 6, dotPaint);
+    canvas.drawCircle(Offset(center.dx - (radius - 5) / 2, center.dy), 6, dotPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}

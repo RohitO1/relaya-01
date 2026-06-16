@@ -16,6 +16,8 @@ enum NotificationType {
   bolroomSystem,
   bolroomFollower,
   bolroomChatroom,
+  knock,
+  knock_accepted,
 }
 
 extension NotificationTypeExtension on NotificationType {
@@ -32,6 +34,8 @@ extension NotificationTypeExtension on NotificationType {
       case NotificationType.bolroomSystem: return 'bolroom_system';
       case NotificationType.bolroomFollower: return 'bolroom_follower';
       case NotificationType.bolroomChatroom: return 'bolroom_chatroom';
+      case NotificationType.knock: return 'knock';
+      case NotificationType.knock_accepted: return 'knock_accepted';
     }
   }
 }

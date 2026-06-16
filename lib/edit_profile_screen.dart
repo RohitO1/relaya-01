@@ -47,20 +47,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _avatarUrl;
   String _gender = '';
   Set<String> _interests = {};
-  Set<String> _purposes = {};
+  String _lookingFor = '';
   bool _isPublic = true;
 
   double _heightCm = 170;
   String _smoking = '';
   String _drinking = '';
-  String _weed = '';
   String _diet = '';
   String _exercise = '';
   String _education = '';
   String _zodiac = '';
-  String _relationshipType = '';
   String _religion = '';
-  String _matchGender = '';
+  String _pets = '';
 
   Set<String> _selectedTraits = {};
   Set<String> _selectedLanguages = {};
@@ -96,17 +94,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _heightCm = (p['height_cm'] as num?)?.toDouble() ?? 170;
     _smoking = p['smoking'] ?? '';
     _drinking = p['drinking'] ?? '';
-    _weed = p['weed'] ?? '';
     _diet = p['diet'] ?? '';
     _exercise = p['exercise'] ?? '';
     _education = p['education'] ?? '';
     _zodiac = p['zodiac'] ?? '';
-    _relationshipType = p['relationship_type'] ?? '';
     _religion = p['religion'] ?? '';
-    _matchGender = p['match_gender'] ?? '';
+    _pets = p['pets'] ?? '';
 
     if (p['interests'] is List) _interests = Set<String>.from((p['interests'] as List).map((e) => e.toString()));
-    if (p['looking_for'] is List) _purposes = Set<String>.from((p['looking_for'] as List).map((e) => e.toString()));
+    if (p['looking_for'] is List && (p['looking_for'] as List).isNotEmpty) {
+      _lookingFor = (p['looking_for'] as List).first.toString();
+    }
     if (p['personality_traits'] is List) _selectedTraits = Set<String>.from((p['personality_traits'] as List).map((e) => e.toString()));
     if (p['languages'] is List) _selectedLanguages = Set<String>.from((p['languages'] as List).map((e) => e.toString()));
     if (p['visible_vibes'] is List) _selectedVibes = Set<String>.from((p['visible_vibes'] as List).map((e) => e.toString()));
@@ -165,18 +163,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'avatar_url': _avatarUrl,
         'gender': _gender,
         'interests': _interests.toList(),
-        'looking_for': _purposes.toList(),
+        'looking_for': [_lookingFor],
         'height_cm': _heightCm.toInt(),
         'smoking': _smoking,
         'drinking': _drinking,
-        'weed': _weed,
         'diet': _diet,
         'exercise': _exercise,
         'education': _education,
         'zodiac': _zodiac,
-        'relationship_type': _relationshipType,
         'religion': _religion,
-        'match_gender': _matchGender,
+        'pets': _pets,
         'personality_traits': _selectedTraits.toList(),
         'languages': _selectedLanguages.toList(),
         'visible_vibes': _selectedVibes.toList(),
@@ -676,36 +672,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             _buildSection('Lifestyle Habits', [
               _buildLabel('Smoking'),
-              _buildSingleSelectWrap(['Never', 'Socially', 'Regularly'], _smoking, (v) => setState(() => _smoking = v)),
+              _buildSingleSelectWrap(['Never', 'Socially', 'Regularly', 'Trying to quit'], _smoking, (v) => setState(() => _smoking = v)),
               const SizedBox(height: 16),
               
               _buildLabel('Drinking'),
-              _buildSingleSelectWrap(['Never', 'Socially', 'Regularly'], _drinking, (v) => setState(() => _drinking = v)),
+              _buildSingleSelectWrap(['Never', 'Socially', 'Regularly', 'Trying to quit'], _drinking, (v) => setState(() => _drinking = v)),
               const SizedBox(height: 16),
               
-              _buildLabel('420 / Weed'),
-              _buildSingleSelectWrap(['Never', 'Socially', 'Regularly'], _weed, (v) => setState(() => _weed = v)),
-              const SizedBox(height: 16),
-
               _buildLabel('Diet'),
-              _buildSingleSelectWrap(['Everything', 'Vegetarian', 'Vegan', 'Pescatarian', 'Kosher', 'Halal', 'Other'], _diet, (v) => setState(() => _diet = v)),
+              _buildSingleSelectWrap(['Anything', 'Vegetarian', 'Vegan', 'Pescatarian', 'Keto', 'Other'], _diet, (v) => setState(() => _diet = v)),
               const SizedBox(height: 16),
 
-              _buildLabel('Exercise'),
-              _buildSingleSelectWrap(['Active', 'Sometimes', 'Never'], _exercise, (v) => setState(() => _exercise = v)),
+              _buildLabel('Fitness Routine'),
+              _buildSingleSelectWrap(['Active', 'Light', 'Rarely', 'Never', 'Prefer not to say'], _exercise, (v) => setState(() => _exercise = v)),
+              const SizedBox(height: 16),
+
+              _buildLabel('Pets'),
+              _buildSingleSelectWrap(['Dog', 'Cat', 'Both', 'Other', 'None'], _pets, (v) => setState(() => _pets = v)),
             ]),
 
             _buildSection('Preferences', [
               _buildLabel('Looking For (Intent)'),
-              _buildMultiSelectWrap(ProfileConstants.purposeOptions, _purposes),
-              const SizedBox(height: 16),
-
-              _buildLabel('Relationship Type'),
-              _buildSingleSelectWrap(['Monogamy', 'Non-monogamy', 'Open to exploring', 'Prefer not to say'], _relationshipType, (v) => setState(() => _relationshipType = v)),
-              const SizedBox(height: 16),
-
-              _buildLabel('Who do you want to meet?'),
-              _buildSingleSelectWrap(['Men', 'Women', 'Everyone'], _matchGender, (v) => setState(() => _matchGender = v)),
+              _buildSingleSelectWrap(ProfileConstants.purposeOptions, _lookingFor, (v) => setState(() => _lookingFor = v)),
               const SizedBox(height: 16),
 
               _buildLabel('Languages Spoken'),
@@ -714,14 +702,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             _buildSection('Personality & Vibes', [
               _buildLabel('Top Interests'),
-              _buildMultiSelectWrap(ProfileConstants.interestCategories.values.expand((x) => x).toList(), _interests),
+              _buildMultiSelectWrap(ProfileConstants.interestCategories.values.expand((x) => x).toList(), _interests, max: 5),
               const SizedBox(height: 16),
 
               _buildLabel('Personality Traits'),
-              _buildMultiSelectWrap(ProfileConstants.personalityTraits, _selectedTraits),
+              _buildMultiSelectWrap(ProfileConstants.personalityTraits, _selectedTraits, max: 5),
               const SizedBox(height: 16),
 
-              _buildLabel('Vibes to display'),
+              _buildLabel('Visible Vibes'),
               _buildMultiSelectWrap(ProfileConstants.vibeOptions, _selectedVibes),
             ]),
 
@@ -844,7 +832,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildMultiSelectWrap(List<String> options, Set<String> currentSet) {
+  Widget _buildMultiSelectWrap(List<String> options, Set<String> currentSet, {int? max}) {
     return Wrap(
       spacing: 8, runSpacing: 8,
       children: options.map((opt) => _buildChip(opt, currentSet.contains(opt), () {
@@ -852,6 +840,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           if (currentSet.contains(opt)) {
             currentSet.remove(opt);
           } else {
+            if (max != null && currentSet.length >= max) {
+              currentSet.remove(currentSet.first);
+            }
             currentSet.add(opt);
           }
         });

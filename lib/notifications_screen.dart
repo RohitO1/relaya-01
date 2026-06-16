@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:shimmer/shimmer.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'widgets/touch_scale.dart';
 import 'messages_screen.dart';
+import 'knock_review_screen.dart';
 import 'services/notification_service.dart';
 
-// Reuse NotificationType from service if possible, or redefine for UI
-enum AppNotificationType { 
+enum AppNotificationType {
   match, nearbyActivity, approval, rejection, message, system,
-  bolroomMessage, bolroomSystem, bolroomFollower, bolroomChatroom
+  bolroomMessage, bolroomSystem, bolroomFollower, bolroomChatroom,
+  knock, knockAccepted,
 }
 
 class NotificationModel {
@@ -56,7 +58,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (widget.isBolroomMode) {
       _filters = ['All', 'Rooms', 'Followers', 'Messages'];
     } else {
-      _filters = ['All', 'Matches', 'Nearby', 'Updates', 'Chats'];
+      _filters = ['All', 'Knocks', 'Matches', 'Nearby', 'Updates', 'Chats'];
     }
     
     // Automatically mark all unseen notifications as seen when opening the screen
@@ -78,6 +80,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'bolroom_system': return AppNotificationType.bolroomSystem;
       case 'bolroom_follower': return AppNotificationType.bolroomFollower;
       case 'bolroom_chatroom': return AppNotificationType.bolroomChatroom;
+      case 'knock': return AppNotificationType.knock;
+      case 'knock_accepted': return AppNotificationType.knockAccepted;
       default: return AppNotificationType.system;
     }
   }
@@ -105,7 +109,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
 
       String? avatarUrl;
-      if (payload['sender_id'] != null) {
+      if (payload['sender_avatar_url'] != null && (payload['sender_avatar_url'] as String).isNotEmpty) {
+        avatarUrl = payload['sender_avatar_url'] as String;
+      } else if (payload['sender_id'] != null) {
         avatarUrl = 'https://picsum.photos/seed/${payload['sender_id']}/300/300';
       }
 
@@ -145,6 +151,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         }
       } else {
         switch (_activeFilter) {
+          case 'Knocks': return n.type == AppNotificationType.knock || n.type == AppNotificationType.knockAccepted;
           case 'Matches': return n.type == AppNotificationType.match;
           case 'Nearby': return n.type == AppNotificationType.nearbyActivity;
           case 'Updates': return n.type == AppNotificationType.approval || n.type == AppNotificationType.rejection;
@@ -305,7 +312,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget _buildNotificationCard(NotificationModel notif) {
     IconData icon;
     Color iconColor;
-    
+
     switch (notif.type) {
       case AppNotificationType.match:
         icon = Icons.favorite;
@@ -347,6 +354,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         icon = Icons.headset_mic;
         iconColor = const Color(0xFFB983FF);
         break;
+      case AppNotificationType.knock:
+        icon = Icons.waving_hand_rounded;
+        iconColor = const Color(0xFFFF6B00);
+        break;
+      case AppNotificationType.knockAccepted:
+        icon = Icons.celebration_rounded;
+        iconColor = const Color(0xFF22C55E);
+        break;
     }
 
     return Dismissible(
@@ -377,95 +392,231 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
       child: GestureDetector(
         onTap: () async {
+          HapticFeedback.lightImpact();
           if (notif.isUnread) {
             await NotificationService.markAsRead(notif.id);
           }
-          
-          // Handle navigation based on type
           if (!mounted) return;
-          if (notif.type == AppNotificationType.message || notif.type == AppNotificationType.match) {
-             Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen()));
+
+          if (notif.type == AppNotificationType.knock) {
+            // Fetch the knock request from DB, then open KnockReviewScreen
+            final senderId = notif.senderId;
+            if (senderId != null) {
+              try {
+                final req = await Supabase.instance.client
+                    .from('requests')
+                    .select()
+                    .eq('sender_id', senderId)
+                    .eq('target_id', _currentUserId)
+                    .eq('target_type', 'profile')
+                    .eq('status', 'pending')
+                    .maybeSingle();
+                if (req != null && mounted) {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => KnockReviewScreen(knockRequest: req),
+                  ));
+                } else if (mounted) {
+                  // Already acted on — open DMs
+                  final profile = await Supabase.instance.client
+                      .from('profiles')
+                      .select('name, full_name, avatar_url')
+                      .eq('id', senderId)
+                      .maybeSingle();
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => ChatDetailScreen(
+                      targetUserId: senderId,
+                      name: profile?['name']?.toString() ?? profile?['full_name']?.toString() ?? 'User',
+                      avatarUrl: profile?['avatar_url']?.toString() ?? '',
+                    ),
+                  ));
+                }
+              } catch (_) {}
+            }
+          } else if (notif.type == AppNotificationType.knockAccepted) {
+            // Navigate to DMs with the person who accepted
+            final senderId = notif.senderId;
+            if (senderId != null) {
+              try {
+                final profile = await Supabase.instance.client
+                    .from('profiles')
+                    .select('name, full_name, avatar_url')
+                    .eq('id', senderId)
+                    .maybeSingle();
+                if (mounted) {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => ChatDetailScreen(
+                      targetUserId: senderId,
+                      name: profile?['name']?.toString() ?? profile?['full_name']?.toString() ?? 'User',
+                      avatarUrl: profile?['avatar_url']?.toString() ?? '',
+                      isUnlocked: true,
+                    ),
+                  ));
+                }
+              } catch (_) {}
+            }
+          } else if (notif.type == AppNotificationType.message || notif.type == AppNotificationType.match) {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen()));
           }
         },
         child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
+          margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: notif.isUnread ? const Color(0xFF16161D) : const Color(0xFF0F0F14),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: notif.isUnread ? const Color(0xFF27272A) : const Color(0xFF1C1C22),
+              color: notif.type == AppNotificationType.knock
+                  ? const Color(0xFFFF6B00).withValues(alpha: notif.isUnread ? 0.6 : 0.25)
+                  : notif.type == AppNotificationType.knockAccepted
+                      ? const Color(0xFF22C55E).withValues(alpha: 0.4)
+                      : notif.isUnread
+                          ? const Color(0xFF27272A)
+                          : const Color(0xFF1C1C22),
+              width: (notif.type == AppNotificationType.knock || notif.type == AppNotificationType.knockAccepted) ? 1.5 : 1,
             ),
+            boxShadow: notif.type == AppNotificationType.knock && notif.isUnread
+                ? [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.1), blurRadius: 12, spreadRadius: 1)]
+                : notif.type == AppNotificationType.knockAccepted
+                    ? [BoxShadow(color: const Color(0xFF22C55E).withValues(alpha: 0.08), blurRadius: 10)]
+                    : null,
           ),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (notif.avatarUrl != null)
-                CircleAvatar(
-                  backgroundImage: NetworkImage(notif.avatarUrl!),
-                  radius: 18,
-                )
-              else
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: iconColor.withOpacity(0.08),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(icon, color: iconColor, size: 18),
-                ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              if (notif.isUnread) ...[
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFFF6B00),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                              ],
-                              Expanded(
-                                child: Text(
-                                  notif.title, 
-                                  style: TextStyle(
-                                    color: Colors.white, 
-                                    fontWeight: notif.isUnread ? FontWeight.w700 : FontWeight.w500, 
-                                    fontSize: 14,
-                                    letterSpacing: -0.2
-                                  ),
-                                ),
-                              ),
-                            ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Avatar with icon badge
+                  Stack(
+                    children: [
+                      if (notif.avatarUrl != null)
+                        CircleAvatar(
+                          backgroundImage: NetworkImage(notif.avatarUrl!),
+                          radius: 22,
+                          backgroundColor: iconColor.withValues(alpha: 0.15),
+                        )
+                      else
+                        Container(
+                          width: 44, height: 44,
+                          decoration: BoxDecoration(
+                            color: iconColor.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: iconColor.withValues(alpha: 0.25)),
+                          ),
+                          child: Icon(icon, color: iconColor, size: 20),
+                        ),
+                      // Type badge in corner
+                      if (notif.avatarUrl != null)
+                        Positioned(
+                          bottom: 0, right: 0,
+                          child: Container(
+                            width: 18, height: 18,
+                            decoration: BoxDecoration(
+                              color: iconColor,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: const Color(0xFF0F0F14), width: 1.5),
+                            ),
+                            child: Icon(icon, color: Colors.white, size: 10),
                           ),
                         ),
-                        Text(notif.timeText, style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  if (notif.isUnread) ...[
+                                    Container(
+                                      width: 6, height: 6,
+                                      decoration: BoxDecoration(color: iconColor, shape: BoxShape.circle),
+                                    ),
+                                    const SizedBox(width: 6),
+                                  ],
+                                  Expanded(
+                                    child: Text(
+                                      notif.title,
+                                      style: GoogleFonts.outfit(
+                                        color: Colors.white,
+                                        fontWeight: notif.isUnread ? FontWeight.w700 : FontWeight.w500,
+                                        fontSize: 14,
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(notif.timeText,
+                                style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          notif.body,
+                          style: GoogleFonts.outfit(
+                            color: notif.isUnread ? Colors.white.withValues(alpha: 0.8) : Colors.white54,
+                            fontSize: 13, height: 1.4,
+                          ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      notif.body,
-                      style: TextStyle(
-                        color: notif.isUnread ? Colors.white.withOpacity(0.9) : Colors.white54,
-                        fontSize: 13,
-                        height: 1.4,
+                  ),
+                ],
+              ),
+              // CTA for knock notifications
+              if (notif.type == AppNotificationType.knock) ...[
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: Container(
+                      height: 36,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF6B00), Color(0xFFFF0055)],
+                          begin: Alignment.centerLeft, end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))],
+                      ),
+                      child: Center(
+                        child: Text('Review Knock 🚪',
+                            style: GoogleFonts.outfit(
+                              color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
                       ),
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                ]),
+              ],
+              if (notif.type == AppNotificationType.knockAccepted) ...[
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: Container(
+                      height: 36,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
+                          begin: Alignment.centerLeft, end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [BoxShadow(color: const Color(0xFF22C55E).withValues(alpha: 0.25), blurRadius: 8, offset: const Offset(0, 3))],
+                      ),
+                      child: Center(
+                        child: Text('Open Chat 💬',
+                            style: GoogleFonts.outfit(
+                              color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ),
+                ]),
+              ],
             ],
           ),
         ),
@@ -473,3 +624,4 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 }
+

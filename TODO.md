@@ -6,5 +6,5 @@
 - [x] 4. flutter analyze (verify 0 issues)
 - [x] 5. flutter test
 - [x] 6. flutter run -d chrome (preview)
-- [ ] 7. Mark all done and complete
+- [x] 7. Mark all done and complete
 
