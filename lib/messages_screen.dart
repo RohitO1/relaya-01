@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shimmer/shimmer.dart';
+import 'widgets/skeleton_loaders.dart';
 import 'image_upload_service.dart';
 import 'bot_chat_screen.dart';
 import 'knock_review_screen.dart';
@@ -33,7 +34,8 @@ ImageProvider _safeImageProvider(String url) {
 // ADVANCED MESSAGES SCREEN
 // =============================================================================
 class MessagesScreen extends StatefulWidget {
-  const MessagesScreen({super.key});
+  final String? initialFilter;
+  const MessagesScreen({super.key, this.initialFilter});
 
   @override
   State<MessagesScreen> createState() => _MessagesScreenState();
@@ -48,6 +50,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialFilter != null) {
+      _activeChip = widget.initialFilter!;
+    }
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.toLowerCase());
     });
@@ -914,7 +919,7 @@ class _ActivityChatsViewState extends State<_ActivityChatsView> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00)));
+      return SkeletonLoaders.chatListSkeleton();
     }
 
     final filtered = _activities.where((a) {
@@ -1195,7 +1200,7 @@ class _KnocksViewState extends State<_KnocksView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00)));
+    if (_loading) return SkeletonLoaders.chatListSkeleton();
     
     final filtered = _profiles.where((p) {
       final name = (p['name'] ?? p['full_name'] ?? '').toLowerCase();
@@ -1626,7 +1631,7 @@ class _CompanionViewState extends State<_CompanionView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00)));
+    if (_loading) return SkeletonLoaders.chatListSkeleton();
     
     final filtered = _profiles.where((p) {
       final name = (p['name'] ?? p['full_name'] ?? '').toLowerCase();
@@ -3181,7 +3186,7 @@ class _ComplimentsViewState extends State<_ComplimentsView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF3D00)));
+    if (_loading) return SkeletonLoaders.chatListSkeleton();
 
     final filtered = _compliments.where((c) {
       final senderData = c['sender'] as Map<String, dynamic>? ?? {};

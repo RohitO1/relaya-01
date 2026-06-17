@@ -14,15 +14,16 @@ import 'dart:async';
 import 'dart:ui'; // For ImageFilter
 import 'services/theme_service.dart';
 import 'services/location_service.dart';
-import 'services/profile_completion_service.dart';
+
 import 'widgets/location_picker_sheet.dart';
 // import 'follow_list_screen.dart'; // removed unused
 import 'auth_screen.dart';
 import 'dashboard_detail_screens.dart';
-import 'messages_screen.dart';
+import 'chat_screen.dart';
 import 'edit_profile_screen.dart';
 import 'package:share_plus/share_plus.dart';
 import 'admin_dashboard_screen.dart';
+import 'widgets/skeleton_loaders.dart';
 import 'hosted_joined_screens.dart';
 
 // ----------------------------------------------------
@@ -240,27 +241,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   void _onEditProfile() async {
-    final bio = _profile?['bio'] as String?;
-    final interests = _profile?['interests'] as List<dynamic>?;
-    final traits = _profile?['personality_traits'] as List<dynamic>?;
-
-    final wasIncomplete = (bio == null || bio.trim().isEmpty) ||
-        (interests == null || interests.isEmpty) ||
-        (traits == null || traits.isEmpty);
-
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => EditProfileScreen(initialProfile: _profile ?? {})),
     );
     if (result == true) {
       _loadProfile(); // Refresh profile data
-      
-      if (wasIncomplete) {
-        final nowComplete = await ProfileCompletionService.isProfileComplete();
-        if (nowComplete && mounted) {
-          ProfileCompletionService.showCompletionSuccessPopup(context);
-        }
-      }
     }
   }
 
@@ -274,9 +260,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   @override
   Widget build(BuildContext context) {
     if (_loadingProfile) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: ProfileColors.bgPrimary,
-        body: Center(child: CircularProgressIndicator(color: ProfileColors.cyan)),
+        body: SafeArea(child: SkeletonLoaders.genericListSkeleton()),
       );
     }
 
@@ -855,7 +841,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                         onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coming soon!')))),
                       _buildDashItem(Icons.chat_bubble_outline, 'blue', 'Messages & Chats', 'All conversations & chat groups',
                         badge: msgCount > 0 ? '$msgCount' : null,
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen()))),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen()))),
                       const Divider(color: ProfileColors.borderSubtle, height: 40),
 
                       // ── SECTION 3: ANALYTICS & INSIGHTS ──

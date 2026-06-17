@@ -2,7 +2,7 @@
 
 import 'dart:math' as math;
 import 'dart:async';
-
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -13,7 +13,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'services/location_service.dart';
 import 'services/notification_service.dart';
 import 'widgets/location_picker_sheet.dart';
+import 'widgets/skeleton_loaders.dart';
+
 import 'utils/constants.dart';
+import 'messages_screen.dart';
+
+List<String> _parseListExplore(dynamic data) {
+  if (data == null) return [];
+  if (data is List) return data.map((e) => e.toString()).toList();
+  if (data is String) {
+    if (data.startsWith('[')) {
+      try {
+        final l = jsonDecode(data) as List;
+        return l.map((e) => e.toString()).toList();
+      } catch (_) {}
+    }
+    return [data];
+  }
+  return [];
+}
+
+ImageProvider _getSafeImageProvider(String url) {
+  if (url.startsWith('data:image')) {
+    final b64 = url.split(',').last;
+    return MemoryImage(base64Decode(b64));
+  }
+  return NetworkImage(url);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTEREST PRESET QUESTION BANK  (~10 per interest)
@@ -112,6 +138,43 @@ class ExploreScreen extends StatefulWidget {
   State<ExploreScreen> createState() => _ExploreScreenState();
 }
 
+class ExploreCache {
+  static bool quickSetupDone = false;
+  static bool hasCheckedSetup = false;
+  
+  static Map<String, dynamic>? myProfile;
+  static bool hasLoadedMyProfile = false;
+
+  static List<Map<String, dynamic>> rawProfiles = [];
+  static bool isProfilesLoaded = false;
+  
+  static Set<String> acceptedProfileIds = {};
+  static Set<String> sentKnockProfileIds = {};
+  static bool hasLoadedKnocks = false;
+
+  static StreamSubscription<List<Map<String, dynamic>>>? profilesSub;
+  static final StreamController<void> updateStream = StreamController<void>.broadcast();
+
+  static void initStream() {
+    if (profilesSub != null) return;
+    profilesSub = Supabase.instance.client
+        .from('profiles')
+        .stream(primaryKey: ['id'])
+        .listen((data) {
+      rawProfiles = data;
+      isProfilesLoaded = true;
+      updateStream.add(null);
+    }, onError: (e) {
+      debugPrint('Explore stream: $e');
+    });
+  }
+
+  static void disposeStream() {
+    profilesSub?.cancel();
+    profilesSub = null;
+  }
+}
+
 class _ExploreScreenState extends State<ExploreScreen>
     with TickerProviderStateMixin {
   final _uid = Supabase.instance.client.auth.currentUser?.id;
@@ -125,19 +188,17 @@ class _ExploreScreenState extends State<ExploreScreen>
   _XView _view = _XView.grid;
   Map<String, dynamic>? _selected;
   bool _isSpinning = false;
-  // Track which profiles have been shown in random mode to avoid repeats
   final Set<String> _seenProfileIds = {};
-  // Track profiles already connected with (approved knocks) — never show in explore grid
   final Set<String> _acceptedProfileIds = {};
+  final Set<String> _sentKnockProfileIds = {};
   List<Map<String, dynamic>> _rawStreamProfiles = [];
   bool _quickSetupDone = false;
 
   late final AnimationController _spinCtrl;
   late final AnimationController _splitCtrl;
 
-  StreamSubscription<List<Map<String, dynamic>>>? _sub;
+  StreamSubscription<void>? _cacheSub;
 
-  // ── colours ───────────────────────────────────────────────────────────────
   static const _orange = Color(0xFFFF6B00);
   static const _deep   = Color(0xFF060608);
   static const _card   = Color(0xFF0E0E16);
@@ -148,27 +209,68 @@ class _ExploreScreenState extends State<ExploreScreen>
     _spinCtrl  = AnimationController(vsync: this, duration: 3.seconds);
     _splitCtrl = AnimationController(vsync: this, duration: 600.ms);
     _checkFreshUser();
-    _checkSetupDone();
-    _loadProfiles();
-    _loadMyProfile();
-    locationService.activeLocationNotifier.addListener(_loadProfiles);
+
+    if (ExploreCache.hasCheckedSetup) {
+      _quickSetupDone = ExploreCache.quickSetupDone;
+    } else {
+      _checkSetupDone();
+    }
+
+    if (ExploreCache.hasLoadedMyProfile) {
+      _myProfile = ExploreCache.myProfile;
+    } else {
+      _loadMyProfile();
+    }
+
+    if (ExploreCache.isProfilesLoaded) {
+      _rawStreamProfiles = ExploreCache.rawProfiles;
+      _isLoading = false;
+      
+      if (ExploreCache.hasLoadedKnocks) {
+        _acceptedProfileIds.addAll(ExploreCache.acceptedProfileIds);
+        _sentKnockProfileIds.addAll(ExploreCache.sentKnockProfileIds);
+      }
+      
+      _processAndFilterProfiles();
+    } else {
+      _isLoading = true;
+    }
+
+    _loadKnocksAndStartStream();
+
+    _cacheSub = ExploreCache.updateStream.stream.listen((_) {
+      if (mounted) {
+        _rawStreamProfiles = ExploreCache.rawProfiles;
+        _processAndFilterProfiles();
+        if (_isLoading) {
+          setState(() => _isLoading = false);
+        }
+      }
+    });
+
+    locationService.activeLocationNotifier.addListener(_onLocationChanged);
+  }
+
+  void _onLocationChanged() {
+    _loadKnocksAndStartStream();
   }
 
   Future<void> _checkSetupDone() async {
     final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() => _quickSetupDone = prefs.getBool('quick_setup_done') ?? false);
+    ExploreCache.quickSetupDone = prefs.getBool('quick_setup_done') ?? false;
+    ExploreCache.hasCheckedSetup = true;
+    if (mounted) setState(() => _quickSetupDone = ExploreCache.quickSetupDone);
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _cacheSub?.cancel();
     _spinCtrl.dispose();
     _splitCtrl.dispose();
-    locationService.activeLocationNotifier.removeListener(_loadProfiles);
+    locationService.activeLocationNotifier.removeListener(_onLocationChanged);
     super.dispose();
   }
 
-  // ── bootstrap ─────────────────────────────────────────────────────────────
   Future<void> _checkFreshUser() async {
     if (_uid == null) return;
     try {
@@ -184,7 +286,7 @@ class _ExploreScreenState extends State<ExploreScreen>
           'visibility_updated_at': DateTime.now().toUtc().toIso8601String(),
         }).eq('id', _uid!);
       }
-    } catch (e) { print("Error in loadMyProfile: $e"); }
+    } catch (e) { print("Error in checkFreshUser: $e"); }
   }
 
   Future<void> _loadMyProfile() async {
@@ -195,17 +297,21 @@ class _ExploreScreenState extends State<ExploreScreen>
           .select()
           .eq('id', _uid!)
           .maybeSingle();
-      if (mounted && r != null) setState(() => _myProfile = r);
+      if (r != null) {
+        ExploreCache.myProfile = r;
+        ExploreCache.hasLoadedMyProfile = true;
+        if (mounted) setState(() => _myProfile = r);
+      }
     } catch (e) { print("Error in loadMyProfile: $e"); }
   }
 
   void _processAndFilterProfiles() {
     final district = locationService.activeDistrict;
     if (district.isEmpty || district == 'Unknown') {
-      setState(() { _activeUsers = []; _inactiveUsers = []; });
+      if (mounted) setState(() { _activeUsers = []; _inactiveUsers = []; });
       return;
     }
-
+    
     final List<Map<String, dynamic>> act = [], inact = [];
     final city  = district.toLowerCase().trim();
     final cLat  = locationService.activeLat ?? 0;
@@ -214,24 +320,21 @@ class _ExploreScreenState extends State<ExploreScreen>
     for (final p in _rawStreamProfiles) {
       final pid = p['id']?.toString() ?? '';
       if (pid == _uid) continue;
-      // Skip profiles already connected with via accepted knocks
       if (_acceptedProfileIds.contains(pid)) continue;
+      if (_sentKnockProfileIds.contains(pid)) continue;
+      
       final pCity = (p['city']?.toString() ?? '').toLowerCase().trim();
-      bool near = pCity.contains(city);
-      if (!near && cLat != 0 && cLng != 0 &&
-          p['lat'] != null && p['lng'] != null) {
-        final pLat = double.tryParse(p['lat'].toString()) ?? 0;
-        final pLng = double.tryParse(p['lng'].toString()) ?? 0;
-        near = locationService.calculateDistanceInKm(cLat, cLng, pLat, pLng) <= 50;
-      }
+      bool near = pCity == city;
       if (!near) continue;
 
       final vis = p['visibility']?.toString() ?? 'inactive';
+      if (vis == 'invisible') continue;
+      
       final profile = {
         'id': p['id'],
         'name': p['name'] ?? p['full_name'] ?? 'User',
         'age': p['age'] ?? 22,
-        'avatar_url': p['avatar_url'] ?? '',
+        'avatar_url': _sanitizeAvatarUrl(p['avatar_url']),
         'bio': p['bio'] ?? '',
         'city': p['city'] ?? '',
         'visibility': vis,
@@ -270,27 +373,26 @@ class _ExploreScreenState extends State<ExploreScreen>
     inact.sort((a, b) => (b['visibility_updated_at']?.toString() ?? '')
         .compareTo(a['visibility_updated_at']?.toString() ?? ''));
 
-    setState(() {
-      _activeUsers = act;
-      _inactiveUsers = inact;
-    });
+    if (mounted) {
+      setState(() {
+        _activeUsers = act;
+        _inactiveUsers = inact;
+      });
+    }
   }
 
-  void _loadProfiles() {
+  Future<void> _loadKnocksAndStartStream() async {
     if (_uid == null) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
       return;
     }
     final district = locationService.activeDistrict;
-    _sub?.cancel();
     if (district.isEmpty || district == 'Unknown') {
       if (mounted) setState(() { _activeUsers = []; _inactiveUsers = []; _isLoading = false; });
       return;
     }
-    setState(() => _isLoading = true);
 
-    // ── Fetch accepted knock connections first (both directions) ──────────
-    () async {
+    if (!ExploreCache.hasLoadedKnocks) {
       try {
         final rows = await Supabase.instance.client
             .from('requests')
@@ -304,47 +406,71 @@ class _ExploreScreenState extends State<ExploreScreen>
           if (sid != null && sid != _uid) ids.add(sid);
           if (tid != null && tid != _uid) ids.add(tid);
         }
+        
+        final sentRows = await Supabase.instance.client
+            .from('requests')
+            .select('target_id')
+            .eq('sender_id', _uid!)
+            .eq('target_type', 'profile');
+        final sentIds = <String>{};
+        for (final row in (sentRows as List)) {
+          final tid = row['target_id']?.toString();
+          if (tid != null) sentIds.add(tid);
+        }
+
+        ExploreCache.acceptedProfileIds = ids;
+        ExploreCache.sentKnockProfileIds = sentIds;
+        ExploreCache.hasLoadedKnocks = true;
+
         if (mounted) {
-          setState(() => _acceptedProfileIds..clear()..addAll(ids));
-          _processAndFilterProfiles();
+          setState(() {
+            _acceptedProfileIds..clear()..addAll(ids);
+            _sentKnockProfileIds..clear()..addAll(sentIds);
+          });
         }
       } catch (e) {
-        debugPrint('Fetch accepted: $e');
+        debugPrint('Fetch accepted/sent knocks: $e');
       }
-    }();
+    }
 
-    _sub = Supabase.instance.client
-        .from('profiles')
-        .stream(primaryKey: ['id'])
-        .listen((data) {
-      _rawStreamProfiles = data;
-      if (mounted) {
-        _processAndFilterProfiles();
-        setState(() => _isLoading = false);
-      }
-    }, onError: (e) { debugPrint('Explore stream: $e'); if (mounted) setState(() => _isLoading = false); });
+    ExploreCache.initStream();
+    if (ExploreCache.isProfilesLoaded) {
+      if (mounted) _processAndFilterProfiles();
+    }
   }
 
   Future<void> _refresh([Map<String, dynamic>? setupPayload]) async {
     if (setupPayload != null) {
       _quickSetupDone = true;
+      ExploreCache.quickSetupDone = true;
       SharedPreferences.getInstance().then((p) => p.setBool('quick_setup_done', true));
       if (_myProfile != null) {
         _myProfile = {..._myProfile!, ...setupPayload};
       } else {
         _myProfile = Map<String, dynamic>.from(setupPayload);
       }
+      ExploreCache.myProfile = _myProfile;
+      ExploreCache.hasLoadedMyProfile = true;
     }
-    _seenProfileIds.clear(); // Reset seen list on refresh so all profiles are available again
-    _loadProfiles();
+    _seenProfileIds.clear();
+    
+    ExploreCache.hasLoadedKnocks = false;
+    ExploreCache.hasLoadedMyProfile = false;
+    ExploreCache.isProfilesLoaded = false;
+    ExploreCache.disposeStream();
+    
     _loadMyProfile();
-    await Future.delayed(600.ms);
+    _loadKnocksAndStartStream();
   }
 
-  // COMPATIBILITY ALGORITHM — Category-based weighted scoring
-  // ══════════════════════════════════════════════════════════════════════════
+  static String _sanitizeAvatarUrl(dynamic raw) {
+    if (raw == null) return '';
+    final url = raw.toString();
+    if (url.isEmpty) return '';
+    if (url.startsWith('http') || url.startsWith('data:image')) return url;
+    return '';
+  }
 
-  // Helpers
   static bool _strMatch(String a, String b) =>
       a.isNotEmpty && b.isNotEmpty && a.toLowerCase().trim() == b.toLowerCase().trim();
 
@@ -379,14 +505,12 @@ class _ExploreScreenState extends State<ExploreScreen>
     return 40;
   }
 
-  /// Returns per-category scores (0-100 each) for [Lifestyle, Values, Interests, Relationship Goals]
   Map<String, double> _compatCategories(Map<String, dynamic> other) {
     if (_myProfile == null) {
       return {'Lifestyle': 50, 'Values': 50, 'Interests': 50, 'Demographics': 50};
     }
     final my = _myProfile!;
 
-    // ── Demographics (looking_for, languages, zodiac) ──
     double demo = 0;
     int demoCount = 0;
     final myLF = List<String>.from(my['looking_for'] ?? []);
@@ -405,7 +529,6 @@ class _ExploreScreenState extends State<ExploreScreen>
     demoCount++;
     final demoScore = demoCount > 0 ? (demo / demoCount).clamp(0, 100).toDouble() : 50.0;
 
-    // ── Lifestyle (smoking, drinking, diet, exercise/fitness, pets) ──
     double ls = 0;
     int lsCount = 0;
     for (final key in ['smoking', 'drinking', 'diet', 'exercise']) {
@@ -427,7 +550,6 @@ class _ExploreScreenState extends State<ExploreScreen>
     }
     final lsScore = lsCount > 0 ? (ls / lsCount).clamp(0, 100).toDouble() : 50.0;
 
-    // ── Values (religion, political_view, open_to_relocate) ──
     double vl = 0;
     int vlCount = 0;
     for (final key in ['religion', 'political_view', 'open_to_relocate']) {
@@ -439,7 +561,6 @@ class _ExploreScreenState extends State<ExploreScreen>
     }
     final vlScore = vlCount > 0 ? (vl / vlCount).clamp(0, 100).toDouble() : 50.0;
 
-    // ── Interests (interests, personality_traits, zodiac) ──
     final myI = List<String>.from(my['interests'] ?? []);
     final thI = List<String>.from(other['interests'] ?? []);
     final myT = List<String>.from(my['personality_traits'] ?? []);
@@ -457,21 +578,14 @@ class _ExploreScreenState extends State<ExploreScreen>
 
   int _compat(Map<String, dynamic> other) {
     final cats = _compatCategories(other);
-    // Weighted: Lifestyle 35%, Interests 30%, Values 25%, Demographics 10%
     final score = (cats['Lifestyle']! * 0.35) +
                   (cats['Interests']! * 0.30) +
                   (cats['Values']! * 0.25) +
                   (cats['Demographics']! * 0.10);
-
-    final total = score;
-
-    // Active bonus
     final activeBonus = other['visibility'] == 'active' ? 3.0 : 0.0;
-
-    return (total + activeBonus).round().clamp(0, 100);
+    return (score + activeBonus).round().clamp(0, 100);
   }
 
-  /// Returns a short human-readable connection hint
   String _connectionHint(Map<String, dynamic> other) {
     if (_myProfile == null) return '';
     final myI  = List<String>.from(_myProfile!['interests'] ?? []);
@@ -482,7 +596,6 @@ class _ExploreScreenState extends State<ExploreScreen>
     return 'You both love ${shared[0]} & ${shared[1]}';
   }
 
-  /// Generate top matching reasons
   List<String> _topReasons(Map<String, dynamic> other) {
     if (_myProfile == null) return [];
     final my = _myProfile!;
@@ -532,9 +645,7 @@ class _ExploreScreenState extends State<ExploreScreen>
     return reasons.take(5).toList();
   }
 
-  // ── question generation ───────────────────────────────────────────────────
   List<Map<String, dynamic>> _buildQuestions(Map<String, dynamic> target) {
-    // 1. custom knock_questions on target profile
     final raw = target['knock_questions'];
     if (raw != null) {
       try {
@@ -545,6 +656,9 @@ class _ExploreScreenState extends State<ExploreScreen>
               'options': (q['options'] as List?)?.map((e) => e.toString()).toList() ?? [],
               'allow_custom_answer': q['allow_custom_answer'] == true || q['options'] == null || (q['options'] as List).isEmpty,
               'my_answer': q['my_answer']?.toString() ?? '',
+              'question_type': q['question_type']?.toString(),
+              'slider_min': double.tryParse(q['slider_min']?.toString() ?? '0') ?? 0.0,
+              'slider_max': double.tryParse(q['slider_max']?.toString() ?? '10') ?? 10.0,
             };
           }
           return null;
@@ -557,7 +671,6 @@ class _ExploreScreenState extends State<ExploreScreen>
       } catch (e) { print("Error in loadMyProfile: $e"); }
     }
 
-    // 2. generate from shared / target interests
     final rng   = math.Random();
     final myI   = List<String>.from(_myProfile?['interests'] ?? []);
     final thI   = List<String>.from(target['interests'] ?? []);
@@ -593,7 +706,6 @@ class _ExploreScreenState extends State<ExploreScreen>
     return finalQuestions;
   }
 
-  // ── navigation ────────────────────────────────────────────────────────────
   void _goSplit(Map<String, dynamic> profile) {
     HapticFeedback.mediumImpact();
     setState(() { _selected = profile; _view = _XView.split; _isSpinning = false; });
@@ -605,10 +717,8 @@ class _ExploreScreenState extends State<ExploreScreen>
     if (all.isEmpty) return;
     HapticFeedback.heavyImpact();
 
-    // Filter out already-seen profiles
     final unseen = all.where((p) => !_seenProfileIds.contains(p['id']?.toString() ?? '')).toList();
 
-    // If all profiles have been shown, auto-reset and tell the user
     if (unseen.isEmpty) {
       setState(() => _seenProfileIds.clear());
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -621,7 +731,6 @@ class _ExploreScreenState extends State<ExploreScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         duration: const Duration(seconds: 2),
       ));
-      // Restart with all profiles again
       _goRandom();
       return;
     }
@@ -630,13 +739,16 @@ class _ExploreScreenState extends State<ExploreScreen>
     _splitCtrl.forward(from: 0);
     _spinCtrl.forward(from: 0).then((_) {
       if (!mounted) return;
-      final pick = unseen[math.Random().nextInt(unseen.length)];
-      // Mark this profile as seen
-      _seenProfileIds.add(pick['id']?.toString() ?? '');
-      HapticFeedback.heavyImpact();
-      setState(() { _selected = pick; _isSpinning = false; });
+      final index = (all.length > 1) ? (all.indexOf(unseen.first)) : 0;
+      setState(() {
+        _selected = all[index];
+        _view = _XView.split;
+        _isSpinning = false;
+      });
+      _splitCtrl.forward(from: 0);
     });
   }
+
 
   void _backToGrid() {
     _spinCtrl.stop();
@@ -645,7 +757,6 @@ class _ExploreScreenState extends State<ExploreScreen>
     setState(() { _view = _XView.grid; _selected = null; _isSpinning = false; });
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
   bool get _isProfileComplete {
     if (_quickSetupDone) return true;
     if (_myProfile == null) return false;
@@ -666,13 +777,8 @@ class _ExploreScreenState extends State<ExploreScreen>
   @override
   Widget build(BuildContext context) {
     
-    if (!_isLoading && !_isProfileComplete) {
-      return _QuickSetupOverlay(
-        myProfile: _myProfile ?? {},
-        onComplete: (payload) => _refresh(payload),
-      );
-    }
-
+    // Removed _QuickSetupOverlay check so users can view the grid even with incomplete profiles.
+    
     switch (_view) {
       case _XView.split:
       case _XView.random:
@@ -707,9 +813,6 @@ class _ExploreScreenState extends State<ExploreScreen>
     }
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // KNOCK QUESTIONNAIRE MODAL
-  // ══════════════════════════════════════════════════════════════════════════
   void _showKnockQuestionnaire(Map<String, dynamic> target) {
     final questions = _buildQuestions(target);
     final answers   = List<String?>.filled(questions.length, null);
@@ -735,6 +838,9 @@ class _ExploreScreenState extends State<ExploreScreen>
           final qOptions   = (qMap['options'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
           final allowCustom = qMap['allow_custom_answer'] == true;
           final benchmarkAns = qMap['my_answer']?.toString() ?? '';
+          final qType      = qMap['question_type']?.toString();
+          final sMin       = qMap['slider_min'] as double? ?? 0.0;
+          final sMax       = qMap['slider_max'] as double? ?? 10.0;
 
           Widget buildOption(String text) {
             final sel = answers[curQ] == text && !customMode;
@@ -806,11 +912,9 @@ class _ExploreScreenState extends State<ExploreScreen>
               ),
               child: Column(
                 children: [
-                  // ── handle ──
                   Container(margin: const EdgeInsets.only(top: 12), width: 40, height: 4,
                     decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
                   const SizedBox(height: 16),
-                  // ── title ──
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Row(
@@ -832,7 +936,6 @@ class _ExploreScreenState extends State<ExploreScreen>
                     ),
                   ),
                   const SizedBox(height: 14),
-                  // ── progress bar ──
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: ClipRRect(
@@ -846,7 +949,6 @@ class _ExploreScreenState extends State<ExploreScreen>
                     ),
                   ),
                   const SizedBox(height: 16),
-                  // ── target mini-header ──
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Row(
@@ -861,14 +963,12 @@ class _ExploreScreenState extends State<ExploreScreen>
                     ),
                   ),
                   const SizedBox(height: 18),
-                  // ── scrollable body ──
                   Expanded(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Question card
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(20),
@@ -898,71 +998,102 @@ class _ExploreScreenState extends State<ExploreScreen>
                             ),
                           ),
                           const SizedBox(height: 18),
-                          // Answer options — from structured data
-                          if (qOptions.isNotEmpty) ...qOptions.map(buildOption)
-                          else ...[
-                            buildOption('Yes, definitely!'),
-                            buildOption('Somewhat'),
-                            buildOption('Not really'),
-                            buildOption('Depends on the situation'),
-                          ],
-                          // Custom answer — only shown if allowed
-                          if (allowCustom) ...[
-                            GestureDetector(
-                              onTap: () => set(() { customMode = !customMode; if (!customMode) answers[curQ] = null; }),
-                              child: AnimatedContainer(
-                                duration: 200.ms,
-                                margin: const EdgeInsets.only(top: 4, bottom: 10),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                decoration: BoxDecoration(
-                                  color: customMode ? const Color(0xFF6366F1).withValues(alpha: 0.12) : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: customMode ? const Color(0xFF6366F1) : Colors.white.withValues(alpha: 0.08),
-                                    width: customMode ? 2 : 1,
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.edit_note_rounded,
-                                      color: customMode ? const Color(0xFF6366F1) : Colors.white38, size: 20),
-                                    const SizedBox(width: 10),
-                                    Text('Write my own answer',
-                                      style: GoogleFonts.outfit(
-                                        color: customMode ? const Color(0xFF6366F1) : Colors.white38,
-                                        fontSize: 14, fontWeight: FontWeight.w500,
-                                      )),
-                                  ],
+                          if (qType == 'slider') ...[
+                            Text('Slide to answer', style: GoogleFonts.outfit(color: Colors.white54, fontSize: 13)),
+                            const SizedBox(height: 10),
+                            Slider(
+                              value: double.tryParse(answers[curQ] ?? '') ?? ((sMax + sMin) / 2),
+                              min: sMin,
+                              max: sMax,
+                              activeColor: _orange,
+                              inactiveColor: Colors.white24,
+                              onChanged: (v) => set(() { answers[curQ] = v.toStringAsFixed(1); customMode = false; }),
+                            ),
+                            Center(child: Text(answers[curQ] ?? ((sMax + sMin) / 2).toStringAsFixed(1), style: GoogleFonts.outfit(color: _orange, fontSize: 24, fontWeight: FontWeight.bold))),
+                          ] else if (qType == 'open') ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                              ),
+                              child: TextField(
+                                controller: customCtl[curQ],
+                                style: GoogleFonts.outfit(color: Colors.white, fontSize: 14),
+                                maxLines: 3,
+                                onChanged: (v) => set(() { answers[curQ] = v.isEmpty ? null : v; customMode = true; }),
+                                decoration: InputDecoration(
+                                  border: InputBorder.none,
+                                  hintText: 'Type your answer here...',
+                                  hintStyle: GoogleFonts.outfit(color: Colors.white30, fontSize: 14),
                                 ),
                               ),
                             ),
-                            if (customMode)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF6366F1).withValues(alpha: 0.07),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
-                                ),
-                                child: TextField(
-                                  controller: customCtl[curQ],
-                                  style: GoogleFonts.outfit(color: Colors.white, fontSize: 14),
-                                  maxLines: 3,
-                                  onChanged: (v) => set(() => answers[curQ] = v.isEmpty ? null : v),
-                                  decoration: InputDecoration(
-                                    border: InputBorder.none,
-                                    hintText: 'Share your thoughts…',
-                                    hintStyle: GoogleFonts.outfit(color: Colors.white30, fontSize: 14),
+                          ] else ...[
+                            if (qOptions.isNotEmpty) ...qOptions.map(buildOption)
+                            else ...[
+                              buildOption('Yes, definitely!'),
+                              buildOption('Somewhat'),
+                              buildOption('Not really'),
+                              buildOption('Depends on the situation'),
+                            ],
+                            if (allowCustom) ...[
+                              GestureDetector(
+                                onTap: () => set(() { customMode = !customMode; if (!customMode) answers[curQ] = null; }),
+                                child: AnimatedContainer(
+                                  duration: 200.ms,
+                                  margin: const EdgeInsets.only(top: 4, bottom: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    color: customMode ? const Color(0xFF6366F1).withValues(alpha: 0.12) : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: customMode ? const Color(0xFF6366F1) : Colors.white.withValues(alpha: 0.08),
+                                      width: customMode ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.edit_note_rounded,
+                                        color: customMode ? const Color(0xFF6366F1) : Colors.white38, size: 20),
+                                      const SizedBox(width: 10),
+                                      Text('Write my own answer',
+                                        style: GoogleFonts.outfit(
+                                          color: customMode ? const Color(0xFF6366F1) : Colors.white38,
+                                          fontSize: 14, fontWeight: FontWeight.w500,
+                                        )),
+                                    ],
                                   ),
                                 ),
                               ),
+                              if (customMode)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF6366F1).withValues(alpha: 0.07),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
+                                  ),
+                                  child: TextField(
+                                    controller: customCtl[curQ],
+                                    style: GoogleFonts.outfit(color: Colors.white, fontSize: 14),
+                                    maxLines: 3,
+                                    onChanged: (v) => set(() => answers[curQ] = v.isEmpty ? null : v),
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      hintText: 'Share your thoughts…',
+                                      hintStyle: GoogleFonts.outfit(color: Colors.white30, fontSize: 14),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ],
                           const SizedBox(height: 24),
                         ],
                       ),
                     ),
                   ),
-                  // ── nav buttons ──
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
                     child: Row(
@@ -985,7 +1116,7 @@ class _ExploreScreenState extends State<ExploreScreen>
                         Expanded(
                           child: GestureDetector(
                             onTap: sending ? null : () async {
-                              final ans = customMode
+                              final ans = (customMode || qType == 'open')
                                   ? customCtl[curQ].text.trim()
                                   : answers[curQ];
                               if (ans == null || ans.isEmpty) {
@@ -1071,7 +1202,6 @@ class _ExploreScreenState extends State<ExploreScreen>
           ? [{'super': true}]
           : List.generate(qs.length, (i) => {'question': qs[i]['question'].toString(), 'answer': ans[i]});
 
-      // Store knock in requests table with is_super flag + 48h expiry
       await Supabase.instance.client.from('requests').insert({
         'sender_id': _uid,
         'target_id': tid,
@@ -1082,10 +1212,14 @@ class _ExploreScreenState extends State<ExploreScreen>
         'expires_at': DateTime.now().toUtc().add(const Duration(hours: 48)).toIso8601String(),
       });
 
+      setState(() {
+        _sentKnockProfileIds.add(tid);
+      });
+      _processAndFilterProfiles();
+
       final myName    = _myProfile?['name']?.toString() ?? 'Someone';
       final myAvatar  = _myProfile?['avatar_url']?.toString() ?? '';
 
-      // Send notification with rich payload so target can render real avatar
       await NotificationService.sendNotification(
         userId: tid,
         type: NotificationType.knock,
@@ -1101,7 +1235,6 @@ class _ExploreScreenState extends State<ExploreScreen>
         },
       );
 
-      // Mutual knock → auto-approve both sides
       final theirKnock = await Supabase.instance.client
           .from('requests').select('id')
           .eq('sender_id', tid).eq('target_id', _uid!).eq('target_type', 'profile')
@@ -1135,7 +1268,6 @@ class _ExploreScreenState extends State<ExploreScreen>
     });
   }
 
-  // ─── Knock Sent Celebration Overlay ─────────────────────────────────────
   void _showKnockCelebration(Map<String, dynamic> target, {bool isSuper = false}) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
@@ -1152,11 +1284,6 @@ class _ExploreScreenState extends State<ExploreScreen>
     overlay.insert(entry);
   }
 
-
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // VIBE CHECK REVIEW
-  // ══════════════════════════════════════════════════════════════════════════
   void _showParticleOverlay(BuildContext context) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
@@ -1190,18 +1317,14 @@ class _ExploreScreenState extends State<ExploreScreen>
     return null;
   }
 
-
-
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // KNOCK SETTINGS SHEET
-  // ══════════════════════════════════════════════════════════════════════════
+  bool _isSettingsOpening = false;
 
   void _showKnockSettings(BuildContext context) async {
-    if (_uid == null) return;
+    if (_uid == null || _isSettingsOpening) return;
+    _isSettingsOpening = true;
 
-    KnockMode currentMode = KnockMode.inactive;
-    String status = '';
+    final initialVis = _myProfile?['visibility']?.toString() ?? 'active';
+    KnockMode currentMode = initialVis == 'inactive' ? KnockMode.inactive : KnockMode.active;
     List<Map<String, dynamic>> kqs = [];
     int totalKnocksReceived = 0;
     int knocksAccepted = 0;
@@ -1209,27 +1332,25 @@ class _ExploreScreenState extends State<ExploreScreen>
     try {
       final r = await Supabase.instance.client
           .from('profiles')
-          .select('visibility,explore_status,knock_questions,interests')
+          .select('visibility,knock_questions')
           .eq('id', _uid!)
           .maybeSingle();
       if (r != null) {
         final vis = r['visibility']?.toString() ?? 'inactive';
-        currentMode = vis == 'active' ? KnockMode.active : (vis == 'invisible' ? KnockMode.invisible : KnockMode.inactive);
-        status = r['explore_status']?.toString() ?? '';
+        currentMode = vis == 'active' ? KnockMode.active : KnockMode.inactive;
         final raw = r['knock_questions'];
         if (raw != null) {
           try { kqs = (raw as List).map((q) => Map<String, dynamic>.from(q as Map)).toList(); } catch (e) { print("Error parsing questions: $e"); }
         }
       }
 
-      // Fetch basic stats for the user
       final statsRes = await Supabase.instance.client
-          .from('knock_requests')
+          .from('requests')
           .select('status')
           .eq('target_id', _uid!);
       
       totalKnocksReceived = statsRes.length;
-      knocksAccepted = statsRes.where((k) => k['status'] == 'accepted').length;
+      knocksAccepted = statsRes.where((k) => k['status'] == 'approved').length;
 
     } catch (e) { print("Error in loadMyProfile: $e"); }
 
@@ -1240,8 +1361,7 @@ class _ExploreScreenState extends State<ExploreScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (_, set) {
-          final statusCtl = TextEditingController(text: status);
+        builder: (ctx, setModalState) {
 
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -1257,7 +1377,6 @@ class _ExploreScreenState extends State<ExploreScreen>
               ),
               child: Stack(
                 children: [
-                  // Premium Background Elements
                   Positioned(
                     top: -100, right: -50,
                     child: Container(
@@ -1278,7 +1397,6 @@ class _ExploreScreenState extends State<ExploreScreen>
                         decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(3))),
                       const SizedBox(height: 20),
                       
-                      // ── Header ──
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Row(
@@ -1326,8 +1444,10 @@ class _ExploreScreenState extends State<ExploreScreen>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // ── Stats Bar ──
-                              _KnockStatsBar(total: totalKnocksReceived, accepted: knocksAccepted),
+                              GestureDetector(
+                                onTap: () => Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => const MessagesScreen())),
+                                child: _KnockStatsBar(total: totalKnocksReceived, accepted: knocksAccepted),
+                              ),
                               const SizedBox(height: 32),
 
                               // ── Visibility ──
@@ -1347,7 +1467,15 @@ class _ExploreScreenState extends State<ExploreScreen>
                                     icon: Icons.bolt_rounded,
                                     selected: currentMode == KnockMode.active,
                                     selColor: _orange,
-                                    onTap: () => set(() => currentMode = KnockMode.active),
+                                    onTap: () {
+                                       setModalState(() => currentMode = KnockMode.active);
+                                       if (_uid != null) {
+                                         Supabase.instance.client.from('profiles').update({
+                                           'visibility': 'active',
+                                           'visibility_updated_at': DateTime.now().toUtc().toIso8601String(),
+                                         }).eq('id', _uid!);
+                                       }
+                                     },
                                   )),
                                   const SizedBox(width: 12),
                                   Expanded(child: _VisBtn(
@@ -1356,45 +1484,21 @@ class _ExploreScreenState extends State<ExploreScreen>
                                     icon: Icons.snooze_rounded,
                                     selected: currentMode == KnockMode.inactive,
                                     selColor: Colors.white60,
-                                    onTap: () => set(() => currentMode = KnockMode.inactive),
+                                    onTap: () {
+                                      setModalState(() => currentMode = KnockMode.inactive);
+                                      if (_uid != null) {
+                                        Supabase.instance.client.from('profiles').update({
+                                          'visibility': 'inactive',
+                                          'visibility_updated_at': DateTime.now().toUtc().toIso8601String(),
+                                        }).eq('id', _uid!);
+                                      }
+                                    },
                                   )),
                                 ],
                               ),
                               const SizedBox(height: 32),
 
-                              // ── Explore vibe ──
-                              Row(
-                                children: [
-                                  const Icon(Icons.explore_rounded, color: Color(0xFF00E676), size: 18),
-                                  const SizedBox(width: 8),
-                                  _SettingsLabel('CURRENT VIBE'),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.03),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10)],
-                                ),
-                                child: TextField(
-                                  controller: statusCtl,
-                                  style: GoogleFonts.outfit(color: Colors.white, fontSize: 15, fontStyle: FontStyle.italic),
-                                  maxLines: 1,
-                                  maxLength: 50,
-                                  onChanged: (v) => status = v,
-                                  decoration: InputDecoration(
-                                    counterText: '',
-                                    border: InputBorder.none,
-                                    hintText: 'e.g. Looking for tech co-founders...',
-                                    hintStyle: GoogleFonts.outfit(color: Colors.white30, fontSize: 15),
-                                    icon: const Icon(Icons.edit_note_rounded, color: Colors.white54, size: 20),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 32),
+
 
                               // ── Knock Questions Builder ──
                               Row(
@@ -1470,7 +1574,7 @@ class _ExploreScreenState extends State<ExploreScreen>
                                                       style: GoogleFonts.outfit(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
                                                   ),
                                                   GestureDetector(
-                                                    onTap: () => set(() => kqs.removeAt(i)),
+                                                    onTap: () => setModalState(() => kqs.removeAt(i)),
                                                     child: Container(
                                                       padding: const EdgeInsets.all(6),
                                                       decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), shape: BoxShape.circle),
@@ -1535,7 +1639,7 @@ class _ExploreScreenState extends State<ExploreScreen>
                               if (kqs.length < 5) ...[
                                 const SizedBox(height: 10),
                                 _CustomQuestionBuilder(
-                                  onAdd: (q) => set(() => kqs.add(q)),
+                                  onAdd: (q) => setModalState(() => kqs.add(q)),
                                 ),
                               ],
                               const SizedBox(height: 40),
@@ -1560,7 +1664,6 @@ class _ExploreScreenState extends State<ExploreScreen>
 
                               await Supabase.instance.client.from('profiles').update({
                                 'visibility': visVal,
-                                'explore_status': statusCtl.text.trim(),
                                 'knock_questions': kqs,
                                 'visibility_updated_at': DateTime.now().toUtc().toIso8601String(),
                               }).eq('id', _uid!);
@@ -1617,7 +1720,7 @@ class _ExploreScreenState extends State<ExploreScreen>
           );
         },
       ),
-    );
+    ).then((_) => _isSettingsOpening = false);
   }
 }
 
@@ -1749,8 +1852,8 @@ class _GridView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Explore', style: GoogleFonts.outfit(
-            color: Colors.white, fontSize: 44, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+          Text('EXPLORE', style: GoogleFonts.inter(
+            color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, letterSpacing: 1.0)),
           const SizedBox(height: 12),
           ValueListenableBuilder<String>(
             valueListenable: locationService.activeDistrictNotifier,
@@ -1860,7 +1963,7 @@ class _GridView extends StatelessWidget {
   }
 
   Widget _buildLoading() {
-    return const Center(child: CircularProgressIndicator(color: _orangeAcc));
+    return SkeletonLoaders.profileGridSkeleton();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1968,7 +2071,7 @@ class _AvatarTile extends StatelessWidget {
                   ),
                   child: ClipOval(
                     child: url.isNotEmpty
-                        ? Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback())
+                        ? Image(image: _getSafeImageProvider(url), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback())
                         : _fallback(),
                   ),
                 ),
@@ -2024,11 +2127,6 @@ class _GridTileItem extends StatelessWidget {
     return GestureDetector(
       onTap: () { HapticFeedback.lightImpact(); onTap(profile); },
       child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -2036,7 +2134,7 @@ class _GridTileItem extends StatelessWidget {
               child: SizedBox(
                 width: 60, height: 60,
                 child: url.isNotEmpty
-                    ? Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback())
+                    ? Image(image: _getSafeImageProvider(url), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback())
                     : _fallback(),
               ),
             ),
@@ -2200,10 +2298,11 @@ class _SplitScreenState extends State<_SplitScreen> {
               const SizedBox(height: 24),
               
               // Interests Hex
-              _InterestsCmp(
-                myI: List<String>.from(my['interests'] ?? []),
-                thI: List<String>.from(th['interests'] ?? []),
-              ),
+              if (_parseListExplore(my['interests']).isNotEmpty || _parseListExplore(th['interests']).isNotEmpty)
+                _InterestsCmp(
+                  myI: _parseListExplore(my['interests']),
+                  thI: _parseListExplore(th['interests']),
+                ),
               const SizedBox(height: 32),
 
               // Glass HUD
@@ -2331,7 +2430,7 @@ class _GlassAv extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle, color: const Color(0xFF0D0D14),
-          image: url.isNotEmpty ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
+          image: url.isNotEmpty ? DecorationImage(image: _getSafeImageProvider(url), fit: BoxFit.cover) : null,
         ),
         child: url.isEmpty ? const Icon(Icons.person, color: Colors.white30, size: 30) : null,
       ),
@@ -2492,6 +2591,13 @@ class _InterestsCmp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shared = myI.where(thI.contains).toSet();
+    if (shared.length < 2) {
+      final combined = {...myI, ...thI}.toList()..shuffle();
+      for (final item in combined) {
+        shared.add(item);
+        if (shared.length >= 2) break;
+      }
+    }
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -2887,7 +2993,7 @@ class _GridCard extends StatelessWidget {
         if (url.isNotEmpty)
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: Image.network(url, fit: BoxFit.cover),
+            child: Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: const Color(0xFF151515), child: const Center(child: Icon(Icons.person, color: Colors.white12, size: 40)))),
           ),
         Container(
           decoration: BoxDecoration(
@@ -2938,7 +3044,7 @@ class _TargetRevealCard extends StatelessWidget {
           BoxShadow(color: const Color(0xFF00F0FF).withValues(alpha: 0.2), blurRadius: 50, spreadRadius: 10),
           BoxShadow(color: const Color(0xFFB026FF).withValues(alpha: 0.2), blurRadius: 50, spreadRadius: 10, offset: const Offset(0, 20)),
         ],
-        image: url.isNotEmpty ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
+        image: url.isNotEmpty ? DecorationImage(image: _getSafeImageProvider(url), fit: BoxFit.cover) : null,
       ),
       child: Container(
         decoration: BoxDecoration(
@@ -3190,7 +3296,7 @@ class _MiniAvatar extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: borderColor, width: 2),
         boxShadow: [BoxShadow(color: borderColor.withValues(alpha: 0.3), blurRadius: 10)],
-        image: url.isNotEmpty ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
+        image: url.isNotEmpty ? DecorationImage(image: _getSafeImageProvider(url), fit: BoxFit.cover) : null,
         color: const Color(0xFF2A2A2A),
       ),
       child: url.isEmpty ? Icon(Icons.person, color: Colors.white54, size: size * 0.4) : null,
@@ -3717,30 +3823,45 @@ class _KnockStatsBar extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _statItem(Icons.doorbell_rounded, total.toString(), 'Knocks\nReceived', const Color(0xFFFF3060)),
+          _statItem(Icons.doorbell_rounded, total.toString(), 'Knocks\nReceived', const Color(0xFFFF3060), () {
+            Navigator.pop(context); // Close the studio sheet
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen(initialFilter: 'Knocks')));
+          }),
           Container(width: 1, height: 40, color: Colors.white12),
-          _statItem(Icons.handshake_rounded, accepted.toString(), 'Knocks\nAccepted', const Color(0xFF00E676)),
+          _statItem(Icons.handshake_rounded, accepted.toString(), 'Knocks\nAccepted', const Color(0xFF00E676), () {
+            Navigator.pop(context);
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen(initialFilter: 'All')));
+          }),
           Container(width: 1, height: 40, color: Colors.white12),
-          _statItem(Icons.analytics_rounded, '${(acceptanceRate * 100).toInt()}%', 'Acceptance\nRate', const Color(0xFFFF6B00)),
+          _statItem(Icons.analytics_rounded, '${(acceptanceRate * 100).toInt()}%', 'Acceptance\nRate', const Color(0xFFFF6B00), () {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('You accept ${(acceptanceRate * 100).toInt()}% of your incoming knocks!'),
+              backgroundColor: const Color(0xFFFF6B00),
+            ));
+          }),
         ],
       ),
     );
   }
 
-  Widget _statItem(IconData icon, String val, String label, Color color) {
-    return Column(
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 16),
-            const SizedBox(width: 6),
-            Text(val, style: GoogleFonts.outfit(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(label, textAlign: TextAlign.center, style: GoogleFonts.outfit(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600, height: 1.2)),
-      ],
+  Widget _statItem(IconData icon, String val, String label, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 16),
+              const SizedBox(width: 6),
+              Text(val, style: GoogleFonts.outfit(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(label, textAlign: TextAlign.center, style: GoogleFonts.outfit(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600, height: 1.2)),
+        ],
+      ),
     );
   }
 }

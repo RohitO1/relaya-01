@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'widgets/touch_scale.dart';
+import 'chat_screen.dart';
 import 'messages_screen.dart';
 import 'knock_review_screen.dart';
 import 'services/notification_service.dart';
@@ -455,7 +456,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               } catch (_) {}
             }
           } else if (notif.type == AppNotificationType.message || notif.type == AppNotificationType.match) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen()));
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen()));
           }
         },
         child: Container(

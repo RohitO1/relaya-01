@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../chatroom_live_screen.dart';
+import '../services/location_service.dart';
 import '../widgets/app_header_actions.dart';
 
 class BolroomVoiceScreen extends StatefulWidget {
@@ -72,6 +73,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   String _searchQuery = '';
   final TextEditingController _searchCtrl = TextEditingController();
   String _myLocation = 'Fetching location...';
+  Timer? _lobbySweepTimer;
 
   static const Color bgColor = Color(0xFF090710);
   static const Color cardColor = Color(0xFF13101E);
@@ -86,6 +88,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
     super.initState();
     _fetchLocation();
     _loadRooms();
+    _startLobbySweepTimer();
     _sb.channel('bolroom_voice_rooms').onPostgresChanges(
       event: PostgresChangeEvent.all, schema: 'public', table: 'chatrooms',
       callback: (_) => _loadRooms(),
@@ -94,16 +97,51 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
 
   @override
   void dispose() {
+    _lobbySweepTimer?.cancel();
     try { _sb.removeChannel(_sb.channel('bolroom_voice_rooms')); } catch (_) {}
     _searchCtrl.dispose();
     super.dispose();
   }
 
+  void _startLobbySweepTimer() {
+    _lobbySweepTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+      try {
+        final roomsRes = await _sb.from('chatrooms').select('id, created_at');
+        if (roomsRes.isEmpty) return;
+
+        final membersRes = await _sb.from('chatroom_members').select('room_id');
+        final activeRoomIds = (membersRes as List).map((m) => m['room_id'].toString()).toSet();
+
+        final now = DateTime.now();
+        for (var r in roomsRes) {
+          final roomId = r['id'].toString();
+          final createdAtStr = r['created_at']?.toString();
+          if (createdAtStr != null) {
+            final createdAt = DateTime.tryParse(createdAtStr);
+            if (createdAt != null) {
+              final age = now.difference(createdAt);
+              if (age.inSeconds > 60 && !activeRoomIds.contains(roomId)) {
+                await _sb.from('chatrooms').delete().eq('id', roomId);
+                debugPrint('Lobby Sweep: Deleted empty room $roomId');
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Lobby Sweep Error: $e');
+      }
+    });
+  }
+
   Future<void> _loadRooms() async {
     try {
       final myId = _sb.auth.currentUser?.id;
-      final res = await _sb.from('chatrooms')
-          .select('*')
+      final locSvc = LocationService();
+      var query = _sb.from('chatrooms').select('*');
+      if (locSvc.activeDistrict.isNotEmpty && locSvc.activeDistrict != 'Unknown') {
+        query = query.ilike('topic', '%${locSvc.activeDistrict}%');
+      }
+      final res = await query
           .or('visibility.neq.invite,host_id.eq.$myId')
           .order('created_at', ascending: false)
           .limit(50);
@@ -116,15 +154,15 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
 
   Future<void> _fetchLocation() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final loc = prefs.getString('bolroom_location');
+      final locSvc = LocationService();
+      final loc = locSvc.activeDistrict;
       if (mounted) {
         setState(() {
-          _myLocation = (loc != null && loc.trim().isNotEmpty) ? loc : 'Global';
+          _myLocation = (loc.isNotEmpty && loc != 'Unknown') ? loc : 'Global';
         });
       }
     } catch (e) {
-      debugPrint('Prefs location fetch error: $e');
+      debugPrint('Location service fetch error: $e');
       if (mounted) setState(() => _myLocation = 'Global');
     }
   }
@@ -151,10 +189,24 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
     return colors[hash.abs() % colors.length];
   }
 
+  String _getLoc(dynamic topicStr) {
+    if (topicStr == null) return 'Global';
+    final parts = topicStr.toString().split('|').map((e) => e.trim()).toList();
+    if (parts.length > 1) {
+      final last = parts.last;
+      return last.isNotEmpty ? last : 'Global';
+    }
+    return 'Global';
+  }
+
   List<String> _getTags(dynamic topicStr) {
     if (topicStr == null) return ['General'];
-    final p = topicStr.toString().split('|');
-    return p.map((e) => e.trim()).where((e) => e.isNotEmpty && !e.toLowerCase().contains('could not')).take(2).toList();
+    final parts = topicStr.toString().split('|').map((e) => e.trim()).toList();
+    if (parts.length > 1) {
+      parts.removeLast(); // Remove the trailing location part
+    }
+    final tags = parts.where((e) => e.isNotEmpty && !e.toLowerCase().contains('could not')).toList();
+    return tags.isEmpty ? ['General'] : tags;
   }
 
   @override
@@ -394,14 +446,6 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
           ),
           Row(
             children: [
-              AppHeaderActions(
-                containerColor: cardColor,
-                iconColor: purplePrimary,
-                borderColor: Colors.white.withValues(alpha: 0.3),
-                showMessages: false,
-                isBolroomMode: true,
-              ),
-              const SizedBox(width: 12),
               GestureDetector(
                 onTap: onAction,
                 child: Container(
@@ -477,7 +521,29 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
               children: [
                 _buildGlowingAvatar(auraColor, 32),
                 const SizedBox(width: 8),
-                Expanded(child: Text("Host: $host", style: const TextStyle(color: textMuted, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Host: $host", style: const TextStyle(color: textMuted, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on, color: cyanBright, size: 12),
+                          const SizedBox(width: 2),
+                          Expanded(
+                            child: Text(
+                              _getLoc(room['topic']),
+                              style: const TextStyle(color: cyanBright, fontSize: 11, fontWeight: FontWeight.bold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(color: const Color(0xFF1A132F), borderRadius: BorderRadius.circular(10)),
@@ -1003,7 +1069,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
 
                         String topic = topicCtrl.text.trim();
                         if (topic.isEmpty) topic = selectedTags.isNotEmpty ? selectedTags.join(' | ') : 'General';
-                        if (encryptRadar) topic += ' | $_myLocation';
+                        topic += ' | $_myLocation';
 
                         try {
                           final res = await _sb.from('chatrooms').insert({

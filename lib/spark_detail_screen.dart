@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'spark_screen.dart';
 
+
 class SparkDetailScreen extends StatefulWidget {
   final SparkItem item;
   final Function(SparkItem) onJoin;

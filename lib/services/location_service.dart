@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 
 class LocationService {
   static final LocationService _instance = LocationService._internal();
@@ -22,6 +23,7 @@ class LocationService {
   
   // Listeners can attach to this if they care specifically when the MAP coordinates change
   final ValueNotifier<int> coordinatesUpdateNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<bool> isLocationGrantedNotifier = ValueNotifier<bool>(false);
 
   String get activeLocation => activeLocationNotifier.value;
   String get activeDistrict => activeDistrictNotifier.value;
@@ -74,6 +76,17 @@ class LocationService {
         }
       }
     }
+    
+    // Check if permission is already granted and auto-fetch
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (serviceEnabled) {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
+        // Run in background without blocking init
+        fetchLiveLocation(forceReverseGeocode: false).catchError((e) { debugPrint('Auto-fetch error: $e'); return false; });
+      }
+    }
+    
     coordinatesUpdateNotifier.value++;
   }
 
@@ -222,6 +235,87 @@ class LocationService {
         sin(dLon / 2) * sin(dLon / 2);
     final double c = 2 * asin(sqrt(a));
     return R * c;
+  }
+
+  /// Reverse Geocode using Nominatim API to get District/City name from Lat/Lng
+  Future<String?> reverseGeocode(double lat, double lng) async {
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json&zoom=10&addressdetails=1'
+      );
+      final res = await http.get(url, headers: {
+        'User-Agent': 'MeetraApp/1.0 (contact@meetra.app)',
+      });
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final addr = data['address'] as Map<String, dynamic>? ?? {};
+        final displayName = data['display_name']?.toString() ?? '';
+        final rawDistrict = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['municipality'] ?? addr['county'] ?? addr['state_district'] ?? addr['district'] ?? '';
+        final state = addr['state'] ?? '';
+        final sanitized = sanitizeDistrict(rawDistrict.toString(), displayName);
+        return state.toString().isNotEmpty ? '$sanitized, $state' : sanitized;
+      }
+    } catch (e) {
+      debugPrint('LocationService reverseGeocode error: $e');
+    }
+    return null;
+  }
+
+  /// Fetches live GPS location, requests permission if needed, and reverse geocodes
+  /// if the user has moved more than 5km from the last cached location.
+  Future<bool> fetchLiveLocation({bool forceReverseGeocode = false}) async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      isLocationGrantedNotifier.value = false;
+      return false;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        isLocationGrantedNotifier.value = false;
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      isLocationGrantedNotifier.value = false;
+      return false;
+    }
+
+    // We do NOT set isLocationGrantedNotifier to true yet.
+    // We must successfully fetch the position first to be absolutely sure they didn't block it at the prompt.
+    
+    try {
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      
+      double distanceKm = 0.0;
+      if (_activeLat != null && _activeLng != null) {
+        distanceKm = calculateDistanceInKm(_activeLat!, _activeLng!, position.latitude, position.longitude);
+      }
+
+      // If we moved > 5km, or don't have a cached location name, or forced -> Reverse Geocode
+      if (forceReverseGeocode || distanceKm > 5.0 || activeLocationNotifier.value.isEmpty || activeLocationNotifier.value == 'Map Location') {
+        String? newLocationName = await reverseGeocode(position.latitude, position.longitude);
+        if (newLocationName != null) {
+          setLocation(newLocationName, lat: position.latitude, lng: position.longitude);
+        } else {
+          // Fallback to update coords only if API fails
+          setLocation(activeLocationNotifier.value.isNotEmpty ? activeLocationNotifier.value : 'Current Location', lat: position.latitude, lng: position.longitude);
+        }
+      } else {
+        // Just update coordinates silently without hitting API
+        setLocation(activeLocationNotifier.value, lat: position.latitude, lng: position.longitude);
+      }
+      
+      isLocationGrantedNotifier.value = true;
+      return true;
+    } catch (e) {
+      debugPrint('LocationService fetchLiveLocation error: $e');
+      isLocationGrantedNotifier.value = false;
+      return false;
+    }
   }
 }
 

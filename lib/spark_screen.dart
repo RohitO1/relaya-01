@@ -1,8 +1,10 @@
 // ignore_for_file: duplicate_ignore, unused_element
 import 'dart:ui';
 import 'dart:convert';
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -15,8 +17,8 @@ import 'package:http/http.dart' as http;
 
 import 'rush_in_consumer_detail_view.dart';
 import 'host_activity_screen.dart';
-import 'services/profile_completion_service.dart';
 import 'spark_detail_screen.dart';
+
 
 // ==========================================
 // COLORS & CONSTANTS
@@ -78,6 +80,12 @@ class SparkItem {
   final bool isAnonymous;
   final String? imageUrl;
   final String? hostId;
+  final DateTime? createdAt;
+  final DateTime? activityTime;
+  final DateTime? expiresAt;
+  final String? district;
+  final bool isWithinHostRadius;
+  final int joinedMembers;
 
   SparkItem({
     required this.id, required this.type, required this.title, required this.desc,
@@ -89,6 +97,12 @@ class SparkItem {
     this.isAnonymous = false,
     this.imageUrl,
     this.hostId,
+    this.createdAt,
+    this.activityTime,
+    this.expiresAt,
+    this.district,
+    this.isWithinHostRadius = true,
+    this.joinedMembers = 0,
   });
 
   bool get isFull {
@@ -106,6 +120,23 @@ class SparkItem {
 }
 
 final Map<String, SparkItem> sparkDataStore = {};
+
+IconData _getVibeIcon(SparkItem item) {
+  if (item.tags.isEmpty) return Icons.flash_on;
+  final allTags = item.tags.join(', ').split(',').map((e) => e.trim()).toList();
+  for (final tag in allTags) {
+    switch (tag) {
+      case 'Outdoor': return Icons.park;
+      case 'Sports': return Icons.sports_soccer;
+      case 'Music': return Icons.music_note;
+      case 'Food': return Icons.restaurant;
+      case 'Study': return Icons.menu_book;
+      case 'Gaming': return Icons.sports_esports;
+      case 'Fitness': return Icons.fitness_center;
+    }
+  }
+  return Icons.flash_on;
+}
 
 // ==========================================
 // MAIN SCREEN
@@ -128,6 +159,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   Set<String> _selectedCategories = {};
   String _sortBy = 'Nearest';
   bool _loadingData = true;
+  bool _isMapDark = true;
+  bool _isFabVisible = true;
 
   // Live data from Supabase
   List<SparkItem> _rushIns = [];
@@ -141,9 +174,6 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   // Overlays
   OverlayEntry? _toastEntry;
-  
-  // FAB State
-  bool _isFabExpanded = false;
 
   RealtimeChannel? _activitiesChannel;
   RealtimeChannel? _requestsChannel;
@@ -178,6 +208,14 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
               if (mounted) _refreshAll();
             })
         .subscribe();
+        
+    _scrollController.addListener(() {
+      if (_scrollController.position.userScrollDirection == ScrollDirection.reverse) {
+        if (_isFabVisible) setState(() => _isFabVisible = false);
+      } else if (_scrollController.position.userScrollDirection == ScrollDirection.forward) {
+        if (!_isFabVisible) setState(() => _isFabVisible = true);
+      }
+    });
   }
 
   @override
@@ -208,8 +246,9 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
           .select('*')
           .eq('is_active', true);
 
-      // We handle geography strictly on the client to avoid Supabase filtering quirks.
-      final rows = await query.order('created_at', ascending: false).limit(200);
+      // We fetch globally (no district filter) so Map View can see everything.
+      // List View will filter locally.
+      final rows = await query.order('created_at', ascending: false).limit(300);
 
       // Map profiles manually due to missing database foreign key join
       final Set<String> userIds = {};
@@ -258,37 +297,69 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         if (hiddenIds.contains(id)) continue;
 
         final creatorId = row['user_id']?.toString() ?? '';
-        if (creatorId == uid) continue; // Skip the user's own created items
+        if (creatorId == uid) continue; // Skip the user's own created items so they only appear in their dashboard
 
         final profile = profilesMap[creatorId] as Map?;
         final hostName = profile?['name'] ?? 'Someone';
         final hostAvatarUrl = profile?['avatar_url'] ?? '';
-        final isRushIn = row['is_rush_in'] == true || (row['description']?.toString().contains('[is_rush_in:true]') ?? false);
-        final limit = row['participant_limit'] ?? 4;
+        final descStr = row['description']?.toString() ?? '';
+        
+        // ── Extract metadata tags from description ──
+        // Fields like expires_at, participant_limit, radius_km, is_rush_in, duration_hours
+        // are stored as [key:value] tags in the description because the DB table
+        // only has safe columns. We must extract them here.
+        String? _extractTag(String key) {
+          final match = RegExp('\\[$key:(.*?)\\]').firstMatch(descStr);
+          return match?.group(1);
+        }
+        
+        final isRushIn = row['is_rush_in'] == true || (descStr.contains('[is_rush_in:true]'));
+        final limit = row['participant_limit'] ?? int.tryParse(_extractTag('participant_limit') ?? '') ?? 4;
         
         final lat = double.tryParse(row['lat']?.toString() ?? '') ?? 0.0;
         final lng = double.tryParse(row['lng']?.toString() ?? '') ?? 0.0;
         
+        bool withinRadius = true;
         // Host defined visibility limit natively computed via Haversine 
         if (isRushIn && locationService.activeLat != null && locationService.activeLng != null) {
-          final hostRadius = double.tryParse(row['radius_km']?.toString() ?? '') ?? 5.0;
+          final hostRadius = double.tryParse(row['radius_km']?.toString() ?? '') 
+              ?? double.tryParse(_extractTag('radius_km') ?? '') 
+              ?? 5.0;
           final currentDist = locationService.calculateDistanceInKm(
             locationService.activeLat!, 
             locationService.activeLng!, 
             lat, 
             lng
           );
-          // If the user is further away than the host's target reach, hide it!
-          if (currentDist > hostRadius) continue;
+          if (currentDist > hostRadius) withinRadius = false;
         }
 
+        // ── Parse expires_at from DB column first, then from description tags ──
+        DateTime? parsedExpiresAt;
         if (isRushIn) {
-          final expiresAtStr = row['expires_at']?.toString();
-          if (expiresAtStr != null) {
-            final expiresAt = DateTime.tryParse(expiresAtStr);
-            if (expiresAt != null && expiresAt.isBefore(DateTime.now())) {
-              continue; // Skip expired rush-ins
+          String? expiresAtStr = row['expires_at']?.toString();
+          if (expiresAtStr == null || expiresAtStr.isEmpty) {
+            expiresAtStr = _extractTag('expires_at');
+          }
+          if (expiresAtStr != null && expiresAtStr.isNotEmpty) {
+            parsedExpiresAt = DateTime.tryParse(expiresAtStr)?.toLocal();
+          }
+          
+          // If still null, compute from activity_time + duration_hours
+          if (parsedExpiresAt == null) {
+            final durationStr = _extractTag('duration_hours');
+            final actTimeStr = row['activity_time']?.toString();
+            if (durationStr != null && actTimeStr != null) {
+              final durationHours = int.tryParse(durationStr);
+              final actTimeParsed = DateTime.tryParse(actTimeStr)?.toLocal();
+              if (durationHours != null && actTimeParsed != null) {
+                parsedExpiresAt = actTimeParsed.add(Duration(hours: durationHours));
+              }
             }
+          }
+          
+          if (parsedExpiresAt != null && parsedExpiresAt.isBefore(DateTime.now())) {
+            continue; // Skip expired rush-ins
           }
         }
 
@@ -313,38 +384,52 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
         final isAnonymous = row['is_anonymous'] == true;
 
-        // Hide it from the spark feed completely if the user has requested to join or is approved.
-        // They can manage their pending/approved items from the dashboard.
-        // Show items even if requested or approved so they appear on the map
-        // User can still manage them here if they want to.
-        // if (hasRequested || isApproved) continue; 
-
-
-        final actTime = row['activity_time'] != null ? DateTime.tryParse(row['activity_time']) : null;
+        final actTime = row['activity_time'] != null ? DateTime.tryParse(row['activity_time'])?.toLocal() : null;
         String? timerDisplay;
         if (isRushIn && actTime != null) {
-          final diff = actTime.difference(DateTime.now());
+          final now = DateTime.now();
+          final diff = actTime.difference(now);
           if (diff.isNegative) {
-            timerDisplay = 'Live Now';
+            // Rush-in has started — show "Ends in X"
+            if (parsedExpiresAt != null) {
+              final endDiff = parsedExpiresAt.difference(now);
+              if (endDiff.isNegative) {
+                timerDisplay = 'Ended';
+              } else if (endDiff.inHours > 0) {
+                timerDisplay = 'Ends in ${endDiff.inHours}h ${endDiff.inMinutes % 60}m';
+              } else {
+                timerDisplay = 'Ends in ${endDiff.inMinutes}m';
+              }
+            } else {
+              timerDisplay = 'Live Now';
+            }
           } else if (diff.inHours > 0) {
             timerDisplay = 'Starts in ${diff.inHours}h ${diff.inMinutes % 60}m';
           } else {
-            timerDisplay = 'Starts in ${diff.inMinutes} mins';
+            timerDisplay = 'Starts in ${diff.inMinutes}m';
           }
         }
+
+        String? extractedImageUrl = row['image_url']?.toString();
+        if (extractedImageUrl == null || extractedImageUrl.isEmpty) {
+          extractedImageUrl = _extractTag('image_url');
+        }
+
+        // Parse radius from DB or description
+        final radiusKm = row['radius_km']?.toString() ?? _extractTag('radius_km') ?? '5';
 
         final item = SparkItem(
           id: id,
           type: isRushIn ? 'rush' : 'act',
           title: row['title'] ?? 'Untitled',
-          desc: row['description'] ?? '',
+          desc: descStr.replaceAll(RegExp(r'\n?\[[a-zA-Z0-9_]+:.*?\]'), '').trim(),
           tags: [row['category']?.toString() ?? (isRushIn ? 'Rush' : 'Activity')],
           slots: '$joined/$limit',
           lat: double.tryParse(row['lat']?.toString() ?? '') ?? 0,
           lng: double.tryParse(row['lng']?.toString() ?? '') ?? 0,
           waitlist: waitlisted,
           host: hostName,
-          radius: '${(row['radius_km'] ?? 5)} km',
+          radius: '$radiusKm km',
           timer: timerDisplay,
           date: actTime != null ? _formatDate(row['activity_time']) : null,
           time: row['activity_time'] != null ? _formatTime(row['activity_time']) : null,
@@ -355,9 +440,16 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
           isApproved: isApproved || (uid == row['user_id']),
           hasRequested: hasRequested,
           isAnonymous: isAnonymous,
-          imageUrl: row['image_url']?.toString(),
+          imageUrl: extractedImageUrl,
           hostId: row['user_id']?.toString(),
+          createdAt: row['created_at'] != null ? DateTime.tryParse(row['created_at']) : null,
+          activityTime: actTime,
+          expiresAt: parsedExpiresAt,
+          district: row['district']?.toString(),
+          isWithinHostRadius: withinRadius,
+          joinedMembers: joined,
         );
+
 
         // Also update the global store for detail sheets
         sparkDataStore[id] = item;
@@ -602,89 +694,30 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
       body: Stack(
         children: [
           
+          // 1. Map View (Full Screen Background)
+          if (_activeView == 'map') 
+            Positioned.fill(child: _buildMapView()),
+
+          // 2. Foreground Content
           SafeArea(
             bottom: false,
             child: Column(
               children: [
                 _buildHeader(),
-                Expanded(
-                  child: _activeView == 'list' 
-                      ? _buildListView() 
-                      : _buildMapView(),
-                ),
+                if (_activeView == 'list')
+                  Expanded(child: _buildListView()),
               ],
             ),
           ),
 
           // Progress Bar (Mock at top)
           _buildScrollProgress(),
-
-          // Custom Expandable FAB
-          _buildFloatingActionButtons(),
         ],
       ),
+      floatingActionButton: null,
     );
   }
 
-  Widget _buildFloatingActionButtons() {
-    return Positioned(
-      bottom: 24, right: 24,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (_isFabExpanded) ...[
-            FloatingActionButton.extended(
-              heroTag: 'createActivity',
-              backgroundColor: const Color(0xFFFF6B00),
-              onPressed: () {
-                ProfileCompletionService.requireCompleteProfile(context, onComplete: () {
-                  setState(() => _isFabExpanded = false);
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => HostActivityScreen(
-                      initialLocation: locationService.activeLat != null && locationService.activeLng != null
-                        ? LatLng(locationService.activeLat!, locationService.activeLng!)
-                        : const LatLng(0, 0),
-                      initialIsRushIn: false,
-                    ),
-                  )).then((_) => _refreshAll());
-                });
-              },
-              icon: const Icon(Icons.event, color: Colors.black),
-              label: Text('Activity', style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.bold)),
-            ).animate().slideY(begin: 1, end: 0).fadeIn(),
-            const SizedBox(height: 12),
-            FloatingActionButton.extended(
-              heroTag: 'createRushIn',
-              backgroundColor: const Color(0xFFFF007F),
-              onPressed: () {
-                ProfileCompletionService.requireCompleteProfile(context, onComplete: () {
-                  setState(() => _isFabExpanded = false);
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => HostActivityScreen(
-                      initialLocation: locationService.activeLat != null && locationService.activeLng != null
-                        ? LatLng(locationService.activeLat!, locationService.activeLng!)
-                        : const LatLng(0, 0),
-                      initialIsRushIn: true,
-                    ),
-                  )).then((_) => _refreshAll());
-                });
-              },
-              icon: const Icon(Icons.flash_on, color: Colors.white),
-              label: Text('Rush-In', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)),
-            ).animate().slideY(begin: 1, end: 0).fadeIn(),
-            const SizedBox(height: 16),
-          ],
-          FloatingActionButton(
-            heroTag: 'mainFabToggle',
-            backgroundColor: _isFabExpanded ? SparkColors.cardH : SparkColors.orange,
-            onPressed: () => setState(() => _isFabExpanded = !_isFabExpanded),
-            child: Icon(_isFabExpanded ? Icons.close : Icons.add, color: _isFabExpanded ? Colors.white : Colors.black),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildScrollProgress() {
     return Positioned(
@@ -726,6 +759,12 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   }
 
   Widget _buildHeader() {
+    bool isLightMap = _activeView == 'map' && !_isMapDark;
+    Color textColor = isLightMap ? Colors.black : Colors.white;
+    Color iconColor = isLightMap ? Colors.black87 : Colors.white70;
+    Color bgBoxColor = isLightMap ? Colors.black.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.05);
+    Color borderBoxColor = isLightMap ? Colors.black.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.1);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       child: Row(
@@ -735,7 +774,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
             onTap: widget.onBack,
             child: Row(
               children: [
-                const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 22),
+                Icon(Icons.arrow_back_ios_new, color: textColor, size: 22),
                 const SizedBox(width: 8),
                 Text(
                   "RUSH-IN",
@@ -743,7 +782,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
                     fontSize: 28,
                     fontWeight: FontWeight.w900,
                     fontStyle: FontStyle.italic,
-                    color: Colors.white,
+                    color: textColor,
                     letterSpacing: 1.5,
                   ),
                 ),
@@ -755,19 +794,19 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
+                color: bgBoxColor,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                border: Border.all(color: borderBoxColor),
               ),
               child: Row(
                 children: [
-                  Icon(_activeView == 'list' ? Icons.map_outlined : Icons.list_rounded, color: Colors.white70, size: 16),
+                  Icon(_activeView == 'list' ? Icons.map_outlined : Icons.list_rounded, color: iconColor, size: 16),
                   const SizedBox(width: 6),
-                  Text(_activeView == 'list' ? 'Map View' : 'List View', style: GoogleFonts.inter(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+                  Text(_activeView == 'list' ? 'Map View' : 'List View', style: GoogleFonts.inter(color: iconColor, fontSize: 13, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
-          ),
+          )
         ],
       ),
     );
@@ -776,7 +815,60 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   // --- LIST VIEW COMPONENTS ---
   Widget _buildListView() {
     final list = _rushIns;
-    final filteredList = list.where((e) => e.title.toLowerCase().contains(_searchQuery)).toList();
+    var filteredList = list.where((e) {
+      if (_searchQuery.isNotEmpty) {
+        final query = _searchQuery.toLowerCase();
+        final matchTitle = e.title.toLowerCase().contains(query);
+        final matchLoc = e.location?.toLowerCase().contains(query) ?? false;
+        final matchHost = e.host.toLowerCase().contains(query);
+        if (!matchTitle && !matchLoc && !matchHost) return false;
+      }
+      
+      if (_selectedCategories.isNotEmpty) {
+        bool matchCat = false;
+        final itemTags = e.tags.join(', ');
+        for (final cat in _selectedCategories) {
+          if (itemTags.contains(cat)) {
+            matchCat = true;
+            break;
+          }
+        }
+        if (!matchCat) return false;
+      }
+      return true;
+    }).toList();
+
+    // Sorting logic
+    if (_sortBy == 'Nearest') {
+      final myLat = locationService.activeLat ?? 0.0;
+      final myLng = locationService.activeLng ?? 0.0;
+      filteredList.sort((a, b) {
+        final distA = locationService.calculateDistanceInKm(myLat, myLng, a.lat, a.lng);
+        final distB = locationService.calculateDistanceInKm(myLat, myLng, b.lat, b.lng);
+        return distA.compareTo(distB);
+      });
+    } else if (_sortBy == 'Newest') {
+      filteredList.sort((a, b) {
+        final dateA = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final dateB = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return dateB.compareTo(dateA); // Descending (Newest first)
+      });
+    } else if (_sortBy == 'Expiring Soon') {
+      filteredList.sort((a, b) {
+        final timeA = a.activityTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final timeB = b.activityTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final now = DateTime.now();
+        final diffA = timeA.difference(now).inMilliseconds;
+        final diffB = timeB.difference(now).inMilliseconds;
+        
+        if (diffA > 0 && diffB > 0) return diffA.compareTo(diffB); // Closest future event first
+        if (diffA > 0) return -1;
+        if (diffB > 0) return 1;
+        return diffB.compareTo(diffA); // If both are past, most recent past first
+      });
+    } else if (_sortBy == 'Most Members') {
+      filteredList.sort((a, b) => b.joinedMembers.compareTo(a.joinedMembers));
+    }
     
     final remainingItems = filteredList;
 
@@ -819,34 +911,14 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         ),
 
         if (remainingItems.isEmpty)
-          // Render a few beautiful mock list items to make the screen alive and premium!
-          Column(
-            children: [
-              _buildListTile(SparkItem(
-                id: 'mock_item_1',
-                type: "rush",
-                title: "Neon Art Gallery Crawl",
-                desc: 'Exploring local art spots in Soho.',
-                tags: ['Art'],
-                slots: '6/10',
-                lat: 0.0, lng: 0.0,
-                waitlist: 0,
-                host: 'Maya V.',
-                location: 'Soho, Manhattan',
-              )),
-              _buildListTile(SparkItem(
-                id: 'mock_item_2',
-                type: "rush",
-                title: "Midnight Run Crew",
-                desc: 'A quick run across the Brooklyn Bridge.',
-                tags: ['Fitness'],
-                slots: '3/8',
-                lat: 0.0, lng: 0.0,
-                waitlist: 0,
-                host: 'Dan K.',
-                location: 'Dumbo, Brooklyn',
-              )),
-            ],
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 60),
+            child: Center(
+              child: Text(
+                'No active Rush-ins nearby.',
+                style: GoogleFonts.inter(color: Colors.white54, fontSize: 14),
+              ),
+            ),
           )
         else
           Column(
@@ -885,6 +957,34 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     final imageUrl = (item.imageUrl != null && item.imageUrl!.isNotEmpty)
         ? item.imageUrl!
         : 'https://picsum.photos/seed/${imageId + 5}/800/600';
+
+    // Compute dynamic timer for featured card
+    String _featTimer = item.timer ?? '2h left';
+    bool _featIsLive = false;
+    if (item.activityTime != null) {
+      final now = DateTime.now();
+      final diff = item.activityTime!.difference(now);
+      if (diff.isNegative) {
+        _featIsLive = true;
+        if (item.expiresAt != null) {
+          final endDiff = item.expiresAt!.difference(now);
+          if (endDiff.isNegative) {
+            _featTimer = 'Ended';
+          } else if (endDiff.inHours > 0) {
+            _featTimer = 'Ends in ${endDiff.inHours}h ${endDiff.inMinutes % 60}m';
+          } else {
+            _featTimer = 'Ends in ${endDiff.inMinutes}m';
+          }
+        } else {
+          _featTimer = 'Live Now';
+        }
+      } else if (diff.inHours > 0) {
+        _featTimer = 'Starts in ${diff.inHours}h ${diff.inMinutes % 60}m';
+      } else {
+        _featTimer = 'Starts in ${diff.inMinutes}m';
+      }
+    }
+
     return GestureDetector(
       onTap: () => _showDetailSheet(item),
       child: Container(
@@ -960,17 +1060,27 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.6),
+                        color: _featIsLive ? Colors.red.withValues(alpha: 0.85) : Colors.black.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
                       ),
-                      child: Text(
-                        item.timer ?? '2h left',
-                        style: GoogleFonts.inter(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _featIsLive ? Icons.local_fire_department : Icons.access_time,
+                            color: Colors.white, size: 10,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _featTimer,
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -1035,106 +1145,201 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     final imageId = item.id.hashCode.abs() % 100;
     final imageUrl = (item.imageUrl != null && item.imageUrl!.isNotEmpty)
         ? item.imageUrl!
-        : 'https://picsum.photos/seed/${imageId + 22}/300/300';
+        : 'https://picsum.photos/seed/${imageId + 22}/800/600';
+        
+    // Distance calc
+    final myLat = locationService.activeLat ?? 0.0;
+    final myLng = locationService.activeLng ?? 0.0;
+    final dist = locationService.calculateDistanceInKm(myLat, myLng, item.lat, item.lng);
+    final distStr = '${dist.toStringAsFixed(1)} km away';
+
+    // Time left / Expire calc
+    String timerOverlay = 'TBA';
+    bool isExpiredWarning = false;
+    if (item.activityTime != null) {
+      final now = DateTime.now();
+      final diff = item.activityTime!.difference(now);
+      if (diff.isNegative) {
+        isExpiredWarning = true;
+        if (item.expiresAt != null) {
+          final endDiff = item.expiresAt!.difference(now);
+          if (endDiff.isNegative) {
+            timerOverlay = 'Ended';
+          } else {
+            if (endDiff.inHours > 0) {
+              timerOverlay = 'Ends in ${endDiff.inHours}h ${endDiff.inMinutes % 60}m';
+            } else {
+              timerOverlay = 'Ends in ${endDiff.inMinutes}m';
+            }
+          }
+        } else {
+          timerOverlay = 'Live / Expires soon';
+        }
+      } else {
+        if (diff.inHours > 0) {
+          timerOverlay = 'Starts in ${diff.inHours}h ${diff.inMinutes % 60}m';
+        } else {
+          timerOverlay = 'Starts in ${diff.inMinutes}m';
+        }
+      }
+    }
+
+    // Slots
+    int joined = 0; int limit = 0;
+    if (item.slots.isNotEmpty) {
+      final pts = item.slots.split('/');
+      if (pts.length == 2) {
+        joined = int.tryParse(pts[0].trim()) ?? 0;
+        limit = int.tryParse(pts[1].trim()) ?? 0;
+      }
+    }
+    final slotsStr = limit > 0 ? '$joined/$limit Crew' : '$joined Joined';
+
     return GestureDetector(
       onTap: () => _showDetailSheet(item),
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        padding: const EdgeInsets.all(12),
+        height: 220,
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.02),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
-        ),
-        child: Row(
-          children: [
-            // Left thumbnail image
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _buildCardImageWidget(
-                imageUrl,
-                width: 72,
-                height: 72,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const SizedBox(width: 14),
-            // Middle info details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.title,
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 12),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          item.location?.isNotEmpty == true ? item.location!.split(',').first : 'Brooklyn, NY',
-                          style: GoogleFonts.inter(
-                            color: Colors.white54,
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  // Host avatar & name
-                  Row(
-                    children: [
-                      const Icon(Icons.person, color: Colors.white38, size: 12),
-                      const SizedBox(width: 4),
-                      Text(
-                        'by ${item.host}',
-                        style: GoogleFonts.inter(
-                          color: Colors.white38,
-                          fontSize: 11,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Right CTA button: "JOIN" or pending status
-            GestureDetector(
-              onTap: () => _handleJoin(item),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: item.isApproved ? const Color(0xFF10B981) : 
-                         (item.hasRequested ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFFF6B00)),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  item.isApproved ? 'JOINED' : (item.hasRequested ? 'PENDING' : 'JOIN'),
-                  style: GoogleFonts.inter(
-                    color: item.isApproved || item.hasRequested ? Colors.white : Colors.black,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
             ),
           ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _buildCardImageWidget(imageUrl, fit: BoxFit.cover),
+              // Gradient for text readability
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.4),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.8),
+                    ],
+                    stops: const [0.0, 0.4, 1.0],
+                  ),
+                ),
+              ),
+              
+              // Top-Left: Time Left
+              Positioned(
+                top: 14, left: 14,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isExpiredWarning ? Colors.red.withValues(alpha: 0.85) : Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(isExpiredWarning ? Icons.local_fire_department : Icons.access_time, color: Colors.white, size: 12),
+                      const SizedBox(width: 4),
+                      Text(timerOverlay, style: GoogleFonts.inter(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Top-Right: Crew limit
+              Positioned(
+                top: 14, right: 14,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF6B00).withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.people, color: Colors.white, size: 12),
+                      const SizedBox(width: 4),
+                      Text(slotsStr, style: GoogleFonts.inter(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Bottom-Left: Distance and Title
+              Positioned(
+                bottom: 16, left: 16, right: 16,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.location_on, color: Colors.white, size: 10),
+                                const SizedBox(width: 4),
+                                Text(distStr, style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            item.title,
+                            style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'by ${item.host}',
+                            style: GoogleFonts.inter(color: Colors.white70, fontSize: 12),
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Bottom-Right CTA button: "JOIN" or pending status
+                    GestureDetector(
+                      onTap: () => _handleJoin(item),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: item.isApproved ? const Color(0xFF10B981) : 
+                                 (item.hasRequested ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFFF6B00)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          item.isApproved ? 'JOINED' : (item.hasRequested ? 'PENDING' : 'JOIN'),
+                          style: GoogleFonts.inter(
+                            color: item.isApproved || item.hasRequested ? Colors.white : Colors.black,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1490,40 +1695,76 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   Widget _buildSearchBar(String hint) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      height: 48,
-      decoration: BoxDecoration(
-        color: SparkColors.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: SparkColors.gborder),
-      ),
+      margin: const EdgeInsets.only(bottom: 16, left: 20, right: 20),
       child: Row(
         children: [
-          const SizedBox(width: 15),
-          const Icon(Icons.search, color: SparkColors.muted, size: 16),
-          const SizedBox(width: 10),
           Expanded(
-            child: TextField(
-              style: const TextStyle(color: SparkColors.txt, fontSize: 13),
-              onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
-              decoration: InputDecoration(
-                hintText: hint,
-                hintStyle: const TextStyle(color: SparkColors.muted),
-                border: InputBorder.none,
-                isDense: true,
+            child: Container(
+              height: 48,
+              decoration: BoxDecoration(
+                color: SparkColors.card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: SparkColors.gborder),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 15),
+                  const Icon(Icons.search, color: SparkColors.muted, size: 16),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      style: const TextStyle(color: SparkColors.txt, fontSize: 13),
+                      onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+                      decoration: InputDecoration(
+                        hintText: hint,
+                        hintStyle: const TextStyle(color: SparkColors.muted),
+                        border: InputBorder.none,
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _showFilterSheet,
+                    child: Container(
+                      width: 34, height: 34,
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [SparkColors.orange, SparkColors.yellow]),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.tune, color: Colors.black, size: 14),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
+          const SizedBox(width: 12),
           GestureDetector(
-            onTap: _showFilterSheet,
+            onTap: () {
+              final lat = locationService.activeLat ?? 28.6139;
+              final lng = locationService.activeLng ?? 77.2090;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HostActivityScreen(
+                    initialLocation: LatLng(lat, lng),
+                    initialIsRushIn: true,
+                  ),
+                ),
+              );
+            },
             child: Container(
-              width: 34, height: 34,
-              margin: const EdgeInsets.only(right: 6),
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(colors: [SparkColors.orange, SparkColors.yellow]),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(color: SparkColors.orange.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4)),
+                ],
               ),
-              child: const Icon(Icons.tune, color: Colors.black, size: 14),
+              child: const Icon(Icons.bolt, color: Colors.white, size: 24),
             ),
           ),
         ],
@@ -1565,7 +1806,10 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   // --- MAP VIEW ---
   Widget _buildMapView() {
-    return const _SparkMapView();
+    return _SparkMapView(
+      isDark: _isMapDark,
+      onThemeToggle: (val) => setState(() => _isMapDark = val),
+    );
   }
 
   // --- CARDS ---
@@ -1573,7 +1817,15 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     if (_loadingData) {
       return [const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator(color: SparkColors.orange, strokeWidth: 2)))];
     }
-    final list = _rushIns.where((e) => e.title.toLowerCase().contains(_searchQuery)).toList();
+    final activeDist = locationService.activeDistrict.trim().toLowerCase();
+    final list = _rushIns.where((e) {
+      if (!e.isWithinHostRadius) return false;
+      if (activeDist.isNotEmpty && activeDist != 'unknown') {
+        final d = e.district?.toLowerCase() ?? '';
+        if (d.isNotEmpty && !d.contains(activeDist)) return false;
+      }
+      return e.title.toLowerCase().contains(_searchQuery);
+    }).toList();
     if (list.isEmpty) {
       return [_buildEmptyState('No rush-ins found', 'Create one and get the ball rolling!', SparkColors.orange)];
     }
@@ -1590,7 +1842,15 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     if (_loadingData) {
       return [const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator(color: SparkColors.actPrimary, strokeWidth: 2)))];
     }
-    var list = _rushIns.where((e) => e.title.toLowerCase().contains(_searchQuery)).toList();
+    final activeDist = locationService.activeDistrict.trim().toLowerCase();
+    var list = _rushIns.where((e) {
+      if (!e.isWithinHostRadius) return false;
+      if (activeDist.isNotEmpty && activeDist != 'unknown') {
+        final d = e.district?.toLowerCase() ?? '';
+        if (d.isNotEmpty && !d.contains(activeDist)) return false;
+      }
+      return e.title.toLowerCase().contains(_searchQuery);
+    }).toList();
     if (_selectedCategories.isNotEmpty && !_selectedCategories.contains('All')) {
       list = list.where((e) => e.tags.any((t) => _selectedCategories.contains(t))).toList();
     }
@@ -1831,6 +2091,33 @@ class _RushInCard extends StatelessWidget {
     bool almostFull = ratio >= 0.75 && ratio < 1.0;
     bool isFull = item.isFull;
 
+    // Dynamically compute timer at render-time from activityTime + expiresAt
+    String timerText = item.timer ?? '';
+    bool isLive = false;
+    if (item.activityTime != null) {
+      final now = DateTime.now();
+      final diff = item.activityTime!.difference(now);
+      if (diff.isNegative) {
+        isLive = true;
+        if (item.expiresAt != null) {
+          final endDiff = item.expiresAt!.difference(now);
+          if (endDiff.isNegative) {
+            timerText = 'Ended';
+          } else if (endDiff.inHours > 0) {
+            timerText = 'Ends in ${endDiff.inHours}h ${endDiff.inMinutes % 60}m';
+          } else {
+            timerText = 'Ends in ${endDiff.inMinutes} mins';
+          }
+        } else {
+          timerText = 'Live Now';
+        }
+      } else if (diff.inHours > 0) {
+        timerText = 'Starts in ${diff.inHours}h ${diff.inMinutes % 60}m';
+      } else {
+        timerText = 'Starts in ${diff.inMinutes} mins';
+      }
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: SparkColors.card,
@@ -1883,16 +2170,23 @@ class _RushInCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: almostFull ? SparkColors.red.withValues(alpha: 0.2) : SparkColors.red.withValues(alpha: 0.1),
-                        border: Border.all(color: almostFull ? SparkColors.red.withValues(alpha: 0.3) : SparkColors.red.withValues(alpha: 0.2)),
+                        color: isLive
+                            ? SparkColors.red.withValues(alpha: 0.25)
+                            : (almostFull ? SparkColors.red.withValues(alpha: 0.2) : SparkColors.red.withValues(alpha: 0.1)),
+                        border: Border.all(
+                            color: isLive
+                                ? SparkColors.red.withValues(alpha: 0.6)
+                                : (almostFull ? SparkColors.red.withValues(alpha: 0.3) : SparkColors.red.withValues(alpha: 0.2))),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
                         children: [
-                          Icon(almostFull ? Icons.local_fire_department : Icons.hourglass_bottom, color: SparkColors.red, size: 12)
+                          Icon(
+                            isLive ? Icons.local_fire_department : (almostFull ? Icons.local_fire_department : Icons.hourglass_bottom),
+                            color: SparkColors.red, size: 12)
                               .animate(onPlay: (c)=>c.repeat(reverse: true)).scale(end: const Offset(1.2,1.2)),
                           const SizedBox(width: 5),
-                          Text(item.timer ?? '', style: const TextStyle(color: SparkColors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text(timerText, style: const TextStyle(color: SparkColors.red, fontSize: 12, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
@@ -2333,17 +2627,23 @@ class _Orb extends StatelessWidget {
 // MAP VIEW
 // ==========================================
 class _SparkMapView extends StatefulWidget {
-  const _SparkMapView();
+  final bool isDark;
+  final ValueChanged<bool> onThemeToggle;
+
+  const _SparkMapView({required this.isDark, required this.onThemeToggle});
   @override
   State<_SparkMapView> createState() => _SparkMapViewState();
 }
 
 class _SparkMapViewState extends State<_SparkMapView> {
   final MapController _mapController = MapController();
-  bool _isDark = true;
   String _layer = 'street';
   bool _showLayersBox = false;
   LatLng? _actualLocation;
+
+  bool _showDropdown = false;
+  List<Map<String, dynamic>> _searchResults = [];
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -2382,17 +2682,10 @@ class _SparkMapViewState extends State<_SparkMapView> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16).copyWith(bottom: 120),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: SparkColors.gborder),
-      ),
-      clipBehavior: Clip.hardEdge,
-      child: Stack(
-        children: [
+    return Stack(
+      children: [
           ColorFiltered(
-            colorFilter: _layer == 'street' && _isDark 
+            colorFilter: _layer == 'street' && widget.isDark 
               ? const ColorFilter.matrix([-1, 0, 0, 0, 255, 0, -1, 0, 0, 255, 0, 0, -1, 0, 255, 0, 0, 0, 1, 0])
               : const ColorFilter.matrix([1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]),
             child: FlutterMap(
@@ -2449,7 +2742,7 @@ class _SparkMapViewState extends State<_SparkMapView> {
                               boxShadow: const [BoxShadow(color: Color(0xFF10B981), blurRadius: 15, spreadRadius: 3)],
                             ),
                             alignment: Alignment.center,
-                            child: Icon(v.type == 'rush' ? Icons.flash_on : Icons.check, color: Colors.white, size: 18),
+                            child: Icon(_getVibeIcon(v), color: Colors.white, size: 18),
                           ).animate(onPlay: (c)=>c.repeat(reverse: true)).scale(end: const Offset(1.2, 1.2))
                         : v.type == 'rush' 
                           ? Container(
@@ -2460,7 +2753,7 @@ class _SparkMapViewState extends State<_SparkMapView> {
                                 boxShadow: [BoxShadow(color: SparkColors.yellow.withValues(alpha: 0.3), blurRadius: 10, spreadRadius: 2)],
                               ),
                               alignment: Alignment.center,
-                              child: const Text('⚡', style: TextStyle(fontSize: 18)),
+                              child: Icon(_getVibeIcon(v), color: Colors.white, size: 22),
                             ).animate(onPlay: (c)=>c.repeat(reverse: true)).scale(end: const Offset(1.15, 1.15))
                           : Container(
                               alignment: Alignment.topCenter,
@@ -2489,15 +2782,20 @@ class _SparkMapViewState extends State<_SparkMapView> {
           ),
           
           // Search & Mode
-          Positioned(top: 12, left: 12, right: 12, child: _buildMapSearch()),
+          Positioned(top: 100, left: 16, right: 16, child: _buildMapSearch()),
+          if (_showDropdown)
+            Positioned(
+              top: 150, left: 16, right: 66,
+              child: _buildSearchResults(),
+            ),
           
           // Layer button
-          Positioned(bottom: 80, left: 12, child: _buildMapControlBtn(Icons.layers, () => setState(() => _showLayersBox = !_showLayersBox))),
+          Positioned(bottom: 120, left: 16, child: _buildMapControlBtn(Icons.layers, () => setState(() => _showLayersBox = !_showLayersBox))),
           if (_showLayersBox)
-            Positioned(bottom: 130, left: 12, child: _buildLayerBox()),
+            Positioned(bottom: 170, left: 16, child: _buildLayerBox()),
             
           // My loc button
-          Positioned(bottom: 80, right: 12, child: _buildMapControlBtn(Icons.my_location, () async {
+          Positioned(bottom: 120, right: 16, child: _buildMapControlBtn(Icons.my_location, () async {
             try {
               bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
               if (!serviceEnabled) {
@@ -2537,9 +2835,40 @@ class _SparkMapViewState extends State<_SparkMapView> {
               }
               final pos = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)));
               _mapController.move(LatLng(pos.latitude, pos.longitude), 15);
+              
+              String locationText = 'Location: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
+              try {
+                final reverseUrl = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.latitude}&lon=${pos.longitude}&addressdetails=1';
+                final res = await http.get(Uri.parse(reverseUrl), headers: {'User-Agent': 'RelayaApp/1.0'});
+                if (res.statusCode == 200) {
+                  final data = jsonDecode(res.body);
+                  final address = data['address'];
+                  if (address != null) {
+                    final local = address['hospital'] ?? address['amenity'] ?? address['mall'] ?? address['building'] ?? address['neighbourhood'] ?? address['suburb'] ?? address['village'] ?? address['city_district'] ?? '';
+                    final district = address['state_district'] ?? address['county'] ?? address['city'] ?? '';
+                    final state = address['state'] ?? '';
+                    
+                    List<String> parts = [];
+                    if (local.toString().isNotEmpty) parts.add('Near $local');
+                    if (district.toString().isNotEmpty) parts.add(district);
+                    if (state.toString().isNotEmpty) parts.add(state);
+                    
+                    if (parts.isNotEmpty) {
+                      locationText = parts.join(', ');
+                    } else if (data['display_name'] != null) {
+                      locationText = data['display_name'].toString().split(',').take(2).join(',');
+                    }
+                  }
+                }
+              } catch (_) {}
+
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Row(children: [const Icon(Icons.check_circle, color: Colors.white, size: 18), const SizedBox(width: 8), Text('Location: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}')]),
+                  content: Row(children: [
+                    const Icon(Icons.check_circle, color: Colors.white, size: 18), 
+                    const SizedBox(width: 8), 
+                    Expanded(child: Text(locationText, maxLines: 2, overflow: TextOverflow.ellipsis))
+                  ]),
                   backgroundColor: SparkColors.cyan, behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), duration: const Duration(seconds: 3),
                 ));
@@ -2554,41 +2883,78 @@ class _SparkMapViewState extends State<_SparkMapView> {
               }
             }
           })),
-          
-          // Legend
-          Positioned(
-            bottom: 16, left: 0, right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(color: const Color(0xE6111827), borderRadius: BorderRadius.circular(20), border: Border.all(color: SparkColors.gborder)),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _legendItem(SparkColors.orange, 'Rush-in'), const SizedBox(width: 12),
-                    _legendItem(SparkColors.actPrimary, 'Activity'), const SizedBox(width: 12),
-                    _legendItem(SparkColors.blue, 'You'),
-                  ],
-                ),
-              ),
-            ),
-          ),
         ],
-      ),
     );
   }
 
   final TextEditingController _searchCtrl = TextEditingController();
 
+  void _onSearchChanged(String val) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      if (val.trim().isNotEmpty) {
+        _performSearch(val.trim());
+      } else {
+        setState(() => _searchResults = []);
+      }
+    });
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (query.trim().length < 2) {
+      setState(() { _searchResults.clear(); _showDropdown = false; });
+      return;
+    }
+    try {
+      final encoded = Uri.encodeComponent(query);
+      final url = 'https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=5&addressdetails=1';
+      
+      final res = await http.get(Uri.parse(url), headers: {'User-Agent': 'RelayaApp/1.0'});
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as List;
+        if (mounted) {
+          setState(() {
+            _searchResults = data.map((it) => {
+              'display_name': it['display_name'].toString().split(',').first.trim(),
+              'full_name': it['display_name'].toString(),
+              'lat': double.parse(it['lat'].toString()),
+              'lon': double.parse(it['lon'].toString()),
+            }).toList();
+            _showDropdown = _searchResults.isNotEmpty;
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _selectResult(Map<String, dynamic> res) {
+    final lat = res['lat'] as double;
+    final lon = res['lon'] as double;
+    
+    setState(() {
+      _searchResults = [];
+      _showDropdown = false;
+      _searchCtrl.text = res['display_name'];
+    });
+    FocusScope.of(context).unfocus();
+    _mapController.move(LatLng(lat, lon), 15.0);
+  }
+
   Future<void> _searchAndMove(String query) async {
     if (query.isEmpty) return;
     try {
-      final res = await http.get(Uri.parse('https://nominatim.openstreetmap.org/search?q=$query&format=json&limit=1'));
+      final encoded = Uri.encodeComponent(query);
+      final url = 'https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=1';
+      final res = await http.get(Uri.parse(url), headers: {'User-Agent': 'RelayaApp/1.0'});
       final List data = jsonDecode(res.body);
       if (data.isNotEmpty) {
-        final lat = double.parse(data[0]['lat']);
-        final lon = double.parse(data[0]['lon']);
+        final lat = double.parse(data[0]['lat'].toString());
+        final lon = double.parse(data[0]['lon'].toString());
         _mapController.move(LatLng(lat, lon), 14);
+        setState(() {
+          _searchResults = [];
+          _showDropdown = false;
+        });
       }
     } catch (_) {}
   }
@@ -2600,16 +2966,21 @@ class _SparkMapViewState extends State<_SparkMapView> {
           child: Container(
             height: 42,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(color: const Color(0xEB111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: SparkColors.gborder)),
+            decoration: BoxDecoration(
+              color: widget.isDark ? const Color(0xEB111827) : Colors.white.withValues(alpha: 0.9), 
+              borderRadius: BorderRadius.circular(12), 
+              border: Border.all(color: widget.isDark ? SparkColors.gborder : Colors.black12)
+            ),
             child: Row(
               children: [
-                const Icon(Icons.search, color: SparkColors.muted, size: 16),
+                Icon(Icons.search, color: widget.isDark ? SparkColors.muted : Colors.black54, size: 16),
                 const SizedBox(width: 10),
                 Expanded(child: TextField(
                   controller: _searchCtrl,
+                  onChanged: _onSearchChanged,
                   onSubmitted: _searchAndMove,
-                  style: const TextStyle(color: Colors.white, fontSize: 13), 
-                  decoration: const InputDecoration(hintText: 'Search places...', hintStyle: TextStyle(color: SparkColors.muted), border: InputBorder.none, isDense: true)
+                  style: TextStyle(color: widget.isDark ? Colors.white : Colors.black87, fontSize: 13), 
+                  decoration: InputDecoration(hintText: 'Search places...', hintStyle: TextStyle(color: widget.isDark ? SparkColors.muted : Colors.black54), border: InputBorder.none, isDense: true)
                 )),
               ],
             ),
@@ -2617,14 +2988,46 @@ class _SparkMapViewState extends State<_SparkMapView> {
         ),
         const SizedBox(width: 8),
         GestureDetector(
-          onTap: () => setState(() => _isDark = !_isDark),
+          onTap: () => widget.onThemeToggle(!widget.isDark),
           child: Container(
             width: 42, height: 42,
-            decoration: BoxDecoration(color: const Color(0xEB111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: SparkColors.gborder)),
-            child: Icon(_isDark ? Icons.dark_mode : Icons.wb_sunny, color: SparkColors.yellow, size: 16),
+            decoration: BoxDecoration(
+              color: widget.isDark ? const Color(0xEB111827) : Colors.white.withValues(alpha: 0.9), 
+              borderRadius: BorderRadius.circular(12), 
+              border: Border.all(color: widget.isDark ? SparkColors.gborder : Colors.black12)
+            ),
+            child: Icon(widget.isDark ? Icons.dark_mode : Icons.wb_sunny, color: widget.isDark ? SparkColors.yellow : Colors.orange, size: 16),
           ),
         )
       ],
+    );
+  }
+
+  Widget _buildSearchResults() {
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: widget.isDark ? const Color(0xEB111827) : Colors.white.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: widget.isDark ? SparkColors.gborder : Colors.black12),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))],
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: _searchResults.length,
+        separatorBuilder: (_, __) => Divider(color: widget.isDark ? Colors.white10 : Colors.black12, height: 1),
+        itemBuilder: (ctx, i) {
+          final res = _searchResults[i];
+          return ListTile(
+            dense: true,
+            leading: Icon(Icons.location_on, color: widget.isDark ? SparkColors.muted : Colors.black54, size: 18),
+            title: Text(res['display_name'], style: TextStyle(color: widget.isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
+            subtitle: Text(res['full_name'], style: TextStyle(color: widget.isDark ? Colors.white38 : Colors.black54, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () => _selectResult(res),
+          );
+        },
+      ),
     );
   }
 
@@ -2633,8 +3036,12 @@ class _SparkMapViewState extends State<_SparkMapView> {
       onTap: onTap,
       child: Container(
         width: 42, height: 42,
-        decoration: BoxDecoration(color: const Color(0xEB111827), borderRadius: BorderRadius.circular(12), border: Border.all(color: SparkColors.gborder)),
-        child: Icon(icon, color: SparkColors.txt2, size: 16),
+        decoration: BoxDecoration(
+          color: widget.isDark ? const Color(0xEB111827) : Colors.white.withValues(alpha: 0.9), 
+          borderRadius: BorderRadius.circular(12), 
+          border: Border.all(color: widget.isDark ? SparkColors.gborder : Colors.black12)
+        ),
+        child: Icon(icon, color: widget.isDark ? SparkColors.txt2 : Colors.black87, size: 16),
       ),
     );
   }
@@ -2643,7 +3050,11 @@ class _SparkMapViewState extends State<_SparkMapView> {
     return Container(
       width: 140,
       padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: const Color(0xF2111827), borderRadius: BorderRadius.circular(14), border: Border.all(color: SparkColors.gborder)),
+      decoration: BoxDecoration(
+        color: widget.isDark ? const Color(0xF2111827) : Colors.white.withValues(alpha: 0.95), 
+        borderRadius: BorderRadius.circular(14), 
+        border: Border.all(color: widget.isDark ? SparkColors.gborder : Colors.black12)
+      ),
       child: Column(
         children: [
           _layerOpt('street', 'Street', Icons.add_road),
@@ -2661,27 +3072,18 @@ class _SparkMapViewState extends State<_SparkMapView> {
       onTap: () => setState(() { _layer = key; _showLayersBox = false; }),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(color: active ? SparkColors.orange.withValues(alpha: 0.1) : Colors.transparent, borderRadius: BorderRadius.circular(10)),
+        decoration: BoxDecoration(color: active ? SparkColors.orange.withValues(alpha: widget.isDark ? 0.1 : 0.2) : Colors.transparent, borderRadius: BorderRadius.circular(10)),
         child: Row(
           children: [
-            Icon(icon, color: active ? SparkColors.orange : SparkColors.txt2, size: 14),
+            Icon(icon, color: active ? SparkColors.orange : (widget.isDark ? SparkColors.txt2 : Colors.black87), size: 14),
             const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: active ? SparkColors.orange : SparkColors.txt2, fontSize: 12, fontWeight: FontWeight.bold)),
+            Text(label, style: TextStyle(color: active ? SparkColors.orange : (widget.isDark ? SparkColors.txt2 : Colors.black87), fontSize: 12, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
     );
   }
 
-  Widget _legendItem(Color c, String l) {
-    return Row(
-      children: [
-        Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
-        const SizedBox(width: 6),
-        Text(l, style: const TextStyle(color: SparkColors.txt2, fontSize: 10, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
 }
 
 // ==========================================
@@ -2695,6 +3097,33 @@ class _SparkDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Compute dynamic timer for detail view
+    String _detailTimer = item.timer ?? '...';
+    bool _detailIsLive = false;
+    if (item.activityTime != null) {
+      final now = DateTime.now();
+      final diff = item.activityTime!.difference(now);
+      if (diff.isNegative) {
+        _detailIsLive = true;
+        if (item.expiresAt != null) {
+          final endDiff = item.expiresAt!.difference(now);
+          if (endDiff.isNegative) {
+            _detailTimer = 'Ended';
+          } else if (endDiff.inHours > 0) {
+            _detailTimer = 'Ends in ${endDiff.inHours}h ${endDiff.inMinutes % 60}m';
+          } else {
+            _detailTimer = 'Ends in ${endDiff.inMinutes} mins';
+          }
+        } else {
+          _detailTimer = 'Live Now';
+        }
+      } else if (diff.inHours > 0) {
+        _detailTimer = 'Starts in ${diff.inHours}h ${diff.inMinutes % 60}m';
+      } else {
+        _detailTimer = 'Starts in ${diff.inMinutes} mins';
+      }
+    }
+
     return Container(
       decoration: const BoxDecoration(
         color: SparkColors.bg2,
@@ -2737,7 +3166,11 @@ class _SparkDetailSheet extends StatelessWidget {
                 spacing: 10, runSpacing: 10,
                 children: [
                   if (item.type == 'rush') ...[
-                    _metaIcon(Icons.hourglass_bottom, '${item.timer ?? "..."} remaining', SparkColors.red),
+                    _metaIcon(
+                      _detailIsLive ? Icons.local_fire_department : Icons.hourglass_bottom,
+                      _detailTimer,
+                      _detailIsLive ? SparkColors.red : SparkColors.red,
+                    ),
                     _metaIcon(Icons.sensors, '${item.radius ?? "..."} radius', SparkColors.cyan),
                   ] else ...[
                     _metaIcon(Icons.calendar_today, item.date ?? 'TBD'),

@@ -18,7 +18,7 @@ import 'services/location_service.dart';
 import 'widgets/app_header_actions.dart';
 import 'companions/companion_register_screen.dart';
 import 'services/notification_service.dart';
-import 'services/profile_completion_service.dart';
+
 // ════════════════════════════════════════════════════════════════════
 // EXPERIENCE DESIGN SYSTEM
 // ════════════════════════════════════════════════════════════════════

@@ -280,6 +280,20 @@ class PushNotificationManager {
               navState.push(MaterialPageRoute(
                 builder: (_) => ProfileScreen(userId: senderId),
               ));
+            } else if (notifType == 'knock_accepted' || title.contains('knock accepted')) {
+              // It's an accepted knock -> Go to ChatDetailScreen
+              debugPrint('Knock accepted notification tapped. Navigating to ChatDetailScreen: $senderId');
+              final profile = await Supabase.instance.client.from('profiles').select().eq('id', senderId).maybeSingle();
+              if (profile != null) {
+                navState.push(MaterialPageRoute(
+                  builder: (_) => ChatDetailScreen(
+                    targetUserId: senderId,
+                    name: profile['name'] ?? 'User',
+                    avatarUrl: profile['avatar_url'] ?? '',
+                    isUnlocked: true,
+                  ),
+                ));
+              }
             } else if (notifType == 'knock' || title.contains('knock')) {
               // It's a knock notification -> Go to KnocksListScreen
               debugPrint('Knock notification tapped. Navigating to KnocksListScreen.');

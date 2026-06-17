@@ -24,7 +24,7 @@ import 'messages_screen.dart';
 import 'chat_screen.dart';
 import 'auth_screen.dart';
 import 'onboarding_screen.dart';
-import 'services/profile_completion_service.dart';
+
 import 'host_activity_screen.dart';
 import 'services/location_service.dart';
 import 'push_notification_manager.dart';
@@ -2409,7 +2409,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       Expanded(
                         child: GestureDetector(
                           onTap: () async {
-                            ProfileCompletionService.requireCompleteProfile(context, onComplete: () async {
                             final uid = Supabase.instance.client.auth.currentUser?.id;
                             if (uid == null) return;
                             try {
@@ -2468,7 +2467,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                     backgroundColor: const Color(0xFFE11D48)));
                               }
                             }
-                            });
+
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -3269,7 +3268,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   }
 
   void _onSwipeRight(Map<String, dynamic> p) async {
-    ProfileCompletionService.requireCompleteProfile(context, onComplete: () async {
+
     HapticFeedback.mediumImpact();
     final uid = Supabase.instance.client.auth.currentUser?.id;
     if (uid == null) return;
@@ -3350,7 +3349,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       }
     }
     _nextProfile();
-    });
+
   }
 
   void _onSwipeLeft(Map<String, dynamic> p) {
@@ -3721,8 +3720,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               const SizedBox(width: 24),
               // Super Knock (Star)
               GestureDetector(
-                onTap: () {
-                  ProfileCompletionService.requireCompleteProfile(context, onComplete: () async {
+                onTap: () async {
+
                     HapticFeedback.heavyImpact();
                     final uid = Supabase.instance.client.auth.currentUser?.id;
                     if (uid == null) return;
@@ -3744,7 +3743,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       );
                     }
                     _nextProfile();
-                  });
+
                 },
                 child: Container(
                   width: 50,

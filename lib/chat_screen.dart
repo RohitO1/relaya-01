@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'widgets/skeleton_loaders.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'messages_screen.dart';
 import 'communities_screen.dart';
@@ -296,21 +297,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 : _myUid.isEmpty
                   ? const Center(child: Text('Please sign in to see messages', style: TextStyle(color: Colors.white54)))
                   : _isLoading
-                    ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00)))
-                    : (_conversations.isEmpty && _pendingKnocksCount == 0)
+                    ? SkeletonLoaders.chatListSkeleton()
+                    : _conversations.isEmpty
                         ? _buildEmptyState()
                         : ListView.builder(
-                            itemCount: _conversations.length + (_pendingKnocksCount > 0 ? 1 : 0),
+                            itemCount: _conversations.length,
                             padding: const EdgeInsets.only(top: 4, bottom: 100),
                             itemBuilder: (context, index) {
-                              if (_pendingKnocksCount > 0) {
-                                if (index == 0) return _buildKnocksRow();
-                                final convo = _conversations[index - 1];
-                                return _buildConversationRow(convo.key, convo.value, index - 1);
-                              } else {
-                                final convo = _conversations[index];
-                                return _buildConversationRow(convo.key, convo.value, index);
-                              }
+                              final convo = _conversations[index];
+                              return _buildConversationRow(convo.key, convo.value, index);
                             },
                           ),
             ),

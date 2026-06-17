@@ -1,7 +1,7 @@
 // ignore_for_file: use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../messages_screen.dart';
+import '../chat_screen.dart';
 import '../notifications_screen.dart';
 
 /// Shared header action buttons (messages + notifications) used by all
@@ -97,7 +97,7 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
   void _openMessages() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const MessagesScreen()),
+      MaterialPageRoute(builder: (_) => const ChatScreen()),
     ).then((_) => _fetchBadgeCounts());
   }
 

@@ -68,12 +68,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void initState() {
     super.initState();
     final p = widget.initialProfile;
-    _nameCtrl = TextEditingController(text: p['name'] ?? p['full_name'] ?? '');
+    final authMeta = _sb.auth.currentUser?.userMetadata ?? {};
+    
+    _nameCtrl = TextEditingController(text: p['name'] ?? p['full_name'] ?? authMeta['name'] ?? authMeta['full_name'] ?? '');
     _userCtrl = TextEditingController(text: p['username'] ?? '');
     _bioCtrl = TextEditingController(text: p['bio'] ?? '');
     _cityCtrl = TextEditingController(text: p['city'] ?? '');
     _stateCtrl = TextEditingController(text: p['state'] ?? '');
-    _dobCtrl = TextEditingController(text: p['dob'] ?? '');
+    _dobCtrl = TextEditingController(text: p['dob'] ?? authMeta['dob'] ?? '');
     _locSearchCtrl = TextEditingController(text: p['city'] ?? '');
     _jobTitleCtrl = TextEditingController(text: p['job_title'] ?? '');
     _lat = (p['lat'] as num?)?.toDouble();
@@ -88,8 +90,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       } catch (_) {}
     }
     
-    _avatarUrl = p['avatar_url'];
-    _gender = p['gender'] ?? '';
+    _avatarUrl = p['avatar_url'] ?? authMeta['avatar_url'];
+    _gender = p['gender'] ?? authMeta['gender'] ?? '';
     _isPublic = p['is_public'] ?? true;
     _heightCm = (p['height_cm'] as num?)?.toDouble() ?? 170;
     _smoking = p['smoking'] ?? '';
@@ -142,6 +144,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _save() async {
     if (_nameCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name cannot be empty')));
+      return;
+    }
+    if (_userCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Username cannot be empty')));
       return;
     }
 

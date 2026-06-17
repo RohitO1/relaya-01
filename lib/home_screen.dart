@@ -19,6 +19,7 @@ import 'bolroom/bolroom_shell.dart';
 import 'communities_screen.dart';
 import 'main.dart';
 import 'notifications_screen.dart';
+
 // ==========================================
 // COLORS & CONSTANTS
 // ==========================================
@@ -199,16 +200,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       List<dynamic> rows = [];
       
-      final currentDistrict = locationService.activeDistrict;
-      if (currentDistrict.isNotEmpty) {
+      final currentDistrict = locationService.activeDistrict.trim();
+      if (currentDistrict.isNotEmpty && currentDistrict != 'Unknown') {
         postQuery = postQuery.ilike('district', '%$currentDistrict%');
       }
       
       if (_activeFilter == 'Trending') {
         rows = await postQuery.order('created_at', ascending: false).limit(50);
       } else {
-        // Near Me / default local feed
-        rows = await postQuery.order('created_at', ascending: false).limit(50);
+        // default local feed (oldest first)
+        rows = await postQuery.order('created_at', ascending: true).limit(50);
       }
 
       // Flatten the join so each post map has user_name and avatar_url at top level
@@ -247,13 +248,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           if (aFollows && !bFollows) return -1;
           if (!aFollows && bFollows) return 1;
           
-          // Secondary sort by date
+          // Secondary sort by date (Ascending)
           final aDate = a['created_at'] != null ? DateTime.tryParse(a['created_at']) : null;
           final bDate = b['created_at'] != null ? DateTime.tryParse(b['created_at']) : null;
           if (aDate == null && bDate == null) return 0;
           if (aDate == null) return 1;
           if (bDate == null) return -1;
-          return bDate.compareTo(aDate); // Descending
+          return aDate.compareTo(bDate); // Ascending
         });
       }
 
@@ -496,7 +497,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final aComments = _commentCounts[aId] ?? 0;
         final bLikes = _likeCounts[bId] ?? 0;
         final bComments = _commentCounts[bId] ?? 0;
-        return (bLikes + bComments).compareTo(aLikes + aComments);
+        final likeCmp = bLikes.compareTo(aLikes);
+        if (likeCmp != 0) return likeCmp;
+        return bComments.compareTo(aComments);
       });
       return list;
     }
@@ -528,7 +531,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 activeFilter: _activeFilter,
                 onFilterChanged: (f) {
                   setState(() {
-                    _activeFilter = (f == 'Near Me') ? null : f;
+                    _activeFilter = (f == 'Trending') ? f : null;
                   });
                   _loadFeed();
                 },
@@ -676,7 +679,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final postId = post['id'].toString();
     final userName = post['user_name'] ?? post['author_name'] ?? 'User';
     final initial = userName.isNotEmpty ? userName[0].toUpperCase() : 'U';
-    final postAvatarUrl = post['avatar_url']?.toString() ?? '';
+    String postAvatarUrl = post['avatar_url']?.toString() ?? '';
+    if (postAvatarUrl.isNotEmpty && !postAvatarUrl.startsWith('http') && !postAvatarUrl.startsWith('data:')) {
+      postAvatarUrl = '';
+    }
     final content = post['content'] ?? post['text'] ?? '';
     final createdAt = post['created_at'] ?? '';
     final interest = post['interest'] ?? '';
@@ -691,29 +697,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final isBookmarked = _bookmarkedPosts.contains(postId);
     
     final postUserId = post['user_id']?.toString() ?? '';
-    // final isMe = _sb.auth.currentUser?.id == postUserId; // removed unused
-    // final isFollowingUser = _followingIds.contains(postUserId); // removed unused
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: HomeColors.card.withValues(alpha: 0.8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 8)),
-          BoxShadow(color: HomeColors.cyan.withValues(alpha: 0.02), blurRadius: 2, spreadRadius: -1, offset: const Offset(0, 1)),
-        ],
+        color: HomeColors.bg,
+        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                // Avatar (Clear, unblurred)
+                // Avatar
                 GestureDetector(
                   onTap: () {
                     if (postUserId.isNotEmpty) {
@@ -721,21 +721,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     }
                   },
                   child: Container(
-                    width: 42, height: 42,
+                    width: 44, height: 44,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: postAvatarUrl.isEmpty ? LinearGradient(
                         begin: Alignment.topLeft, end: Alignment.bottomRight,
                         colors: _gradientForInitial(initial),
                       ) : null,
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.06), width: 1.5),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
                     ),
                     child: ClipOval(child: postAvatarUrl.isNotEmpty
-                        ? Image.network(postAvatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Center(child: Text(initial, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white))))
-                        : Center(child: Text(initial, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)))),
+                        ? Image.network(postAvatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Center(child: Text(initial, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white))))
+                        : Center(child: Text(initial, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)))),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -746,23 +746,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen(userId: postUserId)));
                           }
                         },
-                        child: Text(userName, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: HomeColors.txt)),
+                        child: Text(userName, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: HomeColors.txt)),
                       ),
+                      if (interest.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: HomeColors.cyan.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(interest, style: GoogleFonts.inter(fontSize: 9, color: HomeColors.cyan, fontWeight: FontWeight.w600)),
+                        ),
+                      ],
                     ]),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                     Row(children: [
-                      Icon(Icons.access_time, size: 8, color: HomeColors.muted),
-                      const SizedBox(width: 3),
-                      Text(_timeAgo(createdAt), style: GoogleFonts.inter(fontSize: 10, color: HomeColors.muted)),
+                      Text(_timeAgo(createdAt), style: GoogleFonts.inter(fontSize: 11, color: HomeColors.muted)),
                       if (city.isNotEmpty) ...[
                         const SizedBox(width: 6),
-                        Icon(Icons.location_on, size: 8, color: HomeColors.muted),
-                        const SizedBox(width: 2),
-                        Text(city, style: GoogleFonts.inter(fontSize: 10, color: HomeColors.muted)),
-                      ],
-                      if (interest.isNotEmpty) ...[
+                        Icon(Icons.circle, size: 3, color: HomeColors.muted),
                         const SizedBox(width: 6),
-                        Text(interest, style: GoogleFonts.inter(fontSize: 10, color: HomeColors.cyan, fontWeight: FontWeight.w500)),
+                        Text(city, style: GoogleFonts.inter(fontSize: 11, color: HomeColors.muted)),
                       ],
                     ]),
                   ],
@@ -774,45 +779,40 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
           // Content
           if (content.isNotEmpty) Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: _buildPostText(content),
           ),
 
-          // Images — 1:1 Instagram-style
+          // Images
           if (allImages.isNotEmpty)
-            _buildPostImageCarousel(postId, allImages),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: _buildPostImageCarousel(postId, allImages),
+            ),
 
           // Tags
           if (tags.isNotEmpty) Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-            child: Wrap(spacing: 4, runSpacing: 4, children: tags.map((t) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(6),
-                color: HomeColors.cyan.withValues(alpha: 0.06),
-                border: Border.all(color: HomeColors.cyan.withValues(alpha: 0.12)),
-              ),
-              child: Text(t, style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w500, color: HomeColors.cyan)),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Wrap(spacing: 6, runSpacing: 6, children: tags.map((t) => Text(
+              t, 
+              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: HomeColors.blue)
             )).toList()),
           ),
 
           // Actions
-          Container(
-            margin: const EdgeInsets.only(top: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.03))),
-            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: Row(
               children: [
-                _buildActionBtn(isLiked ? Icons.favorite : Icons.favorite_border, '$likeCount', isLiked ? HomeColors.pink : HomeColors.muted, () => _toggleLike(postId)),
-                const SizedBox(width: 4),
-                _buildActionBtn(Icons.chat_bubble_outline, '$commentCount', HomeColors.muted, () => _showCommentSheet(postId)),
+                _buildActionBtn(isLiked ? Icons.favorite : Icons.favorite_border, '$likeCount', isLiked ? HomeColors.pink : HomeColors.txt2, () => _toggleLike(postId)),
+                const SizedBox(width: 16),
+                _buildActionBtn(Icons.chat_bubble_outline, '$commentCount', HomeColors.txt2, () => _showCommentSheet(postId)),
                 const Spacer(),
-                _buildActionBtn(isBookmarked ? Icons.bookmark : Icons.bookmark_border, '', isBookmarked ? HomeColors.yellow : HomeColors.muted, () => _toggleBookmark(postId)),
-                _buildActionBtn(Icons.share, '', HomeColors.muted, () {
+                _buildActionBtn(isBookmarked ? Icons.bookmark : Icons.bookmark_border, '', isBookmarked ? HomeColors.yellow : HomeColors.txt2, () => _toggleBookmark(postId)),
+                const SizedBox(width: 16),
+                _buildActionBtn(Icons.share_outlined, '', HomeColors.txt2, () {
                   final text = content.length > 100 ? content.substring(0, 97) + '...' : content;
-                  Share.share('Check out this post on Meetra:\n"$text"\n\nJoin the loop: https://meetra.app');
+                  Share.share('Check out this post on Relaya:\n"$text"');
                 }),
               ],
             ),
@@ -1817,8 +1817,6 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
             const SizedBox(width: 10),
             Row(
               children: [
-                _buildFilterChip('Near Me', activeFilter == 'Near Me' || activeFilter == null, () => onFilterChanged('Near Me')),
-                const SizedBox(width: 6),
                 _buildFilterChip('Trending', activeFilter == 'Trending', () => onFilterChanged('Trending')),
                 const SizedBox(width: 6),
                 GestureDetector(

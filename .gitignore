@@ -64,3 +64,4 @@ scratch/
 # Large APK files
 app-release-v8.apk
 *.apk
+*.zip

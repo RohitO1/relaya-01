@@ -46,6 +46,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   int _unreadCount = 0;
   RealtimeChannel? _notifSub;
+  Timer? _lobbySweepTimer;
 
   String _getRoomUid(dynamic id) {
     if (id == null) return '#000000';
@@ -82,6 +83,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
     _loadRooms();
     _loadUnreadCount();
     _setupNotifListener();
+    _startLobbySweepTimer();
     _sb.channel('public:chatrooms').onPostgresChanges(
       event: PostgresChangeEvent.all, schema: 'public', table: 'chatrooms',
       callback: (_) => _loadRooms(),
@@ -90,10 +92,41 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
 
   @override
   void dispose() {
+    _lobbySweepTimer?.cancel();
     _searchCtrl.dispose();
     if (_notifSub != null) _sb.removeChannel(_notifSub!);
     _sb.removeChannel(_sb.channel('public:chatrooms'));
     super.dispose();
+  }
+
+  void _startLobbySweepTimer() {
+    _lobbySweepTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+      try {
+        final roomsRes = await _sb.from('chatrooms').select('id, created_at');
+        if (roomsRes.isEmpty) return;
+
+        final membersRes = await _sb.from('chatroom_members').select('room_id');
+        final activeRoomIds = (membersRes as List).map((m) => m['room_id'].toString()).toSet();
+
+        final now = DateTime.now();
+        for (var r in roomsRes) {
+          final roomId = r['id'].toString();
+          final createdAtStr = r['created_at']?.toString();
+          if (createdAtStr != null) {
+            final createdAt = DateTime.tryParse(createdAtStr);
+            if (createdAt != null) {
+              final age = now.difference(createdAt);
+              if (age.inSeconds > 60 && !activeRoomIds.contains(roomId)) {
+                await _sb.from('chatrooms').delete().eq('id', roomId);
+                debugPrint('Lobby Sweep (Chatrooms): Deleted empty room $roomId');
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Lobby Sweep Error: $e');
+      }
+    });
   }
 
   Future<void> _loadRooms() async {
@@ -477,11 +510,21 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      Row(children: [
-                        const Icon(Icons.mic, color: Colors.white60, size: 12),
-                        const SizedBox(width: 4),
-                        Text('Host: ${room['host_name'] ?? 'User'}', style: GoogleFonts.inter(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.w500)),
-                      ]),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(children: [
+                            const Icon(Icons.mic, color: Colors.white60, size: 12),
+                            const SizedBox(width: 4),
+                            Text('Host: ${room['host_name'] ?? 'User'}', style: GoogleFonts.inter(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.w500)),
+                          ]),
+                          Row(children: [
+                            const Icon(Icons.location_on, color: Color(0xFF3DCFA0), size: 12),
+                            const SizedBox(width: 2),
+                            Text(_getLoc(room['topic']), style: GoogleFonts.inter(color: const Color(0xFF3DCFA0), fontSize: 11, fontWeight: FontWeight.w700)),
+                          ]),
+                        ],
+                      ),
                     ],
                   ),
                 ),

@@ -10,6 +10,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'profile_screen.dart';
+import 'services/notification_service.dart';
 
 ImageProvider _safeImageProvider(String url) {
   if (url.startsWith('data:image')) {
@@ -88,6 +89,16 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
         'is_image': false,
         'created_at': DateTime.now().toIso8601String(),
       });
+      
+      // Send notification to the approved user
+      await NotificationService.sendNotification(
+        userId: senderId,
+        type: NotificationType.approval,
+        title: 'Request Approved!',
+        body: 'You have been approved to join "$activityTitle"!',
+        payload: {'activity_id': widget.activity['id']},
+      );
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request approved!'), backgroundColor: Color(0xFF10B981)));
       widget.onInteraction();
@@ -112,6 +123,16 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
         'is_image': false,
         'created_at': DateTime.now().toIso8601String(),
       });
+
+      // Send notification to the rejected user
+      await NotificationService.sendNotification(
+        userId: senderId,
+        type: NotificationType.rejection,
+        title: 'Request Declined',
+        body: 'Your request to join "$activityTitle" was declined.',
+        payload: {'activity_id': widget.activity['id']},
+      );
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request rejected.'), backgroundColor: Colors.grey));
       widget.onInteraction();
@@ -166,6 +187,15 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
         'created_at': DateTime.now().toIso8601String(),
       });
 
+      // Notify the host
+      await NotificationService.sendNotification(
+        userId: hostId,
+        type: NotificationType.system,
+        title: 'Vacancy Available',
+        body: notificationText,
+        payload: {'activity_id': activityId},
+      );
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You have left the activity.'), backgroundColor: Colors.amber));
       
@@ -204,6 +234,20 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
           'status': 'pending',
           'message': 'Let me in to this Rush-In! ⚡'
         });
+
+        // Notify the host
+        final hostId = widget.activity['user_id'];
+        final actTitle = widget.activity['title'] ?? 'your activity';
+        if (hostId != null) {
+          await NotificationService.sendNotification(
+            userId: hostId,
+            type: NotificationType.approval,
+            title: 'New Join Request!',
+            body: 'Someone requested to join "$actTitle".',
+            payload: {'activity_id': actId},
+          );
+        }
+
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Join Request Sent! Host will review.'), backgroundColor: Color(0xFFFF6B00)));
         widget.onInteraction(); // Notify parent to remove from feed
@@ -263,6 +307,16 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
           }).toList();
 
           await Supabase.instance.client.from('messages').insert(messagesToInsert);
+
+          for (final p in participants) {
+            await NotificationService.sendNotification(
+              userId: p['sender_id'],
+              type: NotificationType.system,
+              title: 'Activity Cancelled',
+              body: notificationText,
+              payload: {'activity_id': activityId},
+            );
+          }
         }
 
         // 2. Delete all associated requests
@@ -450,7 +504,10 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                                     final rid = r['id'].toString();
                                     final cached = _profileCache[sid];
                                     final name = cached?['name'] ?? cached?['full_name'] ?? 'User';
-                                    final avatar = cached?['avatar_url'] ?? 'https://picsum.photos/seed/$sid/200';
+                                    String avatar = cached?['avatar_url'] ?? 'https://picsum.photos/seed/$sid/200';
+                                    if (avatar.isNotEmpty && !avatar.startsWith('http') && !avatar.startsWith('data:')) {
+                                      avatar = 'https://picsum.photos/seed/$sid/200';
+                                    }
                                     return _buildAttendeeRow(
                                       name: name,
                                       avatar: avatar,
@@ -483,7 +540,10 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                                     final rid = r['id'].toString();
                                     final cached = _profileCache[sid];
                                     final name = cached?['name'] ?? cached?['full_name'] ?? 'User';
-                                    final avatar = cached?['avatar_url'] ?? 'https://picsum.photos/seed/$sid/200';
+                                    String avatar = cached?['avatar_url'] ?? 'https://picsum.photos/seed/$sid/200';
+                                    if (avatar.isNotEmpty && !avatar.startsWith('http') && !avatar.startsWith('data:')) {
+                                      avatar = 'https://picsum.photos/seed/$sid/200';
+                                    }
                                     final isLoading = _rowLoading[rid] == true;
                                     return _buildAttendeeRow(
                                       name: name,

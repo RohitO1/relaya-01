@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'messages_screen.dart';
 import 'services/notification_service.dart';
+import 'widgets/hangout_choice_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // KNOCK REVIEW SCREEN
@@ -221,9 +222,9 @@ class _KnockReviewScreenState extends State<KnockReviewScreen>
   }
 
   // ── actions ───────────────────────────────────────────────────────────────
-  Future<void> _accept() async {
-    HapticFeedback.heavyImpact();
-    setState(() => _accepting = true);
+
+  /// Common logic: approve the knock request + send notification
+  Future<bool> _approveKnock() async {
     try {
       final reqId = widget.knockRequest['id'].toString();
       await Supabase.instance.client
@@ -241,22 +242,112 @@ class _KnockReviewScreenState extends State<KnockReviewScreen>
           'sender_avatar_url': _myProfile?['avatar_url']?.toString() ?? '',
         },
       );
-
-      if (!mounted) return;
-      // Pop this screen and navigate to chat
-      Navigator.pop(context);
-      Navigator.push(context, MaterialPageRoute(
-        builder: (_) => ChatDetailScreen(
-          targetUserId: _senderId,
-          name: _sender?['name']?.toString() ?? _sender?['full_name']?.toString() ?? 'User',
-          avatarUrl: _sender?['avatar_url']?.toString() ?? '',
-          isUnlocked: true,
-        ),
-      ));
+      return true;
     } catch (e) {
-      print('Accept knock error: $e');
-      if (mounted) setState(() => _accepting = false);
+      print('Approve knock error: $e');
+      return false;
     }
+  }
+
+  /// Navigate to chat after approval
+  void _navigateToChat() {
+    final senderName = _sender?['name']?.toString() ?? _sender?['full_name']?.toString() ?? 'User';
+    Navigator.pop(context);
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ChatDetailScreen(
+        targetUserId: _senderId,
+        name: senderName,
+        avatarUrl: _sender?['avatar_url']?.toString() ?? '',
+        isUnlocked: true,
+      ),
+    ));
+  }
+
+  /// Accept knock and go straight to chat
+  Future<void> _acceptAndChat() async {
+    HapticFeedback.heavyImpact();
+    setState(() => _accepting = true);
+    final ok = await _approveKnock();
+    if (!mounted) return;
+    if (!ok) { setState(() => _accepting = false); return; }
+
+    try {
+      await Supabase.instance.client.from('messages').insert({
+        'sender_id': _myUid,
+        'receiver_id': _senderId,
+        'text': '🎉 Knock accepted! Start chatting.',
+        'is_image': false,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    } catch (e) {
+      print('Error inserting knock accepted message: $e');
+    }
+
+    _navigateToChat();
+  }
+
+  /// Accept knock and open the Hangout Request sheet
+  bool _hangoutBusy = false;
+  Future<void> _acceptAndHangout() async {
+    if (_hangoutBusy) return;
+    _hangoutBusy = true;
+    HapticFeedback.heavyImpact();
+    setState(() => _accepting = true);
+    final ok = await _approveKnock();
+    if (!mounted) { _hangoutBusy = false; return; }
+    if (!ok) { setState(() => _accepting = false); _hangoutBusy = false; return; }
+    setState(() => _accepting = false);
+
+    final senderName = _sender?['name']?.toString() ?? _sender?['full_name']?.toString() ?? 'User';
+
+    // Show Hangout Choice Sheet
+    final hangoutResult = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => HangoutChoiceSheet(targetName: senderName),
+    );
+    _hangoutBusy = false;
+
+    if (!mounted) return;
+
+    // If they picked an activity, send that as the first message
+    if (hangoutResult != null && hangoutResult != 'CHAT_ONLY') {
+      try {
+        await Supabase.instance.client.from('messages').insert({
+          'sender_id': _myUid,
+          'receiver_id': _senderId,
+          'text': hangoutResult,
+          'is_image': false,
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        });
+
+        await Supabase.instance.client.from('requests').insert({
+          'sender_id': _myUid,
+          'target_id': _senderId,
+          'target_type': 'hangout',
+          'status': 'pending',
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        });
+      } catch (e) {
+        print('Error sending hangout message: $e');
+      }
+    } else {
+      try {
+        await Supabase.instance.client.from('messages').insert({
+          'sender_id': _myUid,
+          'receiver_id': _senderId,
+          'text': '🎉 Knock accepted! Start chatting.',
+          'is_image': false,
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        });
+      } catch (e) {
+        print('Error inserting knock accepted message: $e');
+      }
+    }
+
+    if (!mounted) return;
+    _navigateToChat();
   }
 
   Future<void> _pass() async {
@@ -967,77 +1058,116 @@ class _KnockReviewScreenState extends State<KnockReviewScreen>
 
   // ── actions ───────────────────────────────────────────────────────────────
   Widget _buildActions() {
+    final bool canAct = _revealed && !_accepting && !_passing;
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
       decoration: BoxDecoration(
         color: _card.withValues(alpha: 0.95),
         border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
       ),
-      child: Row(children: [
-        // Pass button
-        Expanded(
-          flex: 2,
-          child: GestureDetector(
-            onTap: _passing ? null : _pass,
-            child: AnimatedContainer(
-              duration: 200.ms,
-              height: 56,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-              ),
-              child: Center(
-                child: _passing
-                    ? const SizedBox(width: 20, height: 20,
-                        child: CircularProgressIndicator(color: Colors.white38, strokeWidth: 2))
-                    : Text('Pass',
-                        style: GoogleFonts.outfit(
-                          color: Colors.white38, fontSize: 16, fontWeight: FontWeight.w700)),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        // ── top row: Pass + Chat ─────────────────────────────────
+        Row(children: [
+          // Pass
+          Expanded(
+            child: GestureDetector(
+              onTap: _passing ? null : _pass,
+              child: AnimatedContainer(
+                duration: 200.ms,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                ),
+                child: Center(
+                  child: _passing
+                      ? const SizedBox(width: 18, height: 18,
+                          child: CircularProgressIndicator(color: Colors.white38, strokeWidth: 2))
+                      : Text('Pass', style: GoogleFonts.outfit(
+                            color: Colors.white38, fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 12),
+          const SizedBox(width: 10),
 
-        // Accept button
-        Expanded(
-          flex: 3,
-          child: GestureDetector(
-            onTap: (_accepting || !_revealed) ? null : _accept,
-            child: AnimatedContainer(
-              duration: 200.ms,
-              height: 56,
-              decoration: BoxDecoration(
-                gradient: _revealed
-                    ? LinearGradient(
-                        colors: [_accentColor, const Color(0xFFFF0055)],
-                        begin: Alignment.topLeft, end: Alignment.bottomRight,
-                      )
-                    : null,
-                color: _revealed ? null : Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(18),
-                border: !_revealed ? Border.all(color: Colors.white.withValues(alpha: 0.05)) : null,
-                boxShadow: _revealed
-                    ? [BoxShadow(color: _accentColor.withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 6))]
-                    : [],
+          // Accept & Chat
+          Expanded(
+            flex: 2,
+            child: GestureDetector(
+              onTap: canAct ? _acceptAndChat : null,
+              child: AnimatedContainer(
+                duration: 200.ms,
+                height: 52,
+                decoration: BoxDecoration(
+                  gradient: _revealed
+                      ? LinearGradient(
+                          colors: [_accentColor, const Color(0xFFFF0055)],
+                          begin: Alignment.topLeft, end: Alignment.bottomRight,
+                        )
+                      : null,
+                  color: _revealed ? null : Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(16),
+                  border: !_revealed ? Border.all(color: Colors.white.withValues(alpha: 0.05)) : null,
+                  boxShadow: _revealed
+                      ? [BoxShadow(color: _accentColor.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5))]
+                      : [],
+                ),
+                child: Center(
+                  child: _accepting
+                      ? const SizedBox(width: 20, height: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                      : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(!_revealed ? Icons.lock_rounded : Icons.chat_bubble_rounded,
+                              color: _revealed ? Colors.white : Colors.white24, size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            !_revealed ? 'Reveal First' : 'Accept & Chat',
+                            style: GoogleFonts.outfit(
+                              color: _revealed ? Colors.white : Colors.white24,
+                              fontSize: 15, fontWeight: FontWeight.w800),
+                          ),
+                        ]),
+                ),
               ),
-              child: Center(
-                child: _accepting
-                    ? const SizedBox(width: 22, height: 22,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                    : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(!_revealed ? Icons.lock_rounded : Icons.waving_hand_rounded,
-                            color: _revealed ? Colors.white : Colors.white24, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          !_revealed ? 'Reveal First' : 'Accept Knock',
-                          style: GoogleFonts.outfit(
-                            color: _revealed ? Colors.white : Colors.white24,
-                            fontSize: 16, fontWeight: FontWeight.w800),
-                        ),
-                      ]),
-              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 10),
+
+        // ── bottom row: Send Hangout Request ─────────────────────
+        GestureDetector(
+          onTap: canAct ? _acceptAndHangout : null,
+          child: AnimatedContainer(
+            duration: 200.ms,
+            height: 52,
+            decoration: BoxDecoration(
+              gradient: _revealed
+                  ? const LinearGradient(
+                      colors: [Color(0xFF00E676), Color(0xFF00BFA5)],
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                    )
+                  : null,
+              color: _revealed ? null : Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(16),
+              border: !_revealed ? Border.all(color: Colors.white.withValues(alpha: 0.05)) : null,
+              boxShadow: _revealed
+                  ? [BoxShadow(color: const Color(0xFF00E676).withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5))]
+                  : [],
+            ),
+            child: Center(
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(_revealed ? Icons.local_fire_department_rounded : Icons.lock_rounded,
+                    color: _revealed ? Colors.white : Colors.white24, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  _revealed ? 'Accept & Send Hangout 🎯' : 'Reveal to Hangout',
+                  style: GoogleFonts.outfit(
+                    color: _revealed ? Colors.white : Colors.white24,
+                    fontSize: 15, fontWeight: FontWeight.w800),
+                ),
+              ]),
             ),
           ),
         ),

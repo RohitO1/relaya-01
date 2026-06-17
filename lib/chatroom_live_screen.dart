@@ -312,6 +312,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   // Host disconnect monitoring
   Timer? _hostHeartbeatTimer;
   DateTime _lastHostSeen = DateTime.now();
+  DateTime _lastActivityTime = DateTime.now();
+  bool _hostDisconnected = false;
+  int _hostDisconnectCountdown = 120;
 
   // Ban list
   final Set<String> _bannedUserIds = {};
@@ -1206,12 +1209,56 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
       if (!mounted) return;
       if (_isHost) {
         _sendSystemCommand('HEARTBEAT', '');
+        // Periodically check inactivity for the host
+        if (DateTime.now().difference(_lastActivityTime) > const Duration(minutes: 10)) {
+          debugPrint("Silence/inactivity timeout: ending room.");
+          _endRoom();
+        }
       } else {
-        if (DateTime.now().difference(_lastHostSeen).inSeconds > 30) {
-          _autoPromoteHost();
+        final secondsSinceHostSeen = DateTime.now().difference(_lastHostSeen).inSeconds;
+        if (secondsSinceHostSeen > 30) {
+          if (!_hostDisconnected) {
+            setState(() {
+              _hostDisconnected = true;
+              _hostDisconnectCountdown = 120;
+            });
+            _showToast("Host disconnected. Room will auto-close in 2 minutes.");
+          } else {
+            setState(() {
+              _hostDisconnectCountdown = math.max(0, 120 - (secondsSinceHostSeen - 30));
+            });
+            if (_hostDisconnectCountdown <= 0) {
+              _hostHeartbeatTimer?.cancel();
+              _autoCloseEmptyOrNoHostRoom();
+            }
+          }
+        } else {
+          if (_hostDisconnected) {
+            setState(() {
+              _hostDisconnected = false;
+              _hostDisconnectCountdown = 120;
+            });
+            _showToast("Host reconnected! 👑");
+          }
         }
       }
     });
+  }
+
+  Future<void> _autoCloseEmptyOrNoHostRoom() async {
+    try {
+      // Send system command that room is closing
+      await _sendSystemCommand('END', '');
+      await Future.delayed(const Duration(milliseconds: 500));
+      // Delete the room
+      await _sb.from('chatrooms').delete().eq('id', widget.roomId);
+    } catch (e) {
+      debugPrint("Error closing room: $e");
+    } finally {
+      if (mounted) {
+        _showEndCountdownForParticipants();
+      }
+    }
   }
 
   void _autoPromoteHost() {
@@ -1266,8 +1313,24 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           .eq('room_id', widget.roomId)
           .order('joined_at');
       if (remaining.isEmpty) {
-        // Auto-dissolve: no one left
-        await _sb.from('chatrooms').delete().eq('id', widget.roomId);
+        // Auto-dissolve: no one left (with 30-second grace period)
+        final rId = widget.roomId;
+        Future.delayed(const Duration(seconds: 30), () async {
+          try {
+            final checkRemaining = await _sb
+                .from('chatroom_members')
+                .select('user_id')
+                .eq('room_id', rId);
+            if (checkRemaining.isEmpty) {
+              await _sb.from('chatrooms').delete().eq('id', rId);
+              debugPrint('Grace period expired: Empty room $rId deleted.');
+            } else {
+              debugPrint('Grace period cancelled: Room $rId has participants.');
+            }
+          } catch (e) {
+            debugPrint('Error in delayed empty room deletion: $e');
+          }
+        });
       } else if (_isHost) {
         // Transfer host to next person
         final nextHostId = remaining[0]['user_id'];
@@ -1566,6 +1629,10 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           if (!mounted) return;
           if (p.newRecord.isNotEmpty) {
             final txt = p.newRecord['text']?.toString() ?? '';
+            final isSystemCmd = p.newRecord['is_system'] == true && txt.startsWith('SYSTEM_CMD:');
+            if (!isSystemCmd) {
+              _lastActivityTime = DateTime.now();
+            }
             if (p.newRecord['is_system'] == true &&
                 txt.startsWith('GAME_EVENT:')) {
               try {
@@ -2020,6 +2087,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           if (!mounted) return;
           setState(() {
             _speakingIdentities = e.speakers.map((p) => p.identity).toSet();
+            if (_speakingIdentities.isNotEmpty) {
+              _lastActivityTime = DateTime.now();
+            }
           });
         });
 
@@ -2040,6 +2110,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
 
   void _toggleMute() async {
     _lastMuteTap = DateTime.now();
+    _lastActivityTime = DateTime.now();
     final newMuted = !_isMuted;
     setState(() => _isMuted = newMuted);
     HapticFeedback.mediumImpact();
@@ -3244,6 +3315,34 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                       ),
                     ),
                   ),
+                ),
+              ),
+            ),
+          if (_hostDisconnected && !_isHost && !_showEndCountdownBanner)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 60,
+              left: 16,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4)),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        "Host disconnected. Room will auto-close in $_hostDisconnectCountdown seconds.",
+                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

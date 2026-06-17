@@ -69,9 +69,6 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   int _durationHours = 6;
   double _radiusKm = 5.0;
   bool _isGhostMode = false;
-  bool _autoAccept = false;
-  bool _inviteOnly = false;
-  String _entryType = 'free'; // 'free' or 'paid'
 
   final String _selectedCategory = 'Music';
   DateTime? _selectedDate;
@@ -150,19 +147,16 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   }
 
   // ── LOOKUP MAPS ──
-  final List<String> _categories = ['Music', 'Fitness', 'Tech', 'Art', 'Gaming', 'Food', 'Social', 'Chill', 'Wild', 'Deep Talks'];
+  final List<String> _categories = ['Outdoor', 'Sports', 'Music', 'Food', 'Study', 'Gaming', 'Fitness'];
   final List<String> _moods = ['🔥', '🎉', '😎', '🌙', '💀', '🧘', '🎶', '⚡', '🍕', '💬'];
   final Map<String, Map<String, dynamic>> _vibeData = {
+    'Outdoor':    {'icon': Icons.park, 'color': const Color(0xFF4ADE80)},
+    'Sports':     {'icon': Icons.sports_soccer, 'color': const Color(0xFFFFAB40)},
     'Music':      {'icon': Icons.music_note, 'color': const Color(0xFFE040FB)},
-    'Fitness':    {'icon': Icons.fitness_center, 'color': const Color(0xFF4ADE80)},
-    'Tech':       {'icon': Icons.computer, 'color': const Color(0xFFFF6B00)},
-    'Art':        {'icon': Icons.palette, 'color': const Color(0xFFFFAB40)},
-    'Gaming':     {'icon': Icons.sports_esports, 'color': const Color(0xFF7C4DFF)},
     'Food':       {'icon': Icons.restaurant, 'color': const Color(0xFFFF5252)},
-    'Social':     {'icon': Icons.people, 'color': const Color(0xFF448AFF)},
-    'Chill':      {'icon': Icons.self_improvement, 'color': const Color(0xFF69F0AE)},
-    'Wild':       {'icon': Icons.whatshot, 'color': const Color(0xFFFF6D00)},
-    'Deep Talks': {'icon': Icons.psychology, 'color': const Color(0xFFB388FF)},
+    'Study':      {'icon': Icons.menu_book, 'color': const Color(0xFF448AFF)},
+    'Gaming':     {'icon': Icons.sports_esports, 'color': const Color(0xFF7C4DFF)},
+    'Fitness':    {'icon': Icons.fitness_center, 'color': const Color(0xFF69F0AE)},
   };
 
   // ── STEPS ──
@@ -414,12 +408,12 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
         'title': _titleCtrl.text.trim(),
         'description': _isRushIn ? (_noteCtrl.text.trim().isEmpty ? 'Rush-In Activity' : _noteCtrl.text.trim()) : _descCtrl.text.trim(),
         'category': _selectedVibes.join(', '),
-        'activity_time': dt.toIso8601String(),
+        'activity_time': dt.toUtc().toIso8601String(),
         'lat': _pinLocation.latitude,
         'lng': _pinLocation.longitude,
         'location_name': _locationNameCtrl.text.trim(),
-        'district': locationService.activeLocation.split(',').first.trim(),
-        'state': locationService.activeLocation.split(',').length > 1 ? locationService.activeLocation.split(',')[1].trim() : '',
+        'district': locationService.activeDistrict,
+        'state': locationService.activeState,
         'is_active': true,
         'is_rush_in': _isRushIn,
         'activity_type': _isRushIn ? 'rush_in' : 'event',
@@ -427,14 +421,14 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
         'hook': _isRushIn ? _hookCtrl.text.trim() : null,
         'participant_limit': _isRushIn ? _participantLimit : 100,
         'is_ghost_mode': _isRushIn ? _isGhostMode : false,
-        'mood': _isRushIn ? _selectedMood : null,
-        'auto_accept': _isRushIn ? _autoAccept : false,
-        'invite_only': _isRushIn ? _inviteOnly : false,
-        'entry_type': _isRushIn ? _entryType : 'free',
+        'is_ghost': _isRushIn ? _isGhostMode : false,
+        'auto_accept': false,
+        'invite_only': false,
+        'entry_type': 'free',
       };
 
       if (_isRushIn) {
-        payload['expires_at'] = dt.add(Duration(hours: _durationHours)).toIso8601String();
+        payload['expires_at'] = dt.add(Duration(hours: _durationHours)).toUtc().toIso8601String();
         payload['duration_hours'] = _durationHours;
         payload['radius_km'] = _radiusKm;
       }
@@ -509,7 +503,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
         lat: _pinLocation.latitude,
         lng: _pinLocation.longitude,
         isRushIn: _isRushIn,
-        activityCity: locationService.activeLocation.split(',').first.trim(),
+        activityCity: locationService.activeDistrict,
         radiusKm: _isRushIn ? _radiusKm.toDouble() : 50.0,
       );
 
@@ -910,22 +904,6 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
           _sectionHeader('ADVANCED SETTINGS', 'Fine-tune your Rush-In behavior.'),
           const SizedBox(height: 16),
           _ruleToggle(Icons.visibility_off, 'GHOST MODE', 'Your identity is hidden on the feed.', _isGhostMode, (v) => setState(() => _isGhostMode = v)),
-          const SizedBox(height: 12),
-          _ruleToggle(Icons.verified, 'AUTO-ACCEPT', 'Automatically accept the first joiners.', _autoAccept, (v) => setState(() => _autoAccept = v)),
-          const SizedBox(height: 12),
-          _ruleToggle(Icons.lock_outline, 'INVITE ONLY', 'Only people you share the link with can see it.', _inviteOnly, (v) => setState(() => _inviteOnly = v)),
-          const SizedBox(height: 12),
-
-          // ENTRY TYPE
-          _sectionHeader('ENTRY TYPE', 'Is your Rush-In free or exclusive?'),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _entryPill('free', 'FREE ENTRY', Icons.lock_open, accent),
-              const SizedBox(width: 12),
-              _entryPill('paid', 'EXCLUSIVE', Icons.diamond, secondary),
-            ],
-          ),
         ],
       ),
     );
@@ -1380,22 +1358,15 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                 ],
 
                 // Badge status pills
-                if (_isGhostMode || _autoAccept || _inviteOnly || _entryType == 'paid' || _isPackage) ...[
-                  const SizedBox(height: 16),
+                if (_isGhostMode || _isPackage) ...[
+                  const SizedBox(height: 12),
                   Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                    spacing: 8, runSpacing: 8,
                     children: [
-                      if (_isGhostMode) _previewBadge('GHOST MODE', Icons.visibility_off),
-                      if (_autoAccept) _previewBadge('AUTO-ACCEPT', Icons.verified),
-                      if (_inviteOnly) _previewBadge('INVITE ONLY', Icons.lock),
-                      if (_entryType == 'paid' || _isPackage)
-                        _previewBadge(
-                          _isPackage ? 'COMMERCIAL (₹${_priceCtrl.text})' : 'EXCLUSIVE',
-                          Icons.diamond,
-                        ),
+                      if (_isGhostMode) _previewBadge('GHOST', Icons.visibility_off),
+                      if (_isPackage) _previewBadge('EXCLUSIVE', Icons.diamond),
                     ],
-                  ),
+                  )
                 ],
               ],
             ),
@@ -1496,28 +1467,6 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
     );
   }
 
-  Widget _entryPill(String type, String label, IconData icon, Color clr) {
-    final sel = _entryType == type;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _entryType = type),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          decoration: BoxDecoration(
-            color: sel ? clr.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.02),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: sel ? clr.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.04)),
-          ),
-          child: Column(children: [
-            Icon(icon, color: sel ? clr : Colors.white38, size: 28),
-            const SizedBox(height: 8),
-            Text(label, style: TextStyle(color: sel ? Colors.white : Colors.white38, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1)),
-          ]),
-        ),
-      ),
-    );
-  }
 
   Widget _previewBadge(String label, IconData icon) {
     return Container(

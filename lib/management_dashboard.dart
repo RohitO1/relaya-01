@@ -8,6 +8,7 @@ import 'messages_screen.dart';
 import 'rush_in_consumer_detail_view.dart';
 // import 'experience_screen.dart'; // Disabled as per user instruction
 import 'services/notification_service.dart';
+import 'widgets/skeleton_loaders.dart';
 
 // ════════════════════════════════════════════════════════════════════
 // NEW: CENTRAL MANAGEMENT DASHBOARD
@@ -304,7 +305,7 @@ class _ActivityListHelperState extends State<_ActivityListHelper> {
           .order('created_at', ascending: false),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator(color: widget.isRushIn ? const Color(0xFFFF007F) : const Color(0xFFFF6B00)));
+          return SkeletonLoaders.genericListSkeleton();
         }
 
         final allActivities = snapshot.data ?? [];
@@ -519,7 +520,7 @@ class _CompanionManagementScreenState extends State<CompanionManagementScreen> {
             .map((rows) => rows.isNotEmpty ? rows.first : null),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)));
+            return SkeletonLoaders.genericListSkeleton();
           }
 
           final comp = snapshot.data;
@@ -797,7 +798,7 @@ class _NetworkHubListHelper extends StatelessWidget {
           .eq('sender_id', uid)
           .order('created_at', ascending: false),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF7E40)));
+        if (snapshot.connectionState == ConnectionState.waiting) return SkeletonLoaders.genericListSkeleton();
         
         final allRequests = snapshot.data ?? [];
         final requests = allRequests.where((r) => approvedOnly ? r['status'] == 'approved' : r['status'] != 'approved').toList();
@@ -1325,7 +1326,7 @@ class _RequestsManagerScreenState extends State<_RequestsManagerScreen> {
               .order('created_at', ascending: false),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: Color(0xFFFF7E40)));
+              return SkeletonLoaders.genericListSkeleton();
             }
             
             final allRequests = snapshot.data ?? [];
@@ -1522,7 +1523,7 @@ class _MyFeedPostsScreenState extends State<MyFeedPostsScreen> {
                   .order('created_at', ascending: false),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00)));
+                  return SkeletonLoaders.genericListSkeleton();
                 }
                 final posts = snapshot.data ?? [];
                 if (posts.isEmpty) {
@@ -1709,7 +1710,7 @@ class IncomingFollowRequestsScreen extends StatelessWidget {
             .eq('target_id', uid)
             .order('created_at', ascending: false),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFF38D9A9)));
+          if (snapshot.connectionState == ConnectionState.waiting) return SkeletonLoaders.genericListSkeleton();
           
           final allRequests = snapshot.data ?? [];
           final requests = allRequests.where((r) => r['target_type'] == 'follow' && r['status'] == 'pending').toList();

@@ -77,7 +77,7 @@ class NotificationService {
       }
 
       // 2. Insert into notifications table
-      await _supabase.from('notifications').insert({
+      final inserted = await _supabase.from('notifications').insert({
         'user_id': userId,
         'type': type.value,
         'title': title,
@@ -85,7 +85,23 @@ class NotificationService {
         'payload': payload ?? {},
         'is_read': false,
         'created_at': DateTime.now().toIso8601String(),
-      });
+      }).select().maybeSingle();
+      
+      if (inserted != null) {
+        try {
+          await _supabase.functions.invoke(
+            'push-notification',
+            body: {
+              'type': 'INSERT',
+              'table': 'notifications',
+              'record': inserted,
+            },
+          );
+          debugPrint('Notification function invoked successfully for $userId');
+        } catch (e) {
+          debugPrint('Error invoking push-notification edge function: $e');
+        }
+      }
       
       debugPrint('Notification sent to $userId: $title');
     } catch (e) {

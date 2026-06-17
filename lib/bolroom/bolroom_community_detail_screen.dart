@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'bolroom_theme.dart';
 import '../services/notification_service.dart';
@@ -24,15 +25,24 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
   final _scrollCtrl = ScrollController();
   List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _members = [];
+  Map<String, Map<String, dynamic>> _memberProfiles = {};
   bool _loading = true;
   bool _isMember = false;
   String _myAnonName = 'Anonymous';
   String _myAvatarKey = 'default';
+  
+  String? _myRole;
+  bool _hasPendingRequest = false;
+  bool _isRequesting = false;
+
+  final ValueNotifier<List<Map<String, dynamic>>> _membersNotifier = ValueNotifier([]);
+  final ValueNotifier<String?> _myRoleNotifier = ValueNotifier(null);
 
   String get _myId => _sb.auth.currentUser?.id ?? '';
   String get _communityId => widget.community['id'].toString();
 
   RealtimeChannel? _msgChannel;
+  RealtimeChannel? _membersChannel;
 
   @override
   void initState() {
@@ -47,8 +57,11 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
   @override
   void dispose() {
     if (_msgChannel != null) _sb.removeChannel(_msgChannel!);
+    if (_membersChannel != null) _sb.removeChannel(_membersChannel!);
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
+    _membersNotifier.dispose();
+    _myRoleNotifier.dispose();
     super.dispose();
   }
 
@@ -57,24 +70,55 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
       final bp = await _sb.from('bolroom_profiles').select('anon_name, avatar_key').eq('id', _myId).maybeSingle();
       if (bp != null && mounted) {
         setState(() {
-        _myAnonName = bp['anon_name'] ?? 'Anonymous';
-        _myAvatarKey = bp['avatar_key'] ?? 'default';
-      });
+          _myAnonName = bp['anon_name'] ?? 'Anonymous';
+          _myAvatarKey = bp['avatar_key'] ?? 'default';
+        });
       }
     } catch (_) {}
   }
 
   Future<void> _checkMembership() async {
     try {
-      final res = await _sb.from('bolroom_community_members').select('id').eq('community_id', _communityId).eq('user_id', _myId).maybeSingle();
-      if (mounted) setState(() => _isMember = res != null);
+      final res = await _sb.from('bolroom_community_members').select('role').eq('community_id', _communityId).eq('user_id', _myId).maybeSingle();
+      if (mounted) {
+        setState(() {
+          if (res == null) {
+            _isMember = false;
+            _myRole = null;
+            _hasPendingRequest = false;
+          } else {
+            final role = res['role']?.toString();
+            _myRole = role;
+            if (role == 'pending') {
+              _isMember = false;
+              _hasPendingRequest = true;
+            } else {
+              _isMember = true;
+              _hasPendingRequest = false;
+            }
+          }
+        });
+        _myRoleNotifier.value = _myRole;
+      }
     } catch (_) {}
   }
 
   Future<void> _loadMessages() async {
     try {
       final res = await _sb.from('bolroom_community_messages').select('*').eq('community_id', _communityId).order('created_at', ascending: true).limit(200);
-      if (mounted) { setState(() { _messages = List<Map<String, dynamic>>.from(res); _loading = false; }); _scrollToBottom(); }
+      if (res.isNotEmpty) {
+        final latestMsgId = res.last['id'].toString();
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('seen_msg_$_communityId', latestMsgId);
+        });
+      }
+      if (mounted) {
+        setState(() {
+          _messages = List<Map<String, dynamic>>.from(res);
+          _loading = false;
+        });
+        _scrollToBottom();
+      }
     } catch (e) {
       debugPrint('Load messages: $e');
       if (mounted) setState(() => _loading = false);
@@ -84,7 +128,27 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
   Future<void> _loadMembers() async {
     try {
       final res = await _sb.from('bolroom_community_members').select('*').eq('community_id', _communityId).order('joined_at');
-      if (mounted) setState(() => _members = List<Map<String, dynamic>>.from(res));
+      final list = List<Map<String, dynamic>>.from(res);
+      final userIds = list.map((m) => m['user_id'].toString()).toList();
+      if (userIds.isNotEmpty) {
+        final profs = await _sb.from('bolroom_profiles').select('id, anon_name, avatar_key').inFilter('id', userIds);
+        final profMap = { for (var p in profs) p['id'].toString() : p as Map<String, dynamic> };
+        if (mounted) {
+          setState(() {
+            _members = list;
+            _memberProfiles = profMap;
+          });
+          _membersNotifier.value = list;
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _members = list;
+            _memberProfiles = {};
+          });
+          _membersNotifier.value = list;
+        }
+      }
     } catch (_) {}
   }
 
@@ -96,10 +160,24 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
         if (payload.newRecord.isNotEmpty && mounted) {
           setState(() => _messages.add(payload.newRecord));
           _scrollToBottom();
+          final latestMsgId = payload.newRecord['id'].toString();
+          SharedPreferences.getInstance().then((prefs) {
+            prefs.setString('seen_msg_$_communityId', latestMsgId);
+          });
         }
       },
     );
     _msgChannel!.subscribe();
+
+    _membersChannel = _sb.channel('community_mem_$_communityId').onPostgresChanges(
+      event: PostgresChangeEvent.all, schema: 'public', table: 'bolroom_community_members',
+      filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'community_id', value: _communityId),
+      callback: (payload) {
+        _loadMembers();
+        _checkMembership();
+      },
+    );
+    _membersChannel!.subscribe();
   }
 
   void _scrollToBottom() {
@@ -125,7 +203,7 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
       // Notify other members
       for (var m in _members) {
         final memberId = m['user_id']?.toString();
-        if (memberId != null && memberId != _myId) {
+        if (memberId != null && memberId != _myId && m['role'] != 'pending') {
           try {
             NotificationService.sendNotification(
               userId: memberId,
@@ -153,15 +231,100 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
         'user_id': _myId,
         'role': 'member',
       });
-      setState(() => _isMember = true);
+      
+      await _sb.from('bolroom_communities').update({
+        'member_count': (widget.community['member_count'] ?? 0) + 1
+      }).eq('id', _communityId);
+
+      _checkMembership();
       _loadMembers();
     } catch (_) {}
+  }
+
+  Future<void> _toggleJoinRequest() async {
+    if (_isRequesting) return;
+    setState(() => _isRequesting = true);
+    try {
+      if (_hasPendingRequest) {
+        await _sb.from('bolroom_community_members').delete().eq('community_id', _communityId).eq('user_id', _myId);
+        setState(() {
+          _hasPendingRequest = false;
+        });
+      } else {
+        await _sb.from('bolroom_community_members').insert({
+          'community_id': _communityId,
+          'user_id': _myId,
+          'role': 'pending',
+        });
+        setState(() {
+          _hasPendingRequest = true;
+        });
+      }
+      await _checkMembership();
+      await _loadMembers();
+    } catch (e) {
+      debugPrint('Toggle join request: $e');
+    } finally {
+      if (mounted) setState(() => _isRequesting = false);
+    }
+  }
+
+  Future<void> _approveRequest(String userId) async {
+    try {
+      await _sb.from('bolroom_community_members').update({'role': 'member'}).eq('community_id', _communityId).eq('user_id', userId);
+      await _sb.from('bolroom_communities').update({
+        'member_count': (widget.community['member_count'] ?? 0) + 1
+      }).eq('id', _communityId);
+      _loadMembers();
+    } catch (e) {
+      debugPrint('Approve request: $e');
+    }
+  }
+
+  Future<void> _declineRequest(String userId) async {
+    try {
+      await _sb.from('bolroom_community_members').delete().eq('community_id', _communityId).eq('user_id', userId);
+      _loadMembers();
+    } catch (e) {
+      debugPrint('Decline request: $e');
+    }
+  }
+
+  Future<void> _removeMember(String userId) async {
+    try {
+      await _sb.from('bolroom_community_members').delete().eq('community_id', _communityId).eq('user_id', userId);
+      final currentCount = widget.community['member_count'] ?? 1;
+      await _sb.from('bolroom_communities').update({
+        'member_count': currentCount > 0 ? currentCount - 1 : 0
+      }).eq('id', _communityId);
+      _loadMembers();
+    } catch (e) {
+      debugPrint('Remove member: $e');
+    }
+  }
+
+  Future<void> _leaveCommunity() async {
+    try {
+      await _sb.from('bolroom_community_members').delete().eq('community_id', _communityId).eq('user_id', _myId);
+      final currentCount = widget.community['member_count'] ?? 1;
+      await _sb.from('bolroom_communities').update({
+        'member_count': currentCount > 0 ? currentCount - 1 : 0
+      }).eq('id', _communityId);
+      
+      if (mounted) {
+        Navigator.pop(context); // Close info sheet
+        Navigator.pop(context); // Go back
+      }
+    } catch (e) {
+      debugPrint('Leave community: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final icon = widget.community['icon'] ?? '💬';
     final name = widget.community['name'] ?? 'Community';
+    final isPrivate = widget.community['is_private'] == true;
 
     return Scaffold(
       backgroundColor: BolroomTheme.bg,
@@ -170,24 +333,105 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
           children: [
             // Header
             _buildHeader(icon, name),
-            // Messages
+            // Messages / Locked Overlay
             Expanded(
               child: _loading
                 ? Center(child: CircularProgressIndicator(color: BolroomTheme.purple, strokeWidth: 2))
-                : _messages.isEmpty
-                  ? _buildEmptyChat()
-                  : ListView.builder(
-                      controller: _scrollCtrl,
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      itemCount: _messages.length,
-                      itemBuilder: (ctx, i) => _buildMessageBubble(_messages[i]),
-                    ),
+                : (isPrivate && !_isMember)
+                  ? _buildLockedOverlay()
+                  : _messages.isEmpty
+                    ? _buildEmptyChat()
+                    : ListView.builder(
+                        controller: _scrollCtrl,
+                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        itemCount: _messages.length,
+                        itemBuilder: (ctx, i) => _buildMessageBubble(_messages[i]),
+                      ),
             ),
             // Input
             if (_isMember)
               _buildInputBar()
             else
               _buildJoinBar(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLockedOverlay() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: BolroomTheme.card,
+                shape: BoxShape.circle,
+                border: Border.all(color: BolroomTheme.purple.withValues(alpha: 0.2), width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: BolroomTheme.purple.withValues(alpha: 0.1),
+                    blurRadius: 24,
+                    spreadRadius: 4,
+                  ),
+                ],
+              ),
+              child: Icon(
+                _hasPendingRequest ? Icons.hourglass_empty_rounded : Icons.lock_outline_rounded,
+                color: BolroomTheme.purple,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Private Community',
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'This group is private. You must request approval from the host to join and view messages.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                color: BolroomTheme.textSecondary,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _toggleJoinRequest,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _hasPendingRequest ? const Color(0xFF1D1B26) : BolroomTheme.purple,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(26),
+                    side: _hasPendingRequest ? const BorderSide(color: Colors.white10) : BorderSide.none,
+                  ),
+                  elevation: 0,
+                ),
+                child: _isRequesting
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : Text(
+                        _hasPendingRequest ? 'Cancel Join Request' : 'Request to Join',
+                        style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _hasPendingRequest ? Colors.white70 : Colors.white,
+                        ),
+                      ),
+              ),
+            ),
           ],
         ),
       ),
@@ -221,7 +465,13 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(name, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-              Text('${_members.length} members', style: GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 12)),
+              ValueListenableBuilder<List<Map<String, dynamic>>>(
+                valueListenable: _membersNotifier,
+                builder: (context, membersList, _) {
+                  final activeCount = membersList.where((m) => m['role'] != 'pending').length;
+                  return Text('$activeCount members', style: GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 12));
+                },
+              ),
             ],
           )),
           GestureDetector(
@@ -349,6 +599,9 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
   }
 
   Widget _buildJoinBar() {
+    if (widget.community['is_private'] == true) {
+      return const SizedBox.shrink();
+    }
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -382,38 +635,207 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
     );
   }
 
+  Widget _buildAvatarWidget(String avatarKey, double size) {
+    final preset = BolroomTheme.avatarPresets[avatarKey] ?? BolroomTheme.avatarPresets['default']!;
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: (preset['color'] as Color).withValues(alpha: 0.2),
+        border: Border.all(color: (preset['color'] as Color).withValues(alpha: 0.3)),
+      ),
+      child: Center(child: Text(preset['icon'] as String, style: TextStyle(fontSize: size * 0.5))),
+    );
+  }
+
   void _showCommunityInfo() {
     showModalBottomSheet(
-      context: context, backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        padding: EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: BolroomTheme.bg,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          border: Border.all(color: BolroomTheme.border),
-        ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: BolroomTheme.border, borderRadius: BorderRadius.circular(2)))),
-          SizedBox(height: 20),
-          Text(widget.community['icon'] ?? '💬', style: TextStyle(fontSize: 48)),
-          SizedBox(height: 12),
-          Text(widget.community['name'] ?? '', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
-          SizedBox(height: 8),
-          Text(widget.community['description'] ?? 'No description', style: GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 14), textAlign: TextAlign.center),
-          SizedBox(height: 20),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            _infoStat('${_members.length}', 'Members'),
-            SizedBox(width: 32),
-            _infoStat(widget.community['category'] ?? 'General', 'Category'),
-          ]),
-          SizedBox(height: 24),
-          if (widget.community['rules']?.toString().isNotEmpty == true) ...[
-            Align(alignment: Alignment.centerLeft, child: Text('RULES', style: GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.5))),
-            SizedBox(height: 8),
-            Text(widget.community['rules'] ?? '', style: GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 13)),
-          ],
-        ]),
-      ),
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (_, scrollController) {
+            return ValueListenableBuilder<List<Map<String, dynamic>>>(
+              valueListenable: _membersNotifier,
+              builder: (context, membersList, _) {
+                final isHost = widget.community['creator_id'] == _myId;
+                
+                final activeMembers = membersList.where((m) => m['role'] != 'pending').toList();
+                final pendingRequests = membersList.where((m) => m['role'] == 'pending').toList();
+
+                return Container(
+                  decoration: BoxDecoration(
+                    color: BolroomTheme.bg,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                    border: Border.all(color: BolroomTheme.border),
+                  ),
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    children: [
+                      Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: BolroomTheme.border, borderRadius: BorderRadius.circular(2)))),
+                      const SizedBox(height: 20),
+                      Center(child: Text(widget.community['icon'] ?? '💬', style: const TextStyle(fontSize: 48))),
+                      const SizedBox(height: 12),
+                      Center(child: Text(widget.community['name'] ?? '', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900))),
+                      const SizedBox(height: 8),
+                      Center(child: Text(widget.community['description'] ?? 'No description', style: GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 14), textAlign: TextAlign.center)),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _infoStat('${activeMembers.length}', 'Members'),
+                          const SizedBox(width: 32),
+                          _infoStat(widget.community['category'] ?? 'General', 'Category'),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      if (widget.community['rules']?.toString().isNotEmpty == true) ...[
+                        Text('RULES', style: GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                        const SizedBox(height: 8),
+                        Text(widget.community['rules'] ?? '', style: GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 13)),
+                        const SizedBox(height: 24),
+                      ],
+                      
+                      // Pending Requests Section
+                      if (isHost && pendingRequests.isNotEmpty) ...[
+                        Text('PENDING JOIN REQUESTS (${pendingRequests.length})', style: GoogleFonts.inter(color: BolroomTheme.purple, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                        const SizedBox(height: 8),
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: pendingRequests.length,
+                          itemBuilder: (ctx, idx) {
+                            final req = pendingRequests[idx];
+                            final reqId = req['user_id'].toString();
+                            final prof = _memberProfiles[reqId] ?? {
+                              'anon_name': 'Anonymous',
+                              'avatar_key': 'default'
+                            };
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8.0),
+                              child: Row(
+                                children: [
+                                  _buildAvatarWidget(prof['avatar_key'] ?? 'default', 36),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      prof['anon_name'] ?? 'Anonymous',
+                                      style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => _approveRequest(reqId),
+                                    child: const Text('Accept', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => _declineRequest(reqId),
+                                    child: const Text('Decline', style: TextStyle(color: Colors.redAccent)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+
+                      // Active Members Section
+                      Text('MEMBERS (${activeMembers.length})', style: GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                      const SizedBox(height: 8),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: activeMembers.length,
+                        itemBuilder: (ctx, idx) {
+                          final mem = activeMembers[idx];
+                          final memId = mem['user_id'].toString();
+                          final isMemHost = mem['role'] == 'host' || memId == widget.community['creator_id'];
+                          final prof = _memberProfiles[memId] ?? {
+                            'anon_name': 'Anonymous',
+                            'avatar_key': 'default'
+                          };
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            child: Row(
+                              children: [
+                                _buildAvatarWidget(prof['avatar_key'] ?? 'default', 36),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        prof['anon_name'] ?? 'Anonymous',
+                                        style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                                      ),
+                                      if (isMemHost) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Row(
+                                            children: const [
+                                              Icon(Icons.star, color: Color(0xFFFFD700), size: 10),
+                                              SizedBox(width: 2),
+                                              Text('Host', style: TextStyle(color: Color(0xFFFFD700), fontSize: 9, fontWeight: FontWeight.bold)),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                if (isHost && !isMemHost)
+                                  GestureDetector(
+                                    onTap: () => _removeMember(memId),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+                                      ),
+                                      child: const Text('Remove', style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.w700)),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      
+                      // Leave Button
+                      if (!isHost) ...[
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: OutlinedButton.icon(
+                            onPressed: _leaveCommunity,
+                            icon: const Icon(Icons.logout, color: Colors.redAccent, size: 18),
+                            label: Text('Leave Community', style: GoogleFonts.inter(color: Colors.redAccent, fontWeight: FontWeight.w700, fontSize: 14)),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.redAccent),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 

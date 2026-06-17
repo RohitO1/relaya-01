@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'services/location_service.dart';
 import 'image_upload_service.dart';
 import 'widgets/location_picker_sheet.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // --- Data Models ---
 class Community {
@@ -23,6 +24,7 @@ class Community {
   int unreadCount;
   final String? locationDistrict;
   final List<CommunityChannel> channels;
+  final bool isPrivate;
 
   Community({
     required this.id,
@@ -36,6 +38,7 @@ class Community {
     this.unreadCount = 0,
     this.locationDistrict,
     required this.channels,
+    this.isPrivate = false,
   });
 }
 
@@ -88,7 +91,7 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
   RealtimeChannel? _listChannel;
 
   String _activeFilter = 'All';
-  final List<String> _filters = ['All', 'For You', 'Nearby'];
+  final List<String> _filters = ['All', 'Joined'];
   Set<String> _joinedCommunityIds = {};
 
   @override
@@ -96,12 +99,18 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
     super.initState();
     _fetchCamps();
     _subscribeRealtime();
+    locationService.activeDistrictNotifier.addListener(_onLocationChanged);
   }
 
   @override
   void dispose() {
+    locationService.activeDistrictNotifier.removeListener(_onLocationChanged);
     _listChannel?.unsubscribe();
     super.dispose();
+  }
+
+  void _onLocationChanged() {
+    if (mounted) setState(() {});
   }
 
   void _subscribeRealtime() {
@@ -159,6 +168,7 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
 
   Future<void> _fetchCamps() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
       final uid = Supabase.instance.client.auth.currentUser?.id;
       if (uid != null) {
         final membersRes = await Supabase.instance.client
@@ -170,7 +180,7 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
 
       final res = await Supabase.instance.client
           .from('text_camps')
-          .select('*, text_camp_messages(text, created_at)')
+          .select('*, text_camp_messages(user_id, text, created_at)')
           .order('created_at', ascending: false)
           .order('created_at', referencedTable: 'text_camp_messages', ascending: false)
           .limit(1, referencedTable: 'text_camp_messages');
@@ -179,6 +189,7 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
         final messagesList = row['text_camp_messages'] as List?;
         String lastMsg = "Welcome to ${row['name']}!";
         String lastMsgTime = "Just now";
+        int unreadCount = 0;
         if (messagesList != null && messagesList.isNotEmpty) {
           final first = messagesList.first;
           final rawText = first['text'] as String? ?? '';
@@ -196,6 +207,21 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
               lastMsgTime = _formatTime(dt);
             } catch (_) {}
           }
+          final senderId = first['user_id'] as String? ?? '';
+          if (uid != null && senderId != uid) {
+            final lastReadStr = prefs.getString('community_last_read_${row['id']}');
+            if (lastReadStr != null && createdAtStr != null) {
+              try {
+                final lastRead = DateTime.parse(lastReadStr);
+                final msgTime = DateTime.parse(createdAtStr);
+                if (msgTime.isAfter(lastRead)) {
+                  unreadCount = 1;
+                }
+              } catch (_) {}
+            } else {
+              unreadCount = 1;
+            }
+          }
         }
 
         return Community(
@@ -207,9 +233,10 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
           avatar: row['avatar_url'] ?? 'https://images.unsplash.com/photo-1516862523118-a3724eb136d7?auto=format&fit=crop&w=150&q=80',
           lastMessage: lastMsg,
           lastMessageTime: lastMsgTime,
-          unreadCount: 0,
+          unreadCount: unreadCount,
           locationDistrict: _cleanSavedDistrict(row['location_district'] as String?),
           channels: [CommunityChannel(name: 'general', messages: _sampleMessages)],
+          isPrivate: row['is_private'] ?? false,
         );
       }).toList();
       
@@ -234,6 +261,9 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
     setState(() {
       community.unreadCount = 0;
     });
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString('community_last_read_${community.id}', DateTime.now().toUtc().toIso8601String());
+    });
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -246,6 +276,7 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
     final nameCtrl = TextEditingController();
     final catCtrl = TextEditingController();
     String photoUrl = '';
+    bool isPrivate = false;
 
     // Auto-fetch user location from profile if not yet resolved
     _loadLocationForCreateSheet();
@@ -404,6 +435,70 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
                   },
                 ),
                 const SizedBox(height: 24),
+
+                // Public / Private Community Choice
+                Text('PRIVACY SETTING', style: GoogleFonts.inter(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          setSheet(() => isPrivate = false);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: !isPrivate ? const Color(0xFFFF6B00).withValues(alpha: 0.1) : const Color(0xFF13101E),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: !isPrivate ? const Color(0xFFFF6B00) : const Color(0xFF231D38),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(Icons.public, color: !isPrivate ? const Color(0xFFFF6B00) : Colors.white54, size: 20),
+                              const SizedBox(height: 4),
+                              Text('Public', style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 2),
+                              Text('Anyone can join', style: GoogleFonts.inter(color: Colors.white38, fontSize: 10)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          setSheet(() => isPrivate = true);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isPrivate ? const Color(0xFFFF6B00).withValues(alpha: 0.1) : const Color(0xFF13101E),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: isPrivate ? const Color(0xFFFF6B00) : const Color(0xFF231D38),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(Icons.lock_outline, color: isPrivate ? const Color(0xFFFF6B00) : Colors.white54, size: 20),
+                              const SizedBox(height: 4),
+                              Text('Private', style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 2),
+                              Text('Requires host approval', style: GoogleFonts.inter(color: Colors.white38, fontSize: 10)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
                 
                 SizedBox(
                   width: double.infinity,
@@ -431,6 +526,7 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
                                   'location_district': currentDist.isNotEmpty ? currentDist : null,
                                   'location_state': currentState.isNotEmpty ? currentState : null,
                                   'creator_id': uid,
+                                  'is_private': isPrivate,
                                 }).select().single();
 
                                 await Supabase.instance.client.from('text_camp_members').insert({
@@ -450,11 +546,14 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
                                   unreadCount: 0,
                                   locationDistrict: _cleanSavedDistrict(res['location_district'] as String?),
                                   channels: [CommunityChannel(name: 'general', messages: [])],
+                                  isPrivate: res['is_private'] ?? false,
                                 );
                                 setState(() => _communities.insert(0, newComm));
+                                if (!ctx.mounted) return;
                                 Navigator.pop(ctx);
                               } catch (e) {
                                 debugPrint('Insert text_camp error: $e');
+                                if (!mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create community: $e')));
                               }
                             },
@@ -490,18 +589,22 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
 
       final profile = await Supabase.instance.client
           .from('profiles')
-          .select('lat, lng, location')
+          .select('lat, lng, city, district, state')
           .eq('id', uid)
           .maybeSingle();
 
       double? lat;
       double? lng;
       String savedLocation = '';
+      String? savedDistrict;
+      String? savedState;
 
       if (profile != null) {
         lat = (profile['lat'] as num?)?.toDouble();
         lng = (profile['lng'] as num?)?.toDouble();
-        savedLocation = profile['location'] as String? ?? '';
+        savedLocation = profile['city'] as String? ?? profile['district'] as String? ?? '';
+        savedDistrict = profile['district'] as String?;
+        savedState = profile['state'] as String?;
       }
 
       // Fallback to live device GPS location if profile lacks coordinates
@@ -532,13 +635,17 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
       if (lat != null && lng != null) {
         await _nominatimReverse(lat, lng);
       } else if (savedLocation.isNotEmpty) {
-        final parts = savedLocation.split(',').map((p) => p.trim()).toList();
-        final district = locationService.sanitizeDistrict(
-          parts.isNotEmpty ? parts.first : '',
-          savedLocation,
-        );
-        final state = parts.length > 1 ? parts[1] : '';
-        locationService.setLocation(savedLocation, district: district, state: state);
+        if (savedDistrict != null && savedDistrict.isNotEmpty) {
+          locationService.setLocation(savedLocation, lat: lat, lng: lng, district: savedDistrict, state: savedState);
+        } else {
+          final parts = savedLocation.split(',').map((p) => p.trim()).toList();
+          final district = locationService.sanitizeDistrict(
+            parts.isNotEmpty ? parts.first : '',
+            savedLocation,
+          );
+          final state = parts.length > 1 ? parts[1] : '';
+          locationService.setLocation(savedLocation, lat: lat, lng: lng, district: district, state: state);
+        }
       }
     } catch (e) {
       debugPrint('_loadLocationForCreateSheet error: $e');
@@ -582,6 +689,7 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
 
 
   Widget _buildFilters() {
+    final activeDistrict = locationService.activeDistrict;
     return Container(
       height: 60,
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -625,6 +733,37 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
               },
             ),
           ),
+          if (activeDistrict.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  locationService.setLocation('', district: '', state: '');
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF13101E),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 12),
+                      const SizedBox(width: 4),
+                      Text(
+                        activeDistrict,
+                        style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.close, color: Colors.white54, size: 12),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: GestureDetector(
@@ -665,18 +804,20 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
       }
 
       // 2. Chip Filter Logic
-      switch (_activeFilter) {
-        case 'All':
-          return true;
-        case 'For You':
-          return _joinedCommunityIds.contains(c.id);
-        case 'Nearby':
-          final userDistrict = locationService.activeDistrict;
-          if (userDistrict.isEmpty) return false;
-          return c.locationDistrict == userDistrict;
-        default: 
-          return true;
+      if (_activeFilter == 'Joined') {
+        return _joinedCommunityIds.contains(c.id);
       }
+
+      // 3. District location filter (fuzzy match — case-insensitive contains)
+      final userDistrict = locationService.activeDistrict;
+      if (userDistrict.isNotEmpty) {
+        final ud = userDistrict.toLowerCase().trim();
+        final cd = (c.locationDistrict ?? '').toLowerCase().trim();
+        // Show community if: it has no location tag, OR its district matches the user's
+        if (cd.isEmpty || cd == 'unknown') return true;
+        return cd.contains(ud) || ud.contains(cd);
+      }
+      return true;
     }).toList();
     
     return Column(
@@ -771,7 +912,7 @@ class _CommunitiesListView extends StatelessWidget {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.explore_off, color: Colors.white.withOpacity(0.2), size: 64),
+                          Icon(Icons.explore_off, color: Colors.white.withValues(alpha: 0.2), size: 64),
                           const SizedBox(height: 16),
                           Text(
                             'No communities found',
@@ -786,21 +927,15 @@ class _CommunitiesListView extends StatelessWidget {
                       ),
                     )
                   : ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.only(top: 4, bottom: 100),
                 itemCount: communities.length,
                 itemBuilder: (context, index) {
                   final c = communities[index];
-                  return GestureDetector(
+                  final bool isUnread = c.unreadCount > 0;
+                  return InkWell(
                     onTap: () => onTapCommunity(c),
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF13101E),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFF231D38)),
-                      ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -813,14 +948,14 @@ class _CommunitiesListView extends StatelessWidget {
                                 height: 56,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: const Color(0xFFFF6B00).withOpacity(0.1), width: 1),
+                                  border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.1), width: 1),
                                   image: DecorationImage(
                                     image: NetworkImage(c.avatar),
                                     fit: BoxFit.cover,
                                   ),
                                 ),
                               ),
-                              if (c.unreadCount > 0)
+                              if (isUnread)
                                 Positioned(
                                   top: -4,
                                   right: -4,
@@ -851,33 +986,18 @@ class _CommunitiesListView extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        c.name,
-                                        style: GoogleFonts.inter(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    Text(
-                                      c.lastMessageTime,
-                                      style: GoogleFonts.inter(
-                                        color: Colors.white38,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
+                                Text(
+                                  c.name,
+                                  style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: isUnread ? FontWeight.w700 : FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 4),
-                                 Row(
+                                Row(
                                   children: [
                                     Text(
                                       '# ${c.category}',
@@ -921,14 +1041,27 @@ class _CommunitiesListView extends StatelessWidget {
                                 Text(
                                   c.lastMessage,
                                   style: GoogleFonts.inter(
-                                    color: Colors.white,
+                                    color: isUnread ? Colors.white70 : const Color(0xFF7A7A7A),
                                     fontSize: 13,
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: isUnread ? FontWeight.w500 : FontWeight.normal,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // Timestamp on the very right
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              c.lastMessageTime,
+                              style: GoogleFonts.inter(
+                                color: const Color(0xFF7A7A7A),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ],
@@ -985,6 +1118,7 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
 
   // Pinned message
   Map<String, dynamic>? _pinnedMessage;
+  bool _isRequesting = false;
 
   @override
   void initState() {
@@ -1153,6 +1287,9 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
     _channel?.unsubscribe();
     _textCtrl.dispose();
     _scrollController.dispose();
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString('community_last_read_${widget.community.id}', DateTime.now().toUtc().toIso8601String());
+    });
     super.dispose();
   }
 
@@ -1396,6 +1533,79 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
     }
   }
 
+  void _toggleJoinRequest(bool hasRequested) async {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null) return;
+    setState(() => _isRequesting = true);
+    try {
+      if (hasRequested) {
+        await Supabase.instance.client
+            .from('text_camp_join_requests')
+            .delete()
+            .eq('camp_id', widget.community.id)
+            .eq('user_id', uid);
+      } else {
+        await Supabase.instance.client
+            .from('text_camp_join_requests')
+            .insert({
+              'camp_id': widget.community.id,
+              'user_id': uid,
+            });
+      }
+    } catch (e) {
+      debugPrint('Error toggle request: $e');
+    } finally {
+      if (mounted) setState(() => _isRequesting = false);
+    }
+  }
+
+  void _approveJoinRequest(String reqUid) async {
+    try {
+      // 1. Delete request
+      await Supabase.instance.client
+          .from('text_camp_join_requests')
+          .delete()
+          .eq('camp_id', widget.community.id)
+          .eq('user_id', reqUid);
+          
+      // 2. Insert into members
+      await Supabase.instance.client
+          .from('text_camp_members')
+          .insert({
+            'camp_id': widget.community.id,
+            'user_id': reqUid,
+          });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Join request approved! 🎉'),
+          backgroundColor: Colors.green,
+        ));
+      }
+    } catch (e) {
+      debugPrint('Approve request error: $e');
+    }
+  }
+
+  void _declineJoinRequest(String reqUid) async {
+    try {
+      await Supabase.instance.client
+          .from('text_camp_join_requests')
+          .delete()
+          .eq('camp_id', widget.community.id)
+          .eq('user_id', reqUid);
+          
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Join request declined.'),
+          backgroundColor: Colors.redAccent,
+        ));
+      }
+    } catch (e) {
+      debugPrint('Decline request error: $e');
+    }
+  }
+
   void _leaveCommunity() async {
     final uid = Supabase.instance.client.auth.currentUser?.id;
     if (uid == null) return;
@@ -1449,63 +1659,162 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
         final sorted = List<Map<String, dynamic>>.from(members)
           ..sort((a, b) => a['user_id'] == hostId ? -1 : b['user_id'] == hostId ? 1 : 0);
         return DraggableScrollableSheet(
-          initialChildSize: 0.5, maxChildSize: 0.9, minChildSize: 0.3, expand: false,
-          builder: (_, sc) => Column(children: [
-            const SizedBox(height: 12),
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 12),
-            Text('${widget.community.name}', style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            Text('${sorted.length} members', style: GoogleFonts.inter(color: Colors.white54, fontSize: 13)),
-            const SizedBox(height: 12),
-            Expanded(
-              child: ListView.builder(
-                controller: sc,
-                itemCount: sorted.length,
-                itemBuilder: (_, i) {
-                  final memberId = sorted[i]['user_id'] as String? ?? '';
-                  final memberIsHost = memberId == hostId;
-                  return FutureBuilder<Map<String, dynamic>>(
-                    future: _getProfile(memberId),
-                    builder: (_, snap) {
-                      final name = snap.data?['name'] ?? 'Loading...';
-                      final avatar = snap.data?['avatar_url'] ?? 'https://i.pravatar.cc/150';
-                      return ListTile(
-                        leading: CircleAvatar(backgroundImage: NetworkImage(avatar), backgroundColor: const Color(0xFF1A1A1A)),
-                        title: Text(name, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600)),
-                        subtitle: memberIsHost ? Text('Host', style: GoogleFonts.inter(color: const Color(0xFFFF6B00), fontSize: 12)) : null,
-                        trailing: isHost && !memberIsHost
-                            ? GestureDetector(
-                                onTap: () {
-                                  Navigator.pop(sheetCtx);
-                                  _removeMember(memberId);
+          initialChildSize: 0.6, maxChildSize: 0.9, minChildSize: 0.3, expand: false,
+          builder: (_, sc) => CustomScrollView(
+            controller: sc,
+            slivers: [
+              SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 12),
+                    Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(height: 12),
+                    Text(widget.community.name, style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    if (widget.community.locationDistrict != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 12),
+                          const SizedBox(width: 4),
+                          Text(
+                            widget.community.locationDistrict!,
+                            style: GoogleFonts.inter(color: Colors.white54, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text('${sorted.length} members', style: GoogleFonts.inter(color: Colors.white54, fontSize: 13)),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+              if (isHost)
+                SliverToBoxAdapter(
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: Supabase.instance.client
+                        .from('text_camp_join_requests')
+                        .stream(primaryKey: ['camp_id', 'user_id'])
+                        .eq('camp_id', widget.community.id),
+                    builder: (context, reqSnap) {
+                      final requests = reqSnap.data ?? [];
+                      if (requests.isEmpty) return const SizedBox.shrink();
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: Text(
+                              'JOIN REQUESTS (${requests.length})',
+                              style: GoogleFonts.inter(color: const Color(0xFFFF6B00), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                            ),
+                          ),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: requests.length,
+                            itemBuilder: (context, idx) {
+                              final reqUid = requests[idx]['user_id'] as String;
+                              return FutureBuilder<Map<String, dynamic>>(
+                                future: _getProfile(reqUid),
+                                builder: (context, profileSnap) {
+                                  final name = profileSnap.data?['name'] ?? 'Loading...';
+                                  final avatar = profileSnap.data?['avatar_url'] ?? 'https://i.pravatar.cc/150';
+                                  return ListTile(
+                                    leading: CircleAvatar(backgroundImage: NetworkImage(avatar), backgroundColor: const Color(0xFF1A1A1A)),
+                                    title: Text(name, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600)),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.check_circle_outline, color: Colors.greenAccent),
+                                          onPressed: () => _approveJoinRequest(reqUid),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
+                                          onPressed: () => _declineJoinRequest(reqUid),
+                                        ),
+                                      ],
+                                    ),
+                                  );
                                 },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red.withValues(alpha: 0.4))),
-                                  child: Text('Remove', style: GoogleFonts.inter(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600)),
-                                ),
-                              )
-                            : memberIsHost ? const Icon(Icons.star, color: Color(0xFFFF6B00), size: 18) : null,
+                              );
+                            },
+                          ),
+                          const Divider(color: Colors.white10),
+                        ],
                       );
                     },
-                  );
-                },
-              ),
-            ),
-            if (!isHost && myUid != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () { Navigator.pop(sheetCtx); _leaveCommunity(); },
-                    icon: const Icon(Icons.logout, color: Colors.redAccent, size: 18),
-                    label: Text('Leave Community', style: GoogleFonts.inter(color: Colors.redAccent, fontWeight: FontWeight.w600)),
-                    style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.redAccent), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  ),
+                ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'MEMBERS',
+                    style: GoogleFonts.inter(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5),
                   ),
                 ),
               ),
-          ]),
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    final memberId = sorted[i]['user_id'] as String? ?? '';
+                    final memberIsHost = memberId == hostId;
+                    return FutureBuilder<Map<String, dynamic>>(
+                      future: _getProfile(memberId),
+                      builder: (_, snap) {
+                        final name = snap.data?['name'] ?? 'Loading...';
+                        final avatar = snap.data?['avatar_url'] ?? 'https://i.pravatar.cc/150';
+                        return ListTile(
+                          leading: CircleAvatar(backgroundImage: NetworkImage(avatar), backgroundColor: const Color(0xFF1A1A1A)),
+                          title: Text(name, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600)),
+                          subtitle: memberIsHost ? Text('Host', style: GoogleFonts.inter(color: const Color(0xFFFF6B00), fontSize: 12)) : null,
+                          trailing: isHost && !memberIsHost
+                              ? GestureDetector(
+                                  onTap: () {
+                                    Navigator.pop(sheetCtx);
+                                    _removeMember(memberId);
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+                                    ),
+                                    child: Text('Remove', style: GoogleFonts.inter(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+                                  ),
+                                )
+                              : memberIsHost ? const Icon(Icons.star, color: Color(0xFFFF6B00), size: 18) : null,
+                        );
+                      },
+                    );
+                  },
+                  childCount: sorted.length,
+                ),
+              ),
+              if (!isHost && myUid != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () { Navigator.pop(sheetCtx); _leaveCommunity(); },
+                        icon: const Icon(Icons.logout, color: Colors.redAccent, size: 18),
+                        label: Text('Leave Community', style: GoogleFonts.inter(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.redAccent),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         );
       },
     );
@@ -1568,8 +1877,8 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
                             fontSize: 11, 
                             fontWeight: FontWeight.w800,
                             shadows: [
-                              Shadow(color: const Color(0xFF2196F3).withOpacity(0.8), offset: const Offset(-1, 0), blurRadius: 4),
-                              Shadow(color: const Color(0xFFFF6B00).withOpacity(0.8), offset: const Offset(1, 0), blurRadius: 4),
+                              Shadow(color: const Color(0xFF2196F3).withValues(alpha: 0.8), offset: const Offset(-1, 0), blurRadius: 4),
+                              Shadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.8), offset: const Offset(1, 0), blurRadius: 4),
                             ],
                           )
                         ),
@@ -1593,7 +1902,7 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
@@ -1615,7 +1924,7 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           margin: const EdgeInsets.only(top: 4, bottom: 2),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(8),
             border: const Border(left: BorderSide(color: Color(0xFFFF6B00), width: 3)),
           ),
@@ -1762,7 +2071,102 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
           ),
         ),
 
-        if (_pinnedMessage != null)
+        if (widget.community.isPrivate && !isMember) ...[
+          Expanded(
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: Supabase.instance.client
+                  .from('text_camp_join_requests')
+                  .stream(primaryKey: ['camp_id', 'user_id'])
+                  .eq('camp_id', widget.community.id),
+              builder: (context, reqSnap) {
+                final requests = reqSnap.data ?? [];
+                final hasRequested = requests.any((r) => r['user_id'] == currentUid);
+
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF13101E),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.2), width: 2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFFF6B00).withValues(alpha: 0.1),
+                                blurRadius: 24,
+                                spreadRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            hasRequested ? Icons.hourglass_empty_rounded : Icons.lock_outline_rounded,
+                            color: const Color(0xFFFF6B00),
+                            size: 48,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'Private Community',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'This group is private. You must request approval from the host to join and view messages.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                            color: Colors.white54,
+                            fontSize: 14,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _isRequesting ? null : () => _toggleJoinRequest(hasRequested),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: hasRequested ? const Color(0xFF1D1B26) : const Color(0xFFFF6B00),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(26),
+                                side: hasRequested ? const BorderSide(color: Colors.white10) : BorderSide.none,
+                              ),
+                              elevation: 0,
+                            ),
+                            child: _isRequesting
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                  )
+                                : Text(
+                                    hasRequested ? 'Cancel Join Request' : 'Request to Join',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: hasRequested ? Colors.white70 : Colors.white,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ] else ...[
+          if (_pinnedMessage != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
             child: Container(
@@ -1770,7 +2174,7 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF13101E),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFFF6B00).withOpacity(0.2)),
+                border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.2)),
               ),
               child: Row(
                 children: [
@@ -1938,7 +2342,7 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
           padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 12),
           decoration: BoxDecoration(
             color: const Color(0xFF000000),
-            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
+            border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
           ),
           child: SafeArea(
             top: false,
@@ -1957,7 +2361,7 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFF13101E),
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                             ),
                             child: Row(
                               children: [
@@ -2077,6 +2481,7 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
                 ),
           ),
         ),
+        ],
           ],
         );
       },
