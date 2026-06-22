@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'services/doodle_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────
 // WELCOME SCREEN — Confetti celebration + feature overview
@@ -60,7 +61,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF000000),
       body: Stack(
         children: [
           // Ambient orbs

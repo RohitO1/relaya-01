@@ -4,14 +4,15 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'rush_in_consumer_detail_view.dart';
+import 'services/doodle_theme.dart';
 
 // ─── globals ───────────────────────────────────────────────────────────────
 SupabaseClient get _sb => Supabase.instance.client;
 String? get _uid => _sb.auth.currentUser?.id;
 
 // ─── design tokens ─────────────────────────────────────────────────────────
-const _bg    = Color(0xFF0A0A0F);
-const _card  = Color(0xFF141C2E);
+Color _getBg(BuildContext context) => isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF0A0A0F);
+Color _getCard(BuildContext context) => isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF141C2E);
 const _cyan  = Color(0xFFFF6B00);
 const _green = Color(0xFF10B981);
 const _amber = Color(0xFFF59E0B);
@@ -20,12 +21,15 @@ const _pink  = Color(0xFFFF3D00);
 const _rush  = Color(0xFF00BFFF);   // live-rush accent colour
 
 // ─── helpers ───────────────────────────────────────────────────────────────
-PreferredSizeWidget _appBar(String t, {List<Widget>? actions}) => AppBar(
-  backgroundColor: _bg, elevation: 0,
-  leading: const BackButton(color: Colors.white),
-  title: Text(t, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 17, color: Colors.white)),
-  actions: actions,
-);
+PreferredSizeWidget _appBar(BuildContext context, String t, {List<Widget>? actions}) {
+  final doodle = isDoodleMode(context);
+  return AppBar(
+    backgroundColor: _getBg(context), elevation: 0,
+    leading: BackButton(color: doodle ? DoodleColors.brown : Colors.white),
+    title: Text(t, style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 20) : GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 17, color: Colors.white)),
+    actions: actions,
+  );
+}
 
 Widget _empty(IconData ic, String msg) => Center(
   child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -40,17 +44,17 @@ class ActivitySummaryScreen extends StatelessWidget {
   const ActivitySummaryScreen({super.key});
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: _bg, appBar: _appBar('Activity Summary'),
+    backgroundColor: _getBg(context), appBar: _appBar(context, 'Activity Summary'),
     body: FutureBuilder<Map<String, int>>(
       future: _stats(),
       builder: (_, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: _cyan));
         final s = snap.data!;
         return ListView(padding: const EdgeInsets.all(20), children: [
-          _stile('Activities Hosted', '${s['a']}', Icons.event_note, _cyan),
-          _stile('Rush-Ins Created',  '${s['r']}', Icons.flash_on, _pink),
-          _stile('Total Participants','${s['p']}', Icons.people, _green),
-          _stile('Events Joined',     '${s['j']}', Icons.celebration, _amber),
+          _stile(context, 'Activities Hosted', '${s['a']}', Icons.event_note, _cyan),
+          _stile(context, 'Rush-Ins Created',  '${s['r']}', Icons.flash_on, _pink),
+          _stile(context, 'Total Participants','${s['p']}', Icons.people, _green),
+          _stile(context, 'Events Joined',     '${s['j']}', Icons.celebration, _amber),
         ]);
       },
     ),
@@ -68,17 +72,20 @@ class ActivitySummaryScreen extends StatelessWidget {
     } catch(_) { return {'a':0,'r':0,'p':0,'j':0}; }
   }
 
-  Widget _stile(String lbl, String val, IconData ic, Color c) => Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: c.withValues(alpha: 0.15))),
-    child: Row(children: [
-      Container(width:42, height:42, decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)), child: Icon(ic, color: c, size: 20)),
-      const SizedBox(width: 14),
-      Expanded(child: Text(lbl, style: GoogleFonts.inter(color: Colors.white70, fontSize: 14))),
-      Text(val, style: GoogleFonts.poppins(color: c, fontSize: 22, fontWeight: FontWeight.w700)),
-    ]),
-  );
+  Widget _stile(BuildContext context, String lbl, String val, IconData ic, Color c) {
+    final doodle = isDoodleMode(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: doodle ? DoodleDecorations.card(color: DoodleColors.paper) : BoxDecoration(color: _getCard(context), borderRadius: BorderRadius.circular(14), border: Border.all(color: c.withValues(alpha: 0.15))),
+      child: Row(children: [
+        Container(width:42, height:42, decoration: BoxDecoration(color: doodle ? DoodleColors.cream : c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)), child: Icon(ic, color: doodle ? DoodleColors.brown : c, size: 20)),
+        const SizedBox(width: 14),
+        Expanded(child: Text(lbl, style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14) : GoogleFonts.inter(color: Colors.white70, fontSize: 14))),
+        Text(val, style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 24) : GoogleFonts.poppins(color: c, fontSize: 22, fontWeight: FontWeight.w700)),
+      ]),
+    );
+  }
 }
 
 // ════════════════════════ 2. PARTICIPANT — SENT-REQUEST LIST ════════════════
@@ -92,8 +99,8 @@ class SentRequestsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: _bg,
-    appBar: _appBar(title),
+    backgroundColor: _getBg(context),
+    appBar: _appBar(context, title),
     body: StreamBuilder<List<Map<String,dynamic>>>(
       stream: _sb.from('requests').stream(primaryKey:['id']).eq('sender_id',_uid!).order('created_at', ascending: false),
       builder: (_, snap) {
@@ -140,7 +147,7 @@ class _ParticipantRequestCard extends StatelessWidget {
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            decoration: BoxDecoration(
+            decoration: isDoodleMode(context) ? DoodleDecorations.card(color: DoodleColors.paper) : BoxDecoration(
               color: const Color(0xFF111827), // deep dark background
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withValues(alpha: 0.05)), // subtle border
@@ -215,8 +222,8 @@ class _PADS extends State<ParticipantActivityDetailScreen> {
   }
 
   @override Widget build(BuildContext context) {
-    if (_loading) return Scaffold(backgroundColor: _bg, appBar: _appBar('Loading...'), body: const Center(child: CircularProgressIndicator(color: _cyan)));
-    if (_act == null) return Scaffold(backgroundColor: _bg, appBar: _appBar('Not Found'), body: _empty(Icons.error_outline, 'This event no longer exists'));
+    if (_loading) return Scaffold(backgroundColor: _getBg(context), appBar: _appBar(context, 'Loading...'), body: const Center(child: CircularProgressIndicator(color: _cyan)));
+    if (_act == null) return Scaffold(backgroundColor: _getBg(context), appBar: _appBar(context, 'Not Found'), body: _empty(Icons.error_outline, 'This event no longer exists'));
 
     return RushInConsumerDetailView(
       activity: _act!,
@@ -276,10 +283,10 @@ class _HPCState extends State<_HostParticipantCard> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: sColor.withValues(alpha: 0.2))),
+      decoration: isDoodleMode(context) ? DoodleDecorations.card(color: DoodleColors.paper) : BoxDecoration(color: _getCard(context), borderRadius: BorderRadius.circular(14), border: Border.all(color: sColor.withValues(alpha: 0.2))),
       child: Row(children: [
         CircleAvatar(radius: 20, backgroundImage: av != null ? NetworkImage(av) : null,
-          backgroundColor: _cyan.withValues(alpha: 0.15),
+          backgroundColor: isDoodleMode(context) ? DoodleColors.cream : _cyan.withValues(alpha: 0.15),
           child: av == null ? Text(nm[0].toUpperCase(), style: const TextStyle(color: Colors.white)) : null),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -291,23 +298,26 @@ class _HPCState extends State<_HostParticipantCard> {
         ])),
         if (_busy) const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: _cyan))
         else if (status == 'pending') ...[
-          _btn(Icons.check_rounded, _green, () => _respond('approved')),
+          _btn(context, Icons.check_rounded, _green, () => _respond('approved')),
           const SizedBox(width: 8),
-          _btn(Icons.close_rounded, _red, () => _respond('rejected')),
+          _btn(context, Icons.close_rounded, _red, () => _respond('rejected')),
         ] else if (status == 'approved')
-          _btn(Icons.close_rounded, _red, () => _respond('rejected'))
+          _btn(context, Icons.close_rounded, _red, () => _respond('rejected'))
         else if (status == 'rejected')
-          _btn(Icons.refresh_rounded, _green, () => _respond('approved')),
+          _btn(context, Icons.refresh_rounded, _green, () => _respond('approved')),
       ]),
     );
   }
 
-  Widget _btn(IconData ic, Color c, VoidCallback onTap) => GestureDetector(
-    onTap: onTap,
-    child: Container(width: 34, height: 34,
-      decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8), border: Border.all(color: c.withValues(alpha: 0.3))),
-      child: Icon(ic, color: c, size: 18)),
-  );
+  Widget _btn(BuildContext context, IconData ic, Color c, VoidCallback onTap) {
+    final doodle = isDoodleMode(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(width: 34, height: 34,
+        decoration: doodle ? DoodleDecorations.card(color: DoodleColors.cream) : BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8), border: Border.all(color: c.withValues(alpha: 0.3))),
+        child: Icon(ic, color: doodle ? DoodleColors.brown : c, size: 18)),
+    );
+  }
 }
 
 // ════════════════════════ 5. STUB SCREENS (profile placeholders) ═════════════
@@ -334,6 +344,7 @@ class _FollowRequestCard extends StatefulWidget {
   @override State<_FollowRequestCard> createState() => _FRCState();
 }
 class _FRCState extends State<_FollowRequestCard> {
+  final _sb = Supabase.instance.client;
   Map<String,dynamic>? _p;
   bool _busy = false;
   @override void initState() { super.initState(); _load(); }
@@ -345,18 +356,18 @@ class _FRCState extends State<_FollowRequestCard> {
   @override Widget build(BuildContext ctx) {
     final av = _p?['avatar_url'] as String?; final nm = _p?['name'] as String? ?? 'User';
     return Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white10)),
+      decoration: BoxDecoration(color: const Color(0xFF161324), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white10)),
       child: Row(children: [
-        CircleAvatar(radius: 22, backgroundImage: av != null ? NetworkImage(av) : null, backgroundColor: _cyan.withValues(alpha: 0.15), child: av==null ? Text(nm[0], style: const TextStyle(color: Colors.white)) : null),
+        CircleAvatar(radius: 22, backgroundImage: av != null ? NetworkImage(av) : null, backgroundColor: const Color(0xFF00FFFF).withValues(alpha: 0.15), child: av==null ? Text(nm[0], style: const TextStyle(color: Colors.white)) : null),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(nm, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
           Text('Wants to follow you', style: GoogleFonts.inter(color: Colors.white38, fontSize: 11)),
         ])),
-        if (_busy) const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2,color:_cyan))
+        if (_busy) const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2,color:Color(0xFF00FFFF)))
         else ...[
-          TextButton(onPressed: () => _act('approved'), child: const Text('Accept', style: TextStyle(color: _green))),
-          TextButton(onPressed: () => _act('rejected'), child: const Text('Decline', style: TextStyle(color: _red))),
+          TextButton(onPressed: () => _act('approved'), child: const Text('Accept', style: TextStyle(color: Color(0xFF00FF87)))),
+          TextButton(onPressed: () => _act('rejected'), child: const Text('Decline', style: TextStyle(color: Color(0xFFFF4655)))),
         ],
       ]));
   }
@@ -436,7 +447,7 @@ class _StubScreen extends StatelessWidget {
   final IconData icon;
   final Widget body;
   const _StubScreen({required this.title, required this.icon, required this.body});
-  @override Widget build(BuildContext context) => Scaffold(backgroundColor: _bg, appBar: _appBar(title), body: body);
+  @override Widget build(BuildContext context) => Scaffold(backgroundColor: _getBg(context), appBar: _appBar(context, title), body: body);
 }
 
 // ════════════════════════ 6. OVERLAY HELPER (avoid import issues) ════════════

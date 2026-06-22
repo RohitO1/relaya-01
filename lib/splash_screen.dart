@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'services/doodle_theme.dart';
 
 // ═══════════════════════════════════════════════════════════════
 // MEETRA — PREMIUM SPLASH SCREEN (YIN YANG CRESCENT LOGO)
@@ -123,7 +124,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A), // Deep lowkey dark
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF0A0A0A),
       body: Stack(
         children: [
           _buildGradientMesh(size),

@@ -15,7 +15,9 @@ import 'services/notification_service.dart';
 import 'widgets/location_picker_sheet.dart';
 import 'widgets/skeleton_loaders.dart';
 
+
 import 'utils/constants.dart';
+import 'services/doodle_theme.dart';
 import 'messages_screen.dart';
 
 List<String> _parseListExplore(dynamic data) {
@@ -1362,39 +1364,45 @@ class _ExploreScreenState extends State<ExploreScreen>
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
+          final doodle = isDoodleMode(ctx);
 
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
             child: Container(
               height: MediaQuery.of(ctx).size.height * 0.92,
-              decoration: BoxDecoration(
-                color: _deep,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
-                border: Border(top: BorderSide(color: _orange.withValues(alpha: 0.3), width: 1.5)),
-                boxShadow: [
-                  BoxShadow(color: _orange.withValues(alpha: 0.15), blurRadius: 40, spreadRadius: 5, offset: const Offset(0, -10)),
-                ],
-              ),
+              decoration: doodle
+                ? DoodleDecorations.card(color: DoodleColors.cream)
+                : BoxDecoration(
+                    color: _deep,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
+                    border: Border(top: BorderSide(color: _orange.withValues(alpha: 0.3), width: 1.5)),
+                    boxShadow: [
+                      BoxShadow(color: _orange.withValues(alpha: 0.15), blurRadius: 40, spreadRadius: 5, offset: const Offset(0, -10)),
+                    ],
+                  ),
               child: Stack(
                 children: [
-                  Positioned(
-                    top: -100, right: -50,
-                    child: Container(
-                      width: 250, height: 250,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [_orange.withValues(alpha: 0.1), Colors.transparent],
+                  if (doodle)
+                    Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: ScatteredDoodlesPainter())))
+                  else
+                    Positioned(
+                      top: -100, right: -50,
+                      child: Container(
+                        width: 250, height: 250,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [_orange.withValues(alpha: 0.1), Colors.transparent],
+                          ),
                         ),
                       ),
                     ),
-                  ),
                   
                   Column(
                     children: [
                       const SizedBox(height: 12),
                       Container(width: 48, height: 5,
-                        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(3))),
+                        decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : Colors.white24, borderRadius: BorderRadius.circular(3))),
                       const SizedBox(height: 20),
                       
                       Padding(
@@ -1403,21 +1411,27 @@ class _ExploreScreenState extends State<ExploreScreen>
                           children: [
                             Container(
                               padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(colors: [Color(0xFFFF3060), _orange]),
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: [BoxShadow(color: _orange.withValues(alpha: 0.4), blurRadius: 12)],
-                              ),
-                              child: const Icon(Icons.psychology_rounded, color: Colors.white, size: 22),
+                              decoration: doodle
+                                ? DoodleDecorations.card(color: DoodleColors.orange.withValues(alpha: 0.8))
+                                : BoxDecoration(
+                                    gradient: const LinearGradient(colors: [Color(0xFFFF3060), _orange]),
+                                    borderRadius: BorderRadius.circular(14),
+                                    boxShadow: [BoxShadow(color: _orange.withValues(alpha: 0.4), blurRadius: 12)],
+                                  ),
+                              child: Icon(Icons.psychology_rounded, color: doodle ? DoodleColors.cream : Colors.white, size: 22),
                             ),
                             const SizedBox(width: 14),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('Knock Studio',
-                                  style: GoogleFonts.outfit(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                                  style: doodle
+                                    ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 28)
+                                    : GoogleFonts.outfit(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
                                 Text('Control how others connect with you',
-                                  style: GoogleFonts.outfit(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w500)),
+                                  style: doodle
+                                    ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 13)
+                                    : GoogleFonts.outfit(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w500)),
                               ],
                             ),
                             const Spacer(),
@@ -1426,15 +1440,17 @@ class _ExploreScreenState extends State<ExploreScreen>
                               child: Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.05),
+                                  color: doodle ? DoodleColors.brown.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
+                                child: Icon(Icons.close_rounded, color: doodle ? DoodleColors.brown : Colors.white70, size: 20),
                               ),
                             ),
                           ],
                         ),
                       ),
+                      if (doodle)
+                         Padding(padding: const EdgeInsets.only(top: 10), child: CustomPaint(painter: NotebookLinesPainter(), size: const Size(double.infinity, 2))),
                       const SizedBox(height: 24),
                       
                       Expanded(
@@ -1720,7 +1736,7 @@ class _ExploreScreenState extends State<ExploreScreen>
           );
         },
       ),
-    ).then((_) => _isSettingsOpening = false);
+).then((_) => _isSettingsOpening = false);
   }
 }
 
@@ -1749,22 +1765,36 @@ class _GridView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     return Scaffold(
-      backgroundColor: _darkBg,
+      backgroundColor: doodle ? DoodleColors.paper : _darkBg,
       body: Stack(
         children: [
           // ── Premium Dark Background (No Image) ──
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0, -0.8),
-                  radius: 1.2,
-                  colors: [Color(0xFF151010), Color(0xFF080808)],
+          if (!doodle)
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(0, -0.8),
+                    radius: 1.2,
+                    colors: [Color(0xFF151010), Color(0xFF080808)],
+                  ),
                 ),
               ),
             ),
-          ),
+          if (doodle)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: ScatteredDoodlesPainter(
+                    seed: 42,
+                    density: 0.4,
+                    color: DoodleColors.textMuted.withValues(alpha: 0.2),
+                  ),
+                ),
+              ),
+            ),
           
           // ── Main Content ──
           SafeArea(
@@ -1777,21 +1807,63 @@ class _GridView extends StatelessWidget {
                 slivers: [
                   SliverToBoxAdapter(child: _buildHeader(context)),
                   if (isLoading)
-                    SliverFillRemaining(child: _buildLoading())
+                    SliverFillRemaining(child: _buildLoading(context))
                   else if (activeUsers.isEmpty && inactiveUsers.isEmpty)
                     SliverFillRemaining(child: _buildEmpty())
                   else ...[
                     if (activeUsers.isNotEmpty) ...[
-                      SliverToBoxAdapter(child: _sectionHeader('ACTIVE', activeUsers.length, Icons.stars_rounded)),
-                      SliverToBoxAdapter(child: _buildActiveRow()),
+                      if (doodle)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: CustomPaint(
+                              painter: SketchBorderPainter(color: DoodleColors.sketchLine, strokeWidth: 1.5, radius: 16),
+                              child: Container(
+                                padding: const EdgeInsets.only(top: 8, bottom: 16),
+                                decoration: BoxDecoration(color: DoodleColors.cream.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(16)),
+                                child: Column(
+                                  children: [
+                                    _sectionHeader(context, 'ACTIVE', activeUsers.length, Icons.stars_rounded),
+                                    _buildActiveRow(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      else ...[
+                        SliverToBoxAdapter(child: _sectionHeader(context, 'ACTIVE', activeUsers.length, Icons.stars_rounded)),
+                        SliverToBoxAdapter(child: _buildActiveRow()),
+                      ]
                     ],
                     if (inactiveUsers.isNotEmpty) ...[
                       SliverToBoxAdapter(child: const SizedBox(height: 10)),
-                      SliverToBoxAdapter(child: _sectionHeader('INACTIVE', inactiveUsers.length, Icons.grid_view_rounded)),
-                      SliverPadding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        sliver: _buildInactiveGrid(),
-                      ),
+                      if (doodle)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: CustomPaint(
+                              painter: SketchBorderPainter(color: DoodleColors.sketchLine, strokeWidth: 1.5, radius: 16),
+                              child: Container(
+                                padding: const EdgeInsets.only(top: 8, bottom: 16),
+                                decoration: BoxDecoration(color: DoodleColors.paper, borderRadius: BorderRadius.circular(16)),
+                                child: Column(
+                                  children: [
+                                    _sectionHeader(context, 'INACTIVE', inactiveUsers.length, Icons.grid_view_rounded),
+                                    _buildInactiveGridBox(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      else ...[
+                        SliverToBoxAdapter(child: _sectionHeader(context, 'INACTIVE', inactiveUsers.length, Icons.grid_view_rounded)),
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          sliver: _buildInactiveGrid(),
+                        ),
+                      ]
                     ],
                     const SliverToBoxAdapter(child: SizedBox(height: 140)),
                   ],
@@ -1809,12 +1881,18 @@ class _GridView extends StatelessWidget {
                 onTap: onShowKnocks,
                 child: Container(
                   width: 44, height: 44,
-                  decoration: BoxDecoration(
-                    color: _orangeAcc,
-                    shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: _orangeAcc.withValues(alpha: 0.4), blurRadius: 10)],
-                  ),
-                  child: Center(child: Text('$pendingKnocksCount', style: GoogleFonts.outfit(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
+                  decoration: doodle
+                    ? BoxDecoration(
+                        color: DoodleColors.orange,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: DoodleColors.brown, width: 2),
+                      )
+                    : BoxDecoration(
+                        color: _orangeAcc,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: _orangeAcc.withValues(alpha: 0.4), blurRadius: 10)],
+                      ),
+                  child: Center(child: Text('$pendingKnocksCount', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 20) : GoogleFonts.outfit(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
                 ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(0.95, 0.95), end: const Offset(1.05, 1.05), duration: 1.seconds),
               ),
             ),
@@ -1825,18 +1903,26 @@ class _GridView extends StatelessWidget {
             right: 16,
             child: GestureDetector(
               onTap: onSettings,
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), shape: BoxShape.circle),
-                child: const Icon(Icons.settings_suggest_rounded, color: Colors.white70, size: 24),
-              ),
+              child: doodle
+                  ? CustomPaint(
+                      painter: SketchCirclePainter(color: DoodleColors.brown.withValues(alpha: 0.5), strokeWidth: 1.5),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        child: const Icon(Icons.settings_outlined, color: DoodleColors.brown, size: 24),
+                      ),
+                    )
+                  : Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), shape: BoxShape.circle),
+                      child: const Icon(Icons.settings_suggest_rounded, color: Colors.white70, size: 24),
+                    ),
             ),
           ),
 
           // ── Deploy Random — Bottom Bar ──
           Positioned(
             bottom: 30, left: 24, right: 24,
-            child: _buildRandomLuckBtn(),
+            child: _buildRandomLuckBtn(context),
           ),
         ],
       ),
@@ -1847,13 +1933,25 @@ class _GridView extends StatelessWidget {
   // HEADER
   // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildHeader(BuildContext context) {
+    final doodle = isDoodleMode(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('EXPLORE', style: GoogleFonts.inter(
-            color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, letterSpacing: 1.0)),
+          doodle
+            ? Row(
+                children: [
+                  const DoodleDecoration(icon: Icons.send_rounded, color: DoodleColors.orange, rotation: -15, size: 28),
+                  const SizedBox(width: 10),
+                  Text('Explore', style: DoodleFonts.heading(fontSize: 40, fontWeight: FontWeight.w800)),
+                  const Spacer(),
+                  const DoodleDecoration(icon: Icons.favorite_border_rounded, color: DoodleColors.coral, rotation: 10, size: 24),
+                  const SizedBox(width: 40), // space for settings
+                ],
+              )
+            : Text('EXPLORE', style: GoogleFonts.inter(
+                color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, letterSpacing: 1.0)),
           const SizedBox(height: 12),
           ValueListenableBuilder<String>(
             valueListenable: locationService.activeDistrictNotifier,
@@ -1863,20 +1961,26 @@ class _GridView extends StatelessWidget {
                 onTap: () { HapticFeedback.heavyImpact(); showLocationSearchSheet(context); },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                  ),
+                  decoration: doodle
+                    ? DoodleDecorations.chip()
+                    : BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                      ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.location_on, color: _orangeAcc, size: 16),
+                      Icon(Icons.location_on, color: doodle ? DoodleColors.orange : _orangeAcc, size: 16),
                       const SizedBox(width: 8),
-                      Text('Engaging in $disp', style: GoogleFonts.outfit(
-                        color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+                      Text(
+                        'Engaging in $disp',
+                        style: doodle
+                          ? DoodleFonts.body(fontSize: 14, fontWeight: FontWeight.w600, color: DoodleColors.orangeDark)
+                          : GoogleFonts.outfit(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)
+                      ),
                       const SizedBox(width: 6),
-                      const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white70, size: 18),
+                      Icon(Icons.keyboard_arrow_down_rounded, color: doodle ? DoodleColors.textMuted : Colors.white70, size: 18),
                     ],
                   ),
                 ),
@@ -1891,15 +1995,29 @@ class _GridView extends StatelessWidget {
   // ═══════════════════════════════════════════════════════════════════════════
   // SECTION HEADERS
   // ═══════════════════════════════════════════════════════════════════════════
-  Widget _sectionHeader(String title, int count, IconData icon) {
+  Widget _sectionHeader(BuildContext context, String title, int count, IconData icon) {
+    final doodle = isDoodleMode(context);
+    
+    if (doodle) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Row(
+          children: [
+            Text('$title $count', style: DoodleFonts.subheading(fontSize: 20, fontWeight: FontWeight.w700, color: DoodleColors.brown)),
+            const Spacer(),
+            DoodleTapeStrip(color: DoodleColors.pastelPeach.withValues(alpha: 0.5), rotation: title == 'ACTIVE' ? -5 : 5, width: 40, height: 15),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
       child: Row(
         children: [
           Icon(icon, color: _orangeAcc, size: 18),
           const SizedBox(width: 8),
-          Text(title, style: GoogleFonts.outfit(
-            color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+          Text(title, style: GoogleFonts.outfit(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -1950,6 +2068,25 @@ class _GridView extends StatelessWidget {
     );
   }
 
+  Widget _buildInactiveGridBox() {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 16,
+        childAspectRatio: 0.85,
+      ),
+      itemCount: inactiveUsers.length,
+      itemBuilder: (context, i) {
+        final p = inactiveUsers[i];
+        return _GridTileItem(profile: p, index: i, onTap: onSelect);
+      },
+    );
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // EMPTY / LOADING STATES
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1962,49 +2099,55 @@ class _GridView extends StatelessWidget {
     ]));
   }
 
-  Widget _buildLoading() {
-    return SkeletonLoaders.profileGridSkeleton();
+  Widget _buildLoading(BuildContext context) {
+    return SkeletonLoaders.profileGridSkeleton(doodle: isDoodleMode(context));
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // DEPLOY RANDOM — BOTTOM BAR
   // ═══════════════════════════════════════════════════════════════════════════
-  Widget _buildRandomLuckBtn() {
+  Widget _buildRandomLuckBtn(BuildContext context) {
+    final doodle = isDoodleMode(context);
     return GestureDetector(
       onTap: onRandom,
       child: Container(
         height: 72,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF1E1E1E), Color(0xFF101010)],
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-          ),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.8), blurRadius: 15, offset: const Offset(0, 10)),
-          ],
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1.5),
-        ),
+        decoration: doodle
+          ? DoodleDecorations.card(color: DoodleColors.orange, borderColor: DoodleColors.brown)
+          : BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF1E1E1E), Color(0xFF101010)],
+                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              ),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.8), blurRadius: 15, offset: const Offset(0, 10)),
+              ],
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1.5),
+            ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
           child: Stack(
             children: [
-              Positioned.fill(
-                child: Container()
-                  .animate(onPlay: (c) => c.repeat())
-                  .shimmer(duration: 3000.ms, color: Colors.white.withValues(alpha: 0.05), size: 0.2),
-              ),
+              if (!doodle)
+                Positioned.fill(
+                  child: Container()
+                    .animate(onPlay: (c) => c.repeat())
+                    .shimmer(duration: 3000.ms, color: Colors.white.withValues(alpha: 0.05), size: 0.2),
+                ),
               Row(
                 children: [
                   const SizedBox(width: 16),
                   Container(
                     width: 48, height: 48,
-                    decoration: BoxDecoration(
-                      color: _orangeAcc.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: _orangeAcc.withValues(alpha: 0.5)),
-                    ),
-                    child: const Icon(Icons.casino_rounded, color: _orangeAcc, size: 28),
+                    decoration: doodle
+                      ? DoodleDecorations.card(color: DoodleColors.cream)
+                      : BoxDecoration(
+                          color: _orangeAcc.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: _orangeAcc.withValues(alpha: 0.5)),
+                        ),
+                    child: Icon(Icons.casino_rounded, color: doodle ? DoodleColors.brown : _orangeAcc, size: 28),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -2012,14 +2155,25 @@ class _GridView extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Random Luck', style: GoogleFonts.outfit(
-                          color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                        Text('Dare fate. Discover more.', style: GoogleFonts.outfit(
-                          color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w400)),
+                        Text('Random Luck', style: doodle
+                          ? DoodleFonts.heading(fontSize: 24, color: DoodleColors.brown)
+                          : GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                        Text('Dare fate. Discover more.', style: doodle
+                          ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown.withValues(alpha: 0.8))
+                          : GoogleFonts.outfit(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w400)),
                       ],
                     ),
                   ),
-                  const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white54, size: 18),
+                  if (doodle)
+                    CustomPaint(
+                      painter: SketchCirclePainter(color: DoodleColors.brown, strokeWidth: 1.5),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        child: const Icon(Icons.arrow_forward_rounded, color: DoodleColors.brown, size: 20),
+                      ),
+                    )
+                  else
+                    const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white54, size: 18),
                   const SizedBox(width: 20),
                 ],
               ),
@@ -2044,8 +2198,12 @@ class _AvatarTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     final name = (profile['name'] ?? 'User').toString().split(' ')[0];
-    final url  = profile['avatar_url']?.toString() ?? '';
+    String url  = profile['avatar_url']?.toString() ?? '';
+    if (url.isEmpty) {
+      url = 'https://picsum.photos/seed/${profile['id'] ?? name}/200';
+    }
     final double size = 90;
 
     return GestureDetector(
@@ -2058,40 +2216,52 @@ class _AvatarTile extends StatelessWidget {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                Container(
-                  width: size, height: size,
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF8A00), Color(0xFFFF5C00)],
-                      begin: Alignment.topLeft, end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [BoxShadow(color: const Color(0xFFFF5C00).withValues(alpha: 0.4), blurRadius: 15)],
-                  ),
-                  child: ClipOval(
-                    child: url.isNotEmpty
-                        ? Image(image: _getSafeImageProvider(url), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback())
-                        : _fallback(),
-                  ),
-                ),
-                Positioned(
-                  bottom: 0, right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
+                if (doodle)
+                  DoodleAvatar(
+                    size: size,
+                    url: url,
+                    borderColor: DoodleColors.pastelAt(index),
+                  )
+                else
+                  Container(
+                    width: size, height: size,
+                    padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFF5C00),
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFF080808), width: 3),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFF8A00), Color(0xFFFF5C00)],
+                        begin: Alignment.topLeft, end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [BoxShadow(color: const Color(0xFFFF5C00).withValues(alpha: 0.4), blurRadius: 15)],
                     ),
-                    child: const Icon(Icons.star_rounded, color: Colors.white, size: 14),
+                    child: ClipOval(
+                      child: Image(image: _getSafeImageProvider(url), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback()),
+                    ),
+                  ),
+                Positioned(
+                  bottom: 0, right: doodle ? 4 : 0,
+                  child: Container(
+                    padding: doodle ? const EdgeInsets.all(4) : const EdgeInsets.all(6),
+                    decoration: doodle
+                      ? BoxDecoration(
+                          color: DoodleColors.orange,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: DoodleColors.brown, width: 2),
+                        )
+                      : BoxDecoration(
+                          color: const Color(0xFFFF5C00),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFF080808), width: 3),
+                        ),
+                    child: Icon(Icons.star_rounded, color: doodle ? DoodleColors.brown : Colors.white, size: 14),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            Text(name, style: GoogleFonts.outfit(
-              color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+            Text(name, style: doodle 
+              ? DoodleFonts.subheading(color: DoodleColors.brown, fontSize: 16)
+              : GoogleFonts.outfit(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
               maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
         ),
@@ -2121,8 +2291,43 @@ class _GridTileItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     final name = (profile['name'] ?? 'User').toString().split(' ')[0];
-    final url  = profile['avatar_url']?.toString() ?? '';
+    String url  = profile['avatar_url']?.toString() ?? '';
+    if (url.isEmpty) {
+      url = 'https://picsum.photos/seed/${profile['id'] ?? name}/200';
+    }
+
+    if (doodle) {
+      return GestureDetector(
+        onTap: () { HapticFeedback.lightImpact(); onTap(profile); },
+        child: Container(
+          decoration: DoodleDecorations.pastelCard(index),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CustomPaint(
+                painter: SketchCirclePainter(color: DoodleColors.brown, strokeWidth: 1.5),
+                child: Padding(
+                  padding: const EdgeInsets.all(4.0),
+                  child: ClipOval(
+                    child: SizedBox(
+                      width: 50, height: 50,
+                      child: Image(image: _getSafeImageProvider(url), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback()),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(name, style: DoodleFonts.subheading(fontSize: 16, color: DoodleColors.brown),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ).animate(key: ValueKey('grid_${profile['id']}'))
+        .fadeIn(duration: 400.ms, delay: (index * 40).ms)
+        .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.0, 1.0), duration: 400.ms, delay: (index * 40).ms, curve: Curves.easeOutCubic);
+    }
 
     return GestureDetector(
       onTap: () { HapticFeedback.lightImpact(); onTap(profile); },
@@ -2133,14 +2338,11 @@ class _GridTileItem extends StatelessWidget {
             ClipOval(
               child: SizedBox(
                 width: 60, height: 60,
-                child: url.isNotEmpty
-                    ? Image(image: _getSafeImageProvider(url), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback())
-                    : _fallback(),
+                child: Image(image: _getSafeImageProvider(url), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback()),
               ),
             ),
             const SizedBox(height: 12),
-            Text(name, style: GoogleFonts.outfit(
-              color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
+            Text(name, style: GoogleFonts.outfit(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
               maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
         ),
@@ -2246,16 +2448,22 @@ class _SplitScreenState extends State<_SplitScreen> {
       _CmpRowData(Icons.auto_awesome_rounded, 'Zodiac', _valOr(my['zodiac']), _valOr(th['zodiac'])),
     ];
 
+    final doodle = isDoodleMode(context);
+
     return Scaffold(
-      backgroundColor: _bgDeep,
+      backgroundColor: doodle ? DoodleColors.paper : _bgDeep,
       body: Stack(children: [
-        // Luxurious Ambient Background (Holographic Orbs)
-        Positioned(top: -100, left: -50, child: Container(
-          width: 300, height: 300, decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: _aurora2.withValues(alpha: 0.15), blurRadius: 100)]),
-        ).animate(onPlay: (c) => c.repeat(reverse: true)).slideY(begin: 0, end: 0.1, duration: 4.seconds)),
-        Positioned(bottom: -50, right: -100, child: Container(
-          width: 400, height: 400, decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: _aurora1.withValues(alpha: 0.1), blurRadius: 150)]),
-        ).animate(onPlay: (c) => c.repeat(reverse: true)).slideX(begin: 0, end: -0.1, duration: 5.seconds)),
+        if (doodle)
+          Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: ScatteredDoodlesPainter())))
+        else ...[
+          // Luxurious Ambient Background (Holographic Orbs)
+          Positioned(top: -100, left: -50, child: Container(
+            width: 300, height: 300, decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: _aurora2.withValues(alpha: 0.15), blurRadius: 100)]),
+          ).animate(onPlay: (c) => c.repeat(reverse: true)).slideY(begin: 0, end: 0.1, duration: 4.seconds)),
+          Positioned(bottom: -50, right: -100, child: Container(
+            width: 400, height: 400, decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: _aurora1.withValues(alpha: 0.1), blurRadius: 150)]),
+          ).animate(onPlay: (c) => c.repeat(reverse: true)).slideX(begin: 0, end: -0.1, duration: 5.seconds)),
+        ],
 
         SafeArea(child: Column(children: [
           // ── HEADER ──
@@ -2264,18 +2472,28 @@ class _SplitScreenState extends State<_SplitScreen> {
             child: Row(children: [
               GestureDetector(onTap: widget.onBack, child: Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05), shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                ),
-                child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+                decoration: doodle
+                  ? BoxDecoration(color: DoodleColors.cream, shape: BoxShape.circle, border: Border.all(color: DoodleColors.brown, width: 2))
+                  : BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05), shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                    ),
+                child: Icon(Icons.arrow_back_rounded, color: doodle ? DoodleColors.brown : Colors.white, size: 20),
               )),
               const Spacer(),
-              Text('VIBE ANALYSIS', style: GoogleFonts.outfit(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 4)),
+              if (doodle) const DoodleDecoration(icon: Icons.star_border, color: DoodleColors.orange, rotation: -10, size: 18),
+              if (doodle) const SizedBox(width: 8),
+              Text('VIBE ANALYSIS', style: doodle
+                ? DoodleFonts.heading(fontSize: 24, color: DoodleColors.brown)
+                : GoogleFonts.outfit(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 4)),
+              if (doodle) const SizedBox(width: 8),
+              if (doodle) const DoodleDecoration(icon: Icons.favorite_border, color: DoodleColors.coral, rotation: 10, size: 18),
               const Spacer(),
               const SizedBox(width: 44),
             ]),
           ),
+          if (doodle)
+             Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: CustomPaint(painter: NotebookLinesPainter(), size: const Size(double.infinity, 2))),
           // ── SCROLLABLE BODY ──
           Expanded(child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 120),
@@ -2306,7 +2524,7 @@ class _SplitScreenState extends State<_SplitScreen> {
               const SizedBox(height: 32),
 
               // Glass HUD
-              _CompatFooter(cats: widget.compatCategories, reasons: widget.topReasons),
+              _CompatFooter(cats: widget.compatCategories, reasons: widget.topReasons, thName: thName),
               const SizedBox(height: 24),
             ],
           )),
@@ -2337,56 +2555,93 @@ class _DualHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     return Column(children: [
       Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         // Me (Mirrored Left)
         Expanded(child: Container(
           padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.02),
-            borderRadius: BorderRadius.circular(36),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 40)],
-          ),
+          decoration: doodle
+            ? null
+            : BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.02),
+                borderRadius: BorderRadius.circular(36),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 40)],
+              ),
           child: Column(children: [
-            _GlassAv(url: myUrl, ringColor: const Color(0xFF00FFCC)),
+            if (doodle)
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  DoodleAvatar(size: 90, url: myUrl, borderColor: DoodleColors.pastelSky),
+                  Positioned(
+                    bottom: 0, right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(color: DoodleColors.orange, shape: BoxShape.circle, border: Border.all(color: DoodleColors.brown, width: 2)),
+                      child: const Icon(Icons.star_rounded, color: DoodleColors.brown, size: 14),
+                    ),
+                  ),
+                ],
+              )
+            else
+              _GlassAv(url: myUrl, ringColor: const Color(0xFF00FFCC)),
             const SizedBox(height: 16),
-            Text(myName, style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-            if (myAge.isNotEmpty) Text('$myAge \u00b7 $myGender', style: GoogleFonts.outfit(color: Colors.white54, fontSize: 11)),
+            Text(myName, style: doodle ? DoodleFonts.subheading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+            if (myAge.isNotEmpty) Text('$myAge \u00b7 $myGender', style: doodle ? DoodleFonts.body(fontSize: 12, color: DoodleColors.brown.withValues(alpha: 0.7)) : GoogleFonts.outfit(color: Colors.white54, fontSize: 11)),
             if (myCity.isNotEmpty) Padding(
               padding: const EdgeInsets.only(top: 4.0),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.location_on, color: Colors.white30, size: 10),
+                Icon(Icons.location_on, color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : Colors.white30, size: 10),
                 const SizedBox(width: 4),
-                Flexible(child: Text(myCity, style: GoogleFonts.outfit(color: Colors.white30, fontSize: 9), overflow: TextOverflow.ellipsis)),
+                Flexible(child: Text(myCity, style: doodle ? DoodleFonts.body(fontSize: 10, color: DoodleColors.brown.withValues(alpha: 0.5)) : GoogleFonts.outfit(color: Colors.white30, fontSize: 9), overflow: TextOverflow.ellipsis)),
               ]),
             ),
           ]),
         )),
         
         // Symmetrical Center Core
-        SizedBox(width: 140, height: 140, child: _PulsingCore(score: score)),
+        SizedBox(width: 140, height: 140, child: _PulsingCore(score: score, doodle: doodle)),
         
         // Them (Mirrored Right)
         Expanded(child: Container(
           padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.02),
-            borderRadius: BorderRadius.circular(36),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 40)],
-          ),
+          decoration: doodle
+            ? null
+            : BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.02),
+                borderRadius: BorderRadius.circular(36),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 40)],
+              ),
           child: Column(children: [
-            _GlassAv(url: thUrl, ringColor: const Color(0xFFFF0055)),
+            if (doodle)
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  DoodleAvatar(size: 90, url: thUrl, borderColor: DoodleColors.pastelLavender),
+                  Positioned(
+                    bottom: 0, right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(color: DoodleColors.orange, shape: BoxShape.circle, border: Border.all(color: DoodleColors.brown, width: 2)),
+                      child: const Icon(Icons.star_rounded, color: DoodleColors.brown, size: 14),
+                    ),
+                  ),
+                ],
+              )
+            else
+              _GlassAv(url: thUrl, ringColor: const Color(0xFFFF0055)),
             const SizedBox(height: 16),
-            Text(thName, style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-            if (thAge.isNotEmpty) Text('$thAge \u00b7 $thGender', style: GoogleFonts.outfit(color: Colors.white54, fontSize: 11)),
+            Text(thName, style: doodle ? DoodleFonts.subheading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+            if (thAge.isNotEmpty) Text('$thAge \u00b7 $thGender', style: doodle ? DoodleFonts.body(fontSize: 12, color: DoodleColors.brown.withValues(alpha: 0.7)) : GoogleFonts.outfit(color: Colors.white54, fontSize: 11)),
             if (thCity.isNotEmpty) Padding(
               padding: const EdgeInsets.only(top: 4.0),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.location_on, color: Colors.white30, size: 10),
+                Icon(Icons.location_on, color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : Colors.white30, size: 10),
                 const SizedBox(width: 4),
-                Flexible(child: Text(thCity, style: GoogleFonts.outfit(color: Colors.white30, fontSize: 9), overflow: TextOverflow.ellipsis)),
+                Flexible(child: Text(thCity, style: doodle ? DoodleFonts.body(fontSize: 10, color: DoodleColors.brown.withValues(alpha: 0.5)) : GoogleFonts.outfit(color: Colors.white30, fontSize: 9), overflow: TextOverflow.ellipsis)),
               ]),
             ),
           ]),
@@ -2403,9 +2658,9 @@ class _DualHeader extends StatelessWidget {
               border: Border.all(color: const Color(0xFF00FFCC).withValues(alpha: 0.2)),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.psychology_rounded, color: Color(0xFF00FFCC), size: 16),
+              Icon(Icons.psychology_rounded, color: doodle ? DoodleColors.brown : const Color(0xFF00FFCC), size: 16),
               const SizedBox(width: 8),
-              Flexible(child: Text(hint, style: GoogleFonts.outfit(color: const Color(0xFF00FFCC), fontSize: 11, fontStyle: FontStyle.italic, fontWeight: FontWeight.w500))),
+              Flexible(child: Text(hint, style: doodle ? DoodleFonts.body(fontSize: 12, color: DoodleColors.brown) : GoogleFonts.outfit(color: const Color(0xFF00FFCC), fontSize: 11, fontStyle: FontStyle.italic, fontWeight: FontWeight.w500))),
             ]),
           ),
         ),
@@ -2441,10 +2696,35 @@ class _GlassAv extends StatelessWidget {
 // ── PULSING CORE (3D Sync Rate) ─────────────────────────────────────────────
 class _PulsingCore extends StatelessWidget {
   final int score;
-  const _PulsingCore({required this.score});
+  final bool doodle;
+  const _PulsingCore({required this.score, this.doodle = false});
 
   @override
   Widget build(BuildContext context) {
+    if (doodle) {
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          Transform.rotate(
+            angle: -0.1,
+            child: CustomPaint(
+              painter: SketchCirclePainter(color: DoodleColors.coral, strokeWidth: 2),
+              child: Container(
+                width: 90, height: 90,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: DoodleColors.coral.withValues(alpha: 0.2),
+                ),
+                child: Center(
+                  child: Text('VS', style: GoogleFonts.bangers(fontSize: 48, color: DoodleColors.brown, letterSpacing: 2)),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ).animate().fadeIn(duration: 800.ms, delay: 200.ms).scale(begin: const Offset(0.2, 0.2), end: const Offset(1, 1), curve: Curves.elasticOut, duration: 1500.ms);
+    }
+
     Color coreColor = const Color(0xFF9D00FF); // Bright Purple
     if (score >= 80) { coreColor = const Color(0xFFCCFF00); } // Lime Green
     else if (score >= 50) { coreColor = const Color(0xFFFF5500); } // Vivid Orange
@@ -2496,11 +2776,66 @@ class _CmpRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     final isMatch = data.isMatch;
     final isMissing = data.isMissing;
     
     // Vibrant match highlights
     final matchColor = isMatch ? const Color(0xFFCCFF00) : (isMissing ? Colors.white12 : const Color(0xFFFF007F));
+
+    if (doodle) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 24),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+                  decoration: DoodleDecorations.pastelCard(index),
+                  child: Text(data.myVal == '—' ? 'UNKNOWN' : data.myVal, textAlign: TextAlign.center, style: DoodleFonts.body(color: DoodleColors.brown, fontSize: 16)),
+                )),
+                const SizedBox(width: 80),
+                Expanded(child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+                  decoration: DoodleDecorations.pastelCard(index + 3),
+                  child: Text(data.thVal == '—' ? 'UNKNOWN' : data.thVal, textAlign: TextAlign.center, style: DoodleFonts.body(color: DoodleColors.brown, fontSize: 16)),
+                )),
+              ],
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Transform.rotate(
+                  angle: (index % 2 == 0 ? -0.05 : 0.05),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: DoodleDecorations.card(color: DoodleColors.cream, radius: 4),
+                    child: Text(data.label.toUpperCase(), style: DoodleFonts.heading(color: DoodleColors.brown, fontSize: 16)),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: DoodleColors.paper, shape: BoxShape.circle, border: Border.all(color: DoodleColors.brown, width: 2)),
+                  child: Icon(data.icon, color: DoodleColors.brown, size: 24),
+                ),
+                const SizedBox(height: 4),
+                Transform.rotate(
+                  angle: (index % 2 == 0 ? 0.05 : -0.05),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: isMatch ? DoodleColors.green.withValues(alpha: 0.5) : DoodleColors.amber, borderRadius: BorderRadius.circular(4), border: Border.all(color: DoodleColors.brown, width: 1.5)),
+                    child: Text(isMatch ? 'MATCH' : (isMissing ? 'UNKNOWN' : 'DIFFERENT'), style: DoodleFonts.body(color: DoodleColors.brown, fontSize: 11, fontWeight: FontWeight.w700)),
+                  ),
+                )
+              ],
+            ),
+          ],
+        ),
+      ).animate().fadeIn(duration: 400.ms, delay: Duration(milliseconds: 50 * index + 100));
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -2590,6 +2925,7 @@ class _InterestsCmp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     final shared = myI.where(thI.contains).toSet();
     if (shared.length < 2) {
       final combined = {...myI, ...thI}.toList()..shuffle();
@@ -2600,23 +2936,27 @@ class _InterestsCmp extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: shared.isNotEmpty ? const Color(0xFFCCFF00).withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.02),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: shared.isNotEmpty ? const Color(0xFFCCFF00) : Colors.white.withValues(alpha: 0.1), width: 2),
-      ),
+      decoration: doodle
+        ? DoodleDecorations.card(color: shared.isNotEmpty ? DoodleColors.green.withValues(alpha: 0.1) : DoodleColors.cream)
+        : BoxDecoration(
+            color: shared.isNotEmpty ? const Color(0xFFCCFF00).withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.02),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: shared.isNotEmpty ? const Color(0xFFCCFF00) : Colors.white.withValues(alpha: 0.1), width: 2),
+          ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(Icons.local_fire_department_rounded, color: shared.isNotEmpty ? const Color(0xFFCCFF00) : Colors.white54, size: 24),
+          Icon(Icons.local_fire_department_rounded, color: shared.isNotEmpty ? (doodle ? DoodleColors.green : const Color(0xFFCCFF00)) : Colors.white54, size: 24),
           const SizedBox(width: 10),
-          Text('COMMON GROUND', style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+          Text('COMMON GROUND', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
           const Spacer(),
-          if (shared.isNotEmpty) Transform(
-            transform: Matrix4.skewX(-0.2),
+          if (shared.isNotEmpty) Transform.rotate(
+            angle: doodle ? -0.05 : -0.2,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: const Color(0xFFCCFF00), borderRadius: BorderRadius.circular(6)),
-              child: Text('${shared.length} MATCHES', style: GoogleFonts.outfit(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+              decoration: doodle
+                ? DoodleDecorations.card(color: DoodleColors.green.withValues(alpha: 0.5))
+                : BoxDecoration(color: const Color(0xFFCCFF00), borderRadius: BorderRadius.circular(6)),
+              child: Text('${shared.length} MATCHES', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 12) : GoogleFonts.outfit(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
             ),
           ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(1, 1), end: const Offset(1.05, 1.05), duration: 800.ms),
         ]),
@@ -2629,18 +2969,22 @@ class _InterestsCmp extends StatelessWidget {
               angle: isShared ? (i.length % 2 == 0 ? 0.05 : -0.05) : 0,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isShared ? const Color(0xFFCCFF00) : Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: isShared ? Colors.transparent : Colors.white.withValues(alpha: 0.1), width: 2),
-                  boxShadow: isShared ? [BoxShadow(color: const Color(0xFFCCFF00).withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4))] : [],
-                ),
-                child: Text(i.toUpperCase(), style: GoogleFonts.outfit(
-                  color: isShared ? Colors.black : Colors.white54,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
-                )),
+                decoration: doodle
+                  ? DoodleDecorations.card(color: isShared ? DoodleColors.green.withValues(alpha: 0.3) : DoodleColors.cream)
+                  : BoxDecoration(
+                      color: isShared ? const Color(0xFFCCFF00) : Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: isShared ? Colors.transparent : Colors.white.withValues(alpha: 0.1), width: 2),
+                      boxShadow: isShared ? [BoxShadow(color: const Color(0xFFCCFF00).withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4))] : [],
+                    ),
+                child: Text(i.toUpperCase(), style: doodle 
+                  ? DoodleFonts.body(color: isShared ? DoodleColors.brown : DoodleColors.brown.withValues(alpha: 0.5), fontSize: 14)
+                  : GoogleFonts.outfit(
+                      color: isShared ? Colors.black : Colors.white54,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                    )),
               ).animate(target: isShared ? 1 : 0).fadeIn(duration: 800.ms),
             );
           }).toList(),
@@ -2654,10 +2998,12 @@ class _InterestsCmp extends StatelessWidget {
 class _CompatFooter extends StatelessWidget {
   final Map<String, double> cats;
   final List<String> reasons;
-  const _CompatFooter({required this.cats, required this.reasons});
+  final String thName;
+  const _CompatFooter({required this.cats, required this.reasons, this.thName = ''});
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     // Generate some contextual icebreakers based on reasons
     final List<String> starters = [];
     if (reasons.isNotEmpty) {
@@ -2673,47 +3019,58 @@ class _CompatFooter extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.02),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 2),
-      ),
+      decoration: doodle
+        ? DoodleDecorations.card(color: DoodleColors.cream)
+        : BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.02),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 2),
+          ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (reasons.isNotEmpty) ...[
-          Row(children: [
-            const Icon(Icons.flash_on_rounded, color: Color(0xFFCCFF00), size: 22),
-            const SizedBox(width: 8),
-            Text('WHY YOU CLICK', style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
-          ]),
-          const SizedBox(height: 20),
+          if (doodle)
+            Text('You and $thName have some similar vibes..', style: DoodleFonts.heading(color: DoodleColors.brown, fontSize: 24))
+          else
+            Row(children: [
+              Icon(Icons.flash_on_rounded, color: const Color(0xFFCCFF00), size: 22),
+              const SizedBox(width: 8),
+              Text('WHY YOU CLICK', style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+            ]),
+          if (!doodle) const SizedBox(height: 20),
+          if (doodle) const SizedBox(height: 16),
           ...reasons.asMap().entries.map((e) => Padding(padding: const EdgeInsets.only(bottom: 12),
-            child: Transform(
-                transform: Matrix4.skewX(-0.05),
+            child: Transform.rotate(
+                angle: doodle ? (e.key % 2 == 0 ? 0.02 : -0.02) : 0,
               child: Container(
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCCFF00).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFCCFF00).withValues(alpha: 0.3), width: 2),
-                ),
+                decoration: doodle
+                  ? DoodleDecorations.card(color: DoodleColors.orange.withValues(alpha: 0.1))
+                  : BoxDecoration(
+                      color: const Color(0xFFCCFF00).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFCCFF00).withValues(alpha: 0.3), width: 2),
+                    ),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('0${e.key + 1}', style: GoogleFonts.outfit(color: const Color(0xFFCCFF00), fontSize: 14, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+                  Text('0${e.key + 1}', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 16) : GoogleFonts.outfit(color: const Color(0xFFCCFF00), fontSize: 14, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
                   const SizedBox(width: 12),
-                  Expanded(child: Text(e.value, style: GoogleFonts.outfit(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600))),
+                  Expanded(child: Text(e.value, style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14) : GoogleFonts.outfit(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600))),
                 ]),
               ),
             ),
           )),
           const SizedBox(height: 24),
-          Container(height: 2, color: Colors.white10),
+          if (doodle)
+             CustomPaint(painter: NotebookLinesPainter(), size: const Size(double.infinity, 2))
+          else
+            Container(height: 2, color: Colors.white10),
           const SizedBox(height: 24),
         ],
         
         // AI Conversation Starters
         Row(children: [
-          const Icon(Icons.chat_bubble_rounded, color: Color(0xFFFF007F), size: 22),
+          Icon(Icons.chat_bubble_rounded, color: doodle ? DoodleColors.blue : const Color(0xFFFF007F), size: 22),
           const SizedBox(width: 8),
-          Text('CONVERSATION STARTERS', style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+          Text('CONVERSATION STARTERS', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
         ]),
         const SizedBox(height: 16),
         ...starters.map((s) => Padding(
@@ -2721,12 +3078,14 @@ class _CompatFooter extends StatelessWidget {
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF007F).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFFF007F).withValues(alpha: 0.4), width: 2),
-            ),
-            child: Text('"$s"', style: GoogleFonts.outfit(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic)),
+            decoration: doodle
+              ? DoodleDecorations.card(color: DoodleColors.blue.withValues(alpha: 0.1))
+              : BoxDecoration(
+                  color: const Color(0xFFFF007F).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFFF007F).withValues(alpha: 0.4), width: 2),
+                ),
+            child: Text('"$s"', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 15) : GoogleFonts.outfit(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic)),
           ),
         )),
         
@@ -3167,6 +3526,7 @@ class _ActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
       child: Row(children: [
@@ -3175,15 +3535,27 @@ class _ActionBar extends StatelessWidget {
           onTap: onBack,
           child: Container(
             width: 58, height: 58,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.05),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-            ),
-            child: const Icon(Icons.close_rounded, color: Colors.white54, size: 26),
+            decoration: doodle
+              ? BoxDecoration(color: DoodleColors.cream, shape: BoxShape.circle, border: Border.all(color: DoodleColors.brown, width: 2))
+              : BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.05),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                ),
+            child: Icon(Icons.close_rounded, color: doodle ? DoodleColors.brown : Colors.white54, size: 26),
           ),
         ),
         const SizedBox(width: 12),
+        if (doodle)
+          GestureDetector(
+            onTap: () => onSuperKnock(target),
+            child: Container(
+              width: 58, height: 58,
+              decoration: BoxDecoration(color: DoodleColors.pastelSky, shape: BoxShape.circle, border: Border.all(color: DoodleColors.brown, width: 2)),
+              child: const Icon(Icons.flash_on_rounded, color: DoodleColors.brown, size: 26),
+            ),
+          ),
+        if (doodle) const SizedBox(width: 12),
         // Knock
         Expanded(child: GestureDetector(
           onTap: () => onKnock(target),
@@ -3191,33 +3563,46 @@ class _ActionBar extends StatelessWidget {
             children: [
               Container(
                 height: 58,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF3060), _orange],
-                    begin: Alignment.topLeft, end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: _orange.withValues(alpha: 0.5), blurRadius: 22, offset: const Offset(0, 6))],
-                ),
+                decoration: doodle
+                  ? BoxDecoration(color: DoodleColors.orange, borderRadius: BorderRadius.circular(30), border: Border.all(color: DoodleColors.brown, width: 2))
+                  : BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFF3060), _orange],
+                        begin: Alignment.topLeft, end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [BoxShadow(color: _orange.withValues(alpha: 0.5), blurRadius: 22, offset: const Offset(0, 6))],
+                    ),
                 child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  const Icon(Icons.waving_hand_rounded, color: Colors.white, size: 22),
+                  Icon(doodle ? Icons.waving_hand_outlined : Icons.waving_hand_rounded, color: doodle ? DoodleColors.brown : Colors.white, size: 22),
                   const SizedBox(width: 10),
-                  Text('KNOCK', style: GoogleFonts.outfit(
+                  Text('KNOCK', style: doodle ? DoodleFonts.heading(fontSize: 24, color: DoodleColors.brown) : GoogleFonts.outfit(
                     color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1.8)),
                 ]),
               ),
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
-                  ),
-                ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 2000.ms, color: Colors.white.withValues(alpha: 0.8)),
-              ),
+              if (!doodle)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
+                    ),
+                  ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 2000.ms, color: Colors.white.withValues(alpha: 0.8)),
+                ),
             ],
           ).animate(onPlay: (c) => c.repeat(reverse: true))
             .scale(begin: const Offset(1, 1), end: const Offset(1.02, 1.02), duration: 1200.ms),
         )),
+        if (doodle) const SizedBox(width: 12),
+        if (doodle)
+          GestureDetector(
+            onTap: () => _showMiniProfile(context, target),
+            child: Container(
+              width: 58, height: 58,
+              decoration: BoxDecoration(color: DoodleColors.cream, shape: BoxShape.circle, border: Border.all(color: DoodleColors.brown, width: 2)),
+              child: const Icon(Icons.person_outline_rounded, color: DoodleColors.brown, size: 26),
+            ),
+          ),
       ]),
     );
   }
@@ -3362,8 +3747,10 @@ class _SettingsLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: GoogleFonts.outfit(
-      color: Colors.white30, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2));
+    final doodle = isDoodleMode(context);
+    return Text(text, style: doodle 
+      ? DoodleFonts.subheading(fontSize: 14, color: DoodleColors.brown.withValues(alpha: 0.6))
+      : GoogleFonts.outfit(color: Colors.white30, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2));
   }
 }
 
@@ -3378,23 +3765,28 @@ class _VisBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: 200.ms,
         padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: selected ? selColor.withValues(alpha: 0.12) : const Color(0xFF181820),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: selected ? selColor : Colors.transparent, width: 2),
-        ),
+        decoration: doodle
+          ? DoodleDecorations.card(color: selected ? selColor.withValues(alpha: 0.2) : DoodleColors.cream)
+          : BoxDecoration(
+              color: selected ? selColor.withValues(alpha: 0.12) : const Color(0xFF181820),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: selected ? selColor : Colors.transparent, width: 2),
+            ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, color: selected ? selColor : Colors.white24, size: 24),
+          Icon(icon, color: selected ? selColor : (doodle ? DoodleColors.brown.withValues(alpha: 0.3) : Colors.white24), size: 24),
           const SizedBox(height: 4),
-          Text(label, style: GoogleFonts.outfit(
-            color: selected ? Colors.white : Colors.white38, fontWeight: FontWeight.w700, fontSize: 14)),
-          Text(sub, style: GoogleFonts.outfit(
-            color: selected ? Colors.white.withValues(alpha: 0.40) : Colors.white.withValues(alpha: 0.20), fontSize: 10)),
+          Text(label, style: doodle
+            ? DoodleFonts.heading(fontSize: 18, color: selected ? selColor : DoodleColors.brown)
+            : GoogleFonts.outfit(color: selected ? Colors.white : Colors.white38, fontWeight: FontWeight.w700, fontSize: 14)),
+          Text(sub, style: doodle
+            ? DoodleFonts.body(fontSize: 12, color: selected ? selColor.withValues(alpha: 0.8) : DoodleColors.brown.withValues(alpha: 0.5))
+            : GoogleFonts.outfit(color: selected ? Colors.white.withValues(alpha: 0.40) : Colors.white.withValues(alpha: 0.20), fontSize: 10)),
         ]),
       ),
     );
@@ -3810,30 +4202,33 @@ class _KnockStatsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     final double acceptanceRate = total == 0 ? 0 : (accepted / total);
     
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F0F16),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 15)],
-      ),
+      decoration: doodle
+        ? DoodleDecorations.card(color: DoodleColors.paper)
+        : BoxDecoration(
+            color: const Color(0xFF0F0F16),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 15)],
+          ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _statItem(Icons.doorbell_rounded, total.toString(), 'Knocks\nReceived', const Color(0xFFFF3060), () {
+          _statItem(doodle, Icons.doorbell_rounded, total.toString(), 'Knocks\nReceived', doodle ? DoodleColors.orange : const Color(0xFFFF3060), context, () {
             Navigator.pop(context); // Close the studio sheet
             Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen(initialFilter: 'Knocks')));
           }),
-          Container(width: 1, height: 40, color: Colors.white12),
-          _statItem(Icons.handshake_rounded, accepted.toString(), 'Knocks\nAccepted', const Color(0xFF00E676), () {
+          Container(width: 1, height: 40, color: doodle ? DoodleColors.brown.withValues(alpha: 0.2) : Colors.white12),
+          _statItem(doodle, Icons.handshake_rounded, accepted.toString(), 'Knocks\nAccepted', doodle ? DoodleColors.green : const Color(0xFF00E676), context, () {
             Navigator.pop(context);
             Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen(initialFilter: 'All')));
           }),
-          Container(width: 1, height: 40, color: Colors.white12),
-          _statItem(Icons.analytics_rounded, '${(acceptanceRate * 100).toInt()}%', 'Acceptance\nRate', const Color(0xFFFF6B00), () {
+          Container(width: 1, height: 40, color: doodle ? DoodleColors.brown.withValues(alpha: 0.2) : Colors.white12),
+          _statItem(doodle, Icons.analytics_rounded, '${(acceptanceRate * 100).toInt()}%', 'Acceptance\nRate', doodle ? DoodleColors.blue : const Color(0xFFFF6B00), context, () {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text('You accept ${(acceptanceRate * 100).toInt()}% of your incoming knocks!'),
               backgroundColor: const Color(0xFFFF6B00),
@@ -3844,7 +4239,7 @@ class _KnockStatsBar extends StatelessWidget {
     );
   }
 
-  Widget _statItem(IconData icon, String val, String label, Color color, VoidCallback onTap) {
+  Widget _statItem(bool doodle, IconData icon, String val, String label, Color color, BuildContext context, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -3855,11 +4250,11 @@ class _KnockStatsBar extends StatelessWidget {
             children: [
               Icon(icon, color: color, size: 16),
               const SizedBox(width: 6),
-              Text(val, style: GoogleFonts.outfit(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+              Text(val, style: doodle ? DoodleFonts.heading(fontSize: 24, color: DoodleColors.brown) : GoogleFonts.outfit(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
             ],
           ),
           const SizedBox(height: 4),
-          Text(label, textAlign: TextAlign.center, style: GoogleFonts.outfit(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600, height: 1.2)),
+          Text(label, textAlign: TextAlign.center, style: doodle ? DoodleFonts.body(fontSize: 12, color: DoodleColors.brown.withValues(alpha: 0.7)) : GoogleFonts.outfit(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600, height: 1.2)),
         ],
       ),
     );
@@ -3932,27 +4327,32 @@ class _CustomQuestionBuilderState extends State<_CustomQuestionBuilder> {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     if (!isExpanded) {
       return GestureDetector(
         onTap: () => setState(() => isExpanded = true),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: _orange.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _orange.withValues(alpha: 0.3)),
-          ),
+          decoration: doodle
+            ? DoodleDecorations.card(color: DoodleColors.orange.withValues(alpha: 0.1))
+            : BoxDecoration(
+                color: _orange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _orange.withValues(alpha: 0.3)),
+              ),
           child: Column(
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: _orange.withValues(alpha: 0.2), shape: BoxShape.circle),
-                child: const Icon(Icons.add_rounded, color: _orange, size: 28),
+                decoration: BoxDecoration(color: doodle ? DoodleColors.orange.withValues(alpha: 0.2) : _orange.withValues(alpha: 0.2), shape: BoxShape.circle),
+                child: Icon(Icons.add_rounded, color: doodle ? DoodleColors.brown : _orange, size: 28),
               ),
               const SizedBox(height: 12),
               Text('Create Gateway Question',
-                style: GoogleFonts.outfit(color: _orange, fontSize: 16, fontWeight: FontWeight.w700)),
+                style: doodle 
+                  ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 20)
+                  : GoogleFonts.outfit(color: _orange, fontSize: 16, fontWeight: FontWeight.w700)),
             ],
           ),
         ),
@@ -3961,12 +4361,14 @@ class _CustomQuestionBuilderState extends State<_CustomQuestionBuilder> {
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF14141A),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _orange.withValues(alpha: 0.5), width: 2),
-        boxShadow: [BoxShadow(color: _orange.withValues(alpha: 0.15), blurRadius: 20)],
-      ),
+      decoration: doodle
+        ? DoodleDecorations.card(color: DoodleColors.paper)
+        : BoxDecoration(
+            color: const Color(0xFF14141A),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: _orange.withValues(alpha: 0.5), width: 2),
+            boxShadow: [BoxShadow(color: _orange.withValues(alpha: 0.15), blurRadius: 20)],
+          ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

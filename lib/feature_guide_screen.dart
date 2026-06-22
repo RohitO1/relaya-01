@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'services/doodle_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────
 // FEATURE GUIDE — 5-slide walkthrough
@@ -91,7 +92,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> with TickerProv
     final isLast = _current == _slides.length - 1;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF000000),
       body: SafeArea(
         child: Stack(
           children: [

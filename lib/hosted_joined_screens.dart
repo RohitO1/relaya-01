@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'profile_screen.dart';
 import 'services/notification_service.dart';
 import 'rush_in_consumer_detail_view.dart';
+import 'services/doodle_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (matches profile_screen.dart palette)
@@ -33,7 +34,7 @@ class HostedByYouScreen extends StatelessWidget {
     return _PremiumBackground(
       glowColor: _cyan,
       child: Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: isDoodleMode(context) ? DoodleColors.cream : Colors.transparent,
         appBar: AppBar(
           backgroundColor: Colors.transparent, elevation: 0,
           leading: const BackButton(color: Colors.white),

@@ -25,6 +25,7 @@ import 'games/two_truths_game.dart';
 import 'games/blind_date_game.dart';
 import 'package:meetra_app/bolroom/bolroom_dm_chat_screen.dart';
 import 'package:meetra_app/services/voice_mask_service.dart';
+import 'services/doodle_theme.dart';
 
 class _BolRoomBaseRoute extends OverlayRoute<void> {
   _BolRoomBaseRoute({required this.builder});
@@ -6835,7 +6836,7 @@ class BolRoomPostSummaryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0C0914),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF0C0914),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),

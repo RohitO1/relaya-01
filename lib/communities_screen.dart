@@ -1,15 +1,19 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart' as emoji;
 import 'services/location_service.dart';
 import 'image_upload_service.dart';
 import 'widgets/location_picker_sheet.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
+import 'services/doodle_theme.dart';
 
 // --- Data Models ---
 class Community {
@@ -91,7 +95,7 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
   RealtimeChannel? _listChannel;
 
   String _activeFilter = 'All';
-  final List<String> _filters = ['All', 'Joined'];
+  final List<String> _filters = ['All', 'Local', 'Joined'];
   Set<String> _joinedCommunityIds = {};
 
   @override
@@ -110,7 +114,10 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
   }
 
   void _onLocationChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      _fetchCamps();
+      setState(() {});
+    }
   }
 
   void _subscribeRealtime() {
@@ -808,17 +815,41 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
         return _joinedCommunityIds.contains(c.id);
       }
 
-      // 3. District location filter (fuzzy match — case-insensitive contains)
-      final userDistrict = locationService.activeDistrict;
-      if (userDistrict.isNotEmpty) {
+      // 3. Local-only filter
+      if (_activeFilter == 'Local') {
+        final userDistrict = locationService.activeDistrict;
+        if (userDistrict.isEmpty || userDistrict == 'Unknown') return false;
         final ud = userDistrict.toLowerCase().trim();
         final cd = (c.locationDistrict ?? '').toLowerCase().trim();
-        // Show community if: it has no location tag, OR its district matches the user's
+        return cd.contains(ud) || ud.contains(cd);
+      }
+
+      // 4. 'All': district soft filter (show community if untagged OR matches district)
+      final userDistrict = locationService.activeDistrict;
+      if (userDistrict.isNotEmpty && userDistrict != 'Unknown') {
+        final ud = userDistrict.toLowerCase().trim();
+        final cd = (c.locationDistrict ?? '').toLowerCase().trim();
         if (cd.isEmpty || cd == 'unknown') return true;
         return cd.contains(ud) || ud.contains(cd);
       }
       return true;
     }).toList();
+
+    // Sort: local communities first in 'All' view
+    if (_activeFilter == 'All') {
+      final userDistrict = locationService.activeDistrict.toLowerCase().trim();
+      filteredCommunities.sort((a, b) {
+        final aIsLocal = userDistrict.isNotEmpty &&
+            ((a.locationDistrict ?? '').toLowerCase().contains(userDistrict) ||
+             userDistrict.contains((a.locationDistrict ?? '').toLowerCase()));
+        final bIsLocal = userDistrict.isNotEmpty &&
+            ((b.locationDistrict ?? '').toLowerCase().contains(userDistrict) ||
+             userDistrict.contains((b.locationDistrict ?? '').toLowerCase()));
+        if (aIsLocal && !bIsLocal) return -1;
+        if (!aIsLocal && bIsLocal) return 1;
+        return b.memberCount.compareTo(a.memberCount);
+      });
+    }
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -842,7 +873,7 @@ class CommunitiesStandaloneScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF000000),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -909,21 +940,37 @@ class _CommunitiesListView extends StatelessWidget {
             Expanded(
               child: communities.isEmpty
                   ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.explore_off, color: Colors.white.withValues(alpha: 0.2), size: 64),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No communities found',
-                            style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Try a different filter or search query',
-                            style: GoogleFonts.inter(color: Colors.white54, fontSize: 14),
-                          ),
-                        ],
+                      child: Container(
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.03),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF6B00).withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.explore_off_rounded, color: Color(0xFFFF6B00), size: 48),
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              'No Camps Found',
+                              style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Try a different filter or search query\\nto discover new communities.',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.inter(color: Colors.white54, fontSize: 14, height: 1.5),
+                            ),
+                          ],
+                        ),
                       ),
                     )
                   : ListView.builder(
@@ -955,28 +1002,6 @@ class _CommunitiesListView extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              if (isUnread)
-                                Positioned(
-                                  top: -4,
-                                  right: -4,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFFFF6B00),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '${c.unreadCount}',
-                                        style: GoogleFonts.inter(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
                             ],
                           ),
                           const SizedBox(width: 16),
@@ -1052,17 +1077,40 @@ class _CommunitiesListView extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          // Timestamp on the very right
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              c.lastMessageTime,
-                              style: GoogleFonts.inter(
-                                color: const Color(0xFF7A7A7A),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
+                          // Timestamp and Unread Bubble on the right
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                c.lastMessageTime,
+                                style: GoogleFonts.inter(
+                                  color: isUnread ? const Color(0xFFFF6B00) : const Color(0xFF7A7A7A),
+                                  fontSize: 12,
+                                  fontWeight: isUnread ? FontWeight.w600 : FontWeight.w500,
+                                ),
                               ),
-                            ),
+                              if (isUnread) ...[
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFFF6B00),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${c.unreadCount}',
+                                      style: GoogleFonts.inter(
+                                        color: const Color(0xFF0D0F14),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                       ),
@@ -1105,6 +1153,7 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
   final TextEditingController _textCtrl = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final Map<String, Map<String, dynamic>> _profileCache = {};
+  bool _showEmojiPicker = false;
 
   List<Map<String, dynamic>> _messages = [];
   bool _isLoading = true;
@@ -2435,11 +2484,17 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
                                       border: InputBorder.none,
                                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                     ),
+                                    onTap: () {
+                                      if (_showEmojiPicker) setState(() => _showEmojiPicker = false);
+                                    },
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.sentiment_satisfied_alt, color: Colors.white54),
-                                  onPressed: () {},
+                                  icon: Icon(_showEmojiPicker ? Icons.keyboard : Icons.sentiment_satisfied_alt, color: Colors.white54),
+                                  onPressed: () {
+                                    FocusScope.of(context).unfocus();
+                                    setState(() => _showEmojiPicker = !_showEmojiPicker);
+                                  },
                                 ),
                               ],
                             ),
@@ -2481,6 +2536,32 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
                 ),
           ),
         ),
+        if (_showEmojiPicker)
+          SizedBox(
+            height: 250,
+            child: emoji.EmojiPicker(
+              textEditingController: _textCtrl,
+              config: emoji.Config(
+                height: 250,
+                checkPlatformCompatibility: true,
+                emojiViewConfig: emoji.EmojiViewConfig(
+                  backgroundColor: const Color(0xFF1B202D),
+                  columns: 7,
+                  emojiSizeMax: 28,
+                ),
+                categoryViewConfig: const emoji.CategoryViewConfig(
+                  backgroundColor: Color(0xFF1B202D),
+                  iconColorSelected: Color(0xFFFF6B00),
+                  indicatorColor: Color(0xFFFF6B00),
+                ),
+                bottomActionBarConfig: const emoji.BottomActionBarConfig(
+                  backgroundColor: Color(0xFF1B202D),
+                  buttonColor: Color(0xFF1B202D),
+                  buttonIconColor: Colors.white,
+                ),
+              ),
+            ),
+          ),
         ],
           ],
         );

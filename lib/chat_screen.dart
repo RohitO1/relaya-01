@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'messages_screen.dart';
 import 'communities_screen.dart';
 import 'knocks_list_screen.dart';
+import 'services/doodle_theme.dart';
 
 class ChatScreen extends StatefulWidget {
   final bool isBolroomMode;
@@ -264,103 +265,134 @@ class _ChatScreenState extends State<ChatScreen> {
   // ============================================================
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Title: "CHAT" ──
-            Padding(
-              padding: const EdgeInsets.only(left: 20, top: 16, bottom: 12),
-              child: Text(
-                _selectedTab == 0 ? 'CHAT' : 'TEXT CAMPS',
-                style: GoogleFonts.inter(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  fontStyle: FontStyle.italic,
-                  letterSpacing: 1.0,
-                ),
+      backgroundColor: doodle ? DoodleColors.cream : const Color(0xFF000000),
+      body: Stack(
+        children: [
+          // Doodle background
+          if (doodle) Positioned.fill(
+            child: IgnorePointer(
+              child: Stack(
+                children: [
+                  Container(decoration: DoodleDecorations.parchmentBg()),
+                  CustomPaint(painter: ScatteredDoodlesPainter(seed: 55, density: 0.3, color: const Color(0x18B8956E))),
+                ],
               ),
             ),
+          ),
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Title ──
+                Padding(
+                  padding: const EdgeInsets.only(left: 20, top: 16, bottom: 12),
+                  child: doodle
+                    ? Text(
+                        _selectedTab == 0 ? 'Chat' : 'Communities',
+                        style: DoodleFonts.heading(fontSize: 32, fontWeight: FontWeight.w700),
+                      )
+                    : Text(
+                        _selectedTab == 0 ? 'CHAT' : 'TEXT CAMPS',
+                        style: GoogleFonts.inter(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          fontStyle: FontStyle.italic,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                ),
 
-            // ── Direct / Communities toggle tabs ──
-            _buildTabToggle(),
+                // ── Direct / Communities toggle tabs ──
+                _buildTabToggle(),
 
-            const SizedBox(height: 16),
+                const SizedBox(height: 16),
 
-            // ── Content area ──
-            Expanded(
-              child: _selectedTab == 1 
-                ? const CommunitiesListWidget()
-                : _myUid.isEmpty
-                  ? const Center(child: Text('Please sign in to see messages', style: TextStyle(color: Colors.white54)))
-                  : _isLoading
-                    ? SkeletonLoaders.chatListSkeleton()
-                    : _conversations.isEmpty
-                        ? _buildEmptyState()
-                        : ListView.builder(
-                            itemCount: _conversations.length,
-                            padding: const EdgeInsets.only(top: 4, bottom: 100),
-                            itemBuilder: (context, index) {
-                              final convo = _conversations[index];
-                              return _buildConversationRow(convo.key, convo.value, index);
-                            },
-                          ),
+                // ── Content area ──
+                Expanded(
+                  child: _selectedTab == 1 
+                    ? const CommunitiesListWidget()
+                    : _myUid.isEmpty
+                      ? Center(child: Text('Please sign in to see messages', style: TextStyle(color: doodle ? DoodleColors.textMuted : Colors.white54)))
+                      : _isLoading
+                        ? SkeletonLoaders.chatListSkeleton(doodle: isDoodleMode(context))
+                        : _conversations.isEmpty
+                            ? _buildEmptyState()
+                            : ListView.builder(
+                                itemCount: _conversations.length,
+                                padding: const EdgeInsets.only(top: 4, bottom: 100),
+                                itemBuilder: (context, index) {
+                                  final convo = _conversations[index];
+                                  return _buildConversationRow(convo.key, convo.value, index);
+                                },
+                              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   // ── Direct / Communities toggle ──
   Widget _buildTabToggle() {
+    final doodle = isDoodleMode(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
         height: 44,
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: doodle ? DoodleColors.paper : const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(25),
+          border: doodle ? Border.all(color: DoodleColors.cardBorder, width: 1.5) : null,
         ),
         child: Row(
           children: [
-            // Direct tab
             Expanded(
               child: GestureDetector(
                 onTap: () {
                   setState(() => _selectedTab = 0);
-                  _fetchConversations(); // Refresh DMs when switching back to Direct
+                  _fetchConversations();
                 },
                 child: Container(
                   height: 44,
                   decoration: BoxDecoration(
-                    color: _selectedTab == 0 ? const Color(0xFFFF6B00) : Colors.transparent,
+                    color: _selectedTab == 0
+                      ? (doodle ? DoodleColors.orange : const Color(0xFFFF6B00))
+                      : Colors.transparent,
                     borderRadius: BorderRadius.circular(25),
                   ),
                   child: Center(
                     child: Text(
                       'Direct',
-                      style: GoogleFonts.inter(
-                        color: _selectedTab == 0 ? Colors.white : Colors.white54,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
+                      style: doodle
+                        ? DoodleFonts.body(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                            color: _selectedTab == 0 ? Colors.white : DoodleColors.textMuted,
+                          )
+                        : GoogleFonts.inter(
+                            color: _selectedTab == 0 ? Colors.white : Colors.white54,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                     ),
                   ),
                 ),
               ),
             ),
-            // Communities tab
             Expanded(
               child: GestureDetector(
                 onTap: () => setState(() => _selectedTab = 1),
                 child: Container(
                   height: 44,
                   decoration: BoxDecoration(
-                    color: _selectedTab == 1 ? const Color(0xFFFF6B00) : Colors.transparent,
+                    color: _selectedTab == 1
+                      ? (doodle ? DoodleColors.orange : const Color(0xFFFF6B00))
+                      : Colors.transparent,
                     borderRadius: BorderRadius.circular(25),
                   ),
                   child: Center(
@@ -369,17 +401,23 @@ class _ChatScreenState extends State<ChatScreen> {
                       children: [
                         Text(
                           'Communities',
-                          style: GoogleFonts.inter(
-                            color: _selectedTab == 1 ? Colors.white : Colors.white70,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
+                          style: doodle
+                            ? DoodleFonts.body(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: _selectedTab == 1 ? Colors.white : DoodleColors.textMuted,
+                              )
+                            : GoogleFonts.inter(
+                                color: _selectedTab == 1 ? Colors.white : Colors.white70,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
                         ),
                         const SizedBox(width: 6),
                         Container(
                           width: 8, height: 8,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFFF6B00),
+                          decoration: BoxDecoration(
+                            color: doodle ? DoodleColors.orange : const Color(0xFFFF6B00),
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -397,6 +435,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ── Empty state ──
   Widget _buildEmptyState() {
+    final doodle = isDoodleMode(context);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -405,26 +444,40 @@ class _ChatScreenState extends State<ChatScreen> {
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white12, width: 2),
+              color: doodle ? DoodleColors.paper : Colors.transparent,
+              border: Border.all(color: doodle ? DoodleColors.cardBorder : Colors.white12, width: doodle ? 2 : 2),
             ),
-            child: const Icon(Icons.near_me_outlined, size: 60, color: Colors.white),
+            child: Icon(Icons.near_me_outlined, size: 60, color: doodle ? DoodleColors.orange : Colors.white),
           ),
           const SizedBox(height: 24),
-          Text('No messages yet', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-          const SizedBox(height: 12),
-          Text('Start a conversation with your connections.', style: GoogleFonts.inter(fontSize: 14, color: Colors.white54)),
-          const SizedBox(height: 32),
-          ElevatedButton(
-            onPressed: _showComposeSheet,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF6B00),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              elevation: 0,
-            ),
-            child: Text('Start a chat', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
+          Text(
+            'No messages yet', 
+            style: doodle 
+              ? DoodleFonts.subheading(fontSize: 24, fontWeight: FontWeight.w700)
+              : GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)
           ),
+          const SizedBox(height: 12),
+          Text(
+            'Start a conversation with your connections.', 
+            style: doodle
+              ? DoodleFonts.body(fontSize: 14, color: DoodleColors.textSecondary)
+              : GoogleFonts.inter(fontSize: 14, color: Colors.white54)
+          ),
+          const SizedBox(height: 32),
+          if (doodle)
+            DoodleButton(text: 'Start a chat', onTap: _showComposeSheet, icon: Icons.chat_bubble_outline)
+          else
+            ElevatedButton(
+              onPressed: _showComposeSheet,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6B00),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                elevation: 0,
+              ),
+              child: Text('Start a chat', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
+            ),
         ],
       ),
     );
@@ -520,6 +573,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Source tag for this conversation
     final sourceTag = _sourceTags[index % _sourceTags.length];
     final tagColor = _getTagColor(sourceTag);
+    final doodle = isDoodleMode(context);
 
     return InkWell(
         onLongPress: () => _showChatOptions(partnerId, name),
@@ -549,103 +603,128 @@ class _ChatScreenState extends State<ChatScreen> {
           );
           _fetchConversations();
         },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Avatar with unread badge
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  CircleAvatar(
-                    radius: 26,
-                    backgroundColor: const Color(0xFF1A1A1A),
-                    backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
-                    child: avatar.isEmpty ? const Icon(Icons.person, color: Colors.white54) : null,
-                  ),
-                  if (isUnread)
-                    Positioned(
-                      top: -2,
-                      left: -2,
-                      child: Container(
-                        width: 20, height: 20,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFF6B00),
-                          shape: BoxShape.circle,
+        child: Container(
+          margin: EdgeInsets.symmetric(horizontal: doodle ? 16 : 0, vertical: doodle ? 6 : 0),
+          decoration: doodle ? DoodleDecorations.card() : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Avatar with unread badge
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    doodle
+                      ? DoodleAvatar(url: avatar, size: 52, borderColor: isUnread ? DoodleColors.orange : DoodleColors.cardBorder)
+                      : CircleAvatar(
+                          radius: 26,
+                          backgroundColor: const Color(0xFF1A1A1A),
+                          backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+                          child: avatar.isEmpty ? const Icon(Icons.person, color: Colors.white54) : null,
                         ),
-                        child: Center(
-                          child: Text(
-                            '$unreadCount',
-                            style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                    if (isUnread)
+                      Positioned(
+                        top: doodle ? 0 : -2,
+                        left: doodle ? 0 : -2,
+                        child: Container(
+                          width: 20, height: 20,
+                          decoration: BoxDecoration(
+                            color: doodle ? DoodleColors.coral : const Color(0xFFFF6B00),
+                            shape: BoxShape.circle,
+                            border: doodle ? Border.all(color: DoodleColors.cream, width: 2) : null,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$unreadCount',
+                              style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 14),
-
-              // Name, message, source tag
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: GoogleFonts.inter(
-                        fontWeight: isUnread ? FontWeight.w700 : FontWeight.w600,
-                        color: Colors.white,
-                        fontSize: 15,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      msgText,
-                      style: GoogleFonts.inter(
-                        color: isUnread ? Colors.white70 : const Color(0xFF7A7A7A),
-                        fontSize: 13,
-                        fontWeight: isUnread ? FontWeight.w500 : FontWeight.normal,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    // Source tag chip
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: tagColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        sourceTag,
-                        style: GoogleFonts.inter(
-                          color: tagColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
-              ),
+                const SizedBox(width: 14),
 
-              // Timestamp
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  timeStr,
-                  style: GoogleFonts.inter(
-                    color: const Color(0xFF7A7A7A),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                // Name, message, source tag
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: doodle
+                          ? DoodleFonts.subheading(
+                              fontWeight: isUnread ? FontWeight.w700 : FontWeight.w600,
+                              color: DoodleColors.textPrimary,
+                              fontSize: 18,
+                            )
+                          : GoogleFonts.inter(
+                              fontWeight: isUnread ? FontWeight.w700 : FontWeight.w600,
+                              color: Colors.white,
+                              fontSize: 15,
+                            ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        msgText,
+                        style: doodle
+                          ? DoodleFonts.body(
+                              color: isUnread ? DoodleColors.textPrimary : DoodleColors.textSecondary,
+                              fontSize: 14,
+                              fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
+                            )
+                          : GoogleFonts.inter(
+                              color: isUnread ? Colors.white70 : const Color(0xFF7A7A7A),
+                              fontSize: 13,
+                              fontWeight: isUnread ? FontWeight.w500 : FontWeight.normal,
+                            ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      // Source tag chip
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: doodle
+                          ? DoodleDecorations.chip()
+                          : BoxDecoration(
+                              color: tagColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                        child: Text(
+                          sourceTag,
+                          style: doodle
+                            ? DoodleFonts.label(color: DoodleColors.textMuted, fontSize: 10)
+                            : GoogleFonts.inter(
+                                color: tagColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
+
+                // Timestamp
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    timeStr,
+                    style: doodle
+                      ? DoodleFonts.caption(color: DoodleColors.textHint, fontSize: 12)
+                      : GoogleFonts.inter(
+                          color: const Color(0xFF7A7A7A),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );

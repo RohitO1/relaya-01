@@ -8,6 +8,7 @@ import 'chat_screen.dart';
 import 'messages_screen.dart';
 import 'knock_review_screen.dart';
 import 'services/notification_service.dart';
+import 'services/doodle_theme.dart';
 
 enum AppNotificationType {
   match, nearbyActivity, approval, rejection, message, system,
@@ -165,17 +166,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textP = isDark ? Colors.white : Colors.black87;
+    final textM = isDark ? Colors.white54 : Colors.black54;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : (isDark ? const Color(0xFF0A0A0F) : const Color(0xFFF9FAFB)),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
+          icon: Icon(Icons.arrow_back_ios, color: textP, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Notifications', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+        title: Text('Notifications', style: TextStyle(color: textP, fontWeight: FontWeight.w800, fontSize: 18)),
         actions: [
           IconButton(
             icon: const Icon(Icons.done_all, color: Color(0xFFFF6B00), size: 22),
@@ -219,6 +224,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Widget _buildFilters() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textM = isDark ? Colors.white54 : Colors.black54;
+
     return Container(
       height: 60,
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -247,7 +255,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   child: Text(
                     filter,
                     style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white70,
+                      color: isSelected ? Colors.white : textM,
                       fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                       fontSize: 14,
                     ),
@@ -285,16 +293,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Widget _buildList(List<NotificationModel> items) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textM = isDark ? Colors.white54 : Colors.black54;
+
     if (items.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.notifications_off_outlined, color: Colors.white.withValues(alpha: 0.2), size: 60),
+            Icon(Icons.notifications_off_outlined, color: textM.withValues(alpha: 0.5), size: 60),
             const SizedBox(height: 16),
-            const Text("You're all caught up!", style: TextStyle(color: Colors.white54, fontSize: 16, fontWeight: FontWeight.w500)),
+            Text("You're all caught up!", style: TextStyle(color: textM, fontSize: 16, fontWeight: FontWeight.w500)),
             const SizedBox(height: 4),
-            const Text("New updates will appear here", style: TextStyle(color: Colors.white24, fontSize: 12)),
+            Text("New updates will appear here", style: TextStyle(color: textM.withValues(alpha: 0.5), fontSize: 12)),
           ],
         ),
       );

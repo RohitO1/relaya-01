@@ -7,8 +7,10 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 import 'services/location_service.dart';
 import 'utils/constants.dart';
+import 'services/doodle_theme.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> initialProfile;
@@ -42,6 +44,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   int _dobMonth = 1;
   int _dobYear = 2000;
   bool _dobPickerExpanded = false;
+  bool? _isMapNightMode;
+  bool _fetchingGps = false;
   static const _monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   
   String? _avatarUrl;
@@ -442,6 +446,55 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     } catch (_) {}
   }
 
+  Future<void> _useCurrentLocation() async {
+    setState(() => _fetchingGps = true);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          setState(() => _fetchingGps = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: const Text('Please enable location services'), backgroundColor: Colors.red.shade700),
+          );
+        }
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) setState(() => _fetchingGps = false);
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) setState(() => _fetchingGps = false);
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      setState(() {
+        _lat = position.latitude;
+        _lng = position.longitude;
+      });
+      _mapCtrl.move(LatLng(position.latitude, position.longitude), 14.0);
+      await _reverseGeocode(position.latitude, position.longitude);
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not get location: $e'), backgroundColor: Colors.red.shade700),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _fetchingGps = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const bg = Color(0xFF0A0A0F);
@@ -449,7 +502,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     const text2 = Color(0xFF94A3B8);
 
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : bg,
       appBar: AppBar(
         backgroundColor: bg,
         elevation: 0,
@@ -519,16 +572,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A2E),
+                  color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _dobPickerExpanded ? const Color(0xFFFF6B00) : (_dobCtrl.text.isNotEmpty ? const Color(0xFFFF6B00).withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.05)),
+                    color: _dobPickerExpanded ? const Color(0xFFFF6B00) : (_dobCtrl.text.isNotEmpty ? const Color(0xFFFF6B00).withValues(alpha: 0.5) : (isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05))),
                     width: _dobPickerExpanded ? 1.5 : 1,
                   ),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.cake_outlined, color: _dobCtrl.text.isNotEmpty ? const Color(0xFFFF6B00) : const Color(0xFF94A3B8), size: 22),
+                    Icon(Icons.cake_outlined, color: _dobCtrl.text.isNotEmpty ? const Color(0xFFFF6B00) : (isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8)), size: 22),
                     const SizedBox(width: 14),
                     Expanded(
                       child: _dobCtrl.text.isNotEmpty
@@ -539,21 +592,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   (() {
                                     try {
                                       final d = DateTime.parse(_dobCtrl.text);
-                                      return '${_monthNames[d.month - 1]} ${d.day}, ${d.year}';
-                                    } catch (e) { return _dobCtrl.text; }
-                                  })(),
-                                  style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(height: 2),
-                                Text('Date of birth', style: GoogleFonts.inter(color: const Color(0xFF94A3B8), fontSize: 11)),
-                              ],
-                            )
-                          : Text('Select Date of Birth', style: GoogleFonts.inter(color: Colors.white24, fontSize: 16)),
-                    ),
-                    Icon(
-                      _dobPickerExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                      color: const Color(0xFF94A3B8), size: 20,
-                    ),
+                                    return '${_monthNames[d.month - 1]} ${d.day}, ${d.year}';
+                                  } catch (e) { return _dobCtrl.text; }
+                                })(),
+                                style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 2),
+                              Text('Date of birth', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8), fontSize: 11)),
+                            ],
+                          )
+                        : Text('Select Date of Birth', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white24, fontSize: 16)),
+                  ),
+                  Icon(
+                    _dobPickerExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8), size: 20,
+                  ),
                   ],
                 ),
               ),
@@ -563,19 +616,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             _buildLabel('Location'),
             Container(
-              decoration: BoxDecoration(color: const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withValues(alpha: 0.05))),
+              decoration: BoxDecoration(color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(14), border: Border.all(color: isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05))),
               child: TextField(
                 controller: _locSearchCtrl,
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
+                style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontSize: 14),
                 onChanged: _onSearchChanged,
                 decoration: InputDecoration(
                   hintText: 'Search city, area, landmark...',
-                  hintStyle: GoogleFonts.inter(color: Colors.white24, fontSize: 14),
+                  hintStyle: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white24, fontSize: 14),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   prefixIcon: const Icon(Icons.search, color: Color(0xFFFF6B00), size: 20),
                   suffixIcon: _locSearchCtrl.text.isNotEmpty
-                      ? GestureDetector(onTap: () => setState(() { _locSearchCtrl.clear(); _searchResults = []; }), child: const Icon(Icons.close, color: const Color(0xFF94A3B8), size: 18))
+                      ? GestureDetector(onTap: () => setState(() { _locSearchCtrl.clear(); _searchResults = []; }), child: Icon(Icons.close, color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8), size: 18))
                       : null,
                 ),
               ),
@@ -584,7 +637,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               Container(
                 margin: const EdgeInsets.only(top: 4),
                 constraints: const BoxConstraints(maxHeight: 180),
-                decoration: BoxDecoration(color: const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.05))),
+                decoration: BoxDecoration(color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(12), border: Border.all(color: isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05))),
                 child: ListView.builder(
                   shrinkWrap: true,
                   padding: EdgeInsets.zero,
@@ -594,8 +647,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     return ListTile(
                       dense: true,
                       leading: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 18),
-                      title: Text(r['name'] ?? '', style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
-                      subtitle: Text(r['full_name'] ?? '', style: GoogleFonts.inter(color: const Color(0xFF94A3B8), fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      title: Text(r['name'] ?? '', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+                      subtitle: Text(r['full_name'] ?? '', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8), fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
                       onTap: () => _selectSearchResult(r),
                     );
                   },
@@ -610,34 +663,72 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: FlutterMap(
-                  mapController: _mapCtrl,
-                  options: MapOptions(
-                    initialCenter: _lat != null && _lng != null ? LatLng(_lat!, _lng!) : const LatLng(20.5937, 78.9629),
-                    initialZoom: _lat != null && _lng != null ? 14.0 : 4.0,
-                    onTap: (tapPosition, point) {
-                      setState(() {
-                        _lat = point.latitude;
-                        _lng = point.longitude;
-                      });
-                      _reverseGeocode(point.latitude, point.longitude);
-                    },
-                  ),
+                child: Stack(
                   children: [
-                    TileLayer(
-                      urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                      subdomains: const ['a', 'b', 'c', 'd'],
+                    FlutterMap(
+                      mapController: _mapCtrl,
+                      options: MapOptions(
+                        initialCenter: _lat != null && _lng != null ? LatLng(_lat!, _lng!) : const LatLng(20.5937, 78.9629),
+                        initialZoom: _lat != null && _lng != null ? 14.0 : 4.0,
+                        onTap: (tapPosition, point) {
+                          setState(() {
+                            _lat = point.latitude;
+                            _lng = point.longitude;
+                          });
+                          _reverseGeocode(point.latitude, point.longitude);
+                        },
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: (_isMapNightMode ?? !isDoodleMode(context)) ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                          subdomains: const ['a', 'b', 'c', 'd'],
+                        ),
+                        if (_lat != null && _lng != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: LatLng(_lat!, _lng!),
+                                width: 60, height: 60,
+                                child: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 40),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
-                    if (_lat != null && _lng != null)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: LatLng(_lat!, _lng!),
-                            width: 60, height: 60,
-                            child: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 40),
+                    Positioned(
+                      right: 12, top: 12,
+                      child: Column(
+                        children: [
+                          GestureDetector(
+                            onTap: () => setState(() => _isMapNightMode = !(_isMapNightMode ?? !isDoodleMode(context))),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white24),
+                              ),
+                              child: Icon((_isMapNightMode ?? !isDoodleMode(context)) ? Icons.light_mode : Icons.dark_mode, color: Colors.white, size: 20),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            onTap: _fetchingGps ? null : _useCurrentLocation,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: cyan.withValues(alpha: 0.5)),
+                              ),
+                              child: _fetchingGps 
+                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: cyan))
+                                : const Icon(Icons.my_location, color: cyan, size: 20),
+                            ),
                           ),
                         ],
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -661,7 +752,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 label: '${_heightCm.round()} cm',
                 onChanged: (v) => setState(() => _heightCm = v),
               ),
-              Center(child: Text('${_heightCm.round()} cm', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold))),
+              Center(child: Text('${_heightCm.round()} cm', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontWeight: FontWeight.bold))),
               const SizedBox(height: 16),
               
               _buildLabel('Education'),
@@ -726,8 +817,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Public Profile', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)),
-                    Text('Allow others to find you', style: GoogleFonts.inter(color: text2, fontSize: 12)),
+                    Text('Public Profile', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontWeight: FontWeight.bold)),
+                    Text('Allow others to find you', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : text2, fontSize: 12)),
                   ],
                 ),
                 Switch(
@@ -747,24 +838,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget _buildLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(text, style: GoogleFonts.inter(color: const Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1)),
+      child: Text(text, style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1)),
     );
   }
 
   Widget _buildField(TextEditingController ctrl, String hint, {int maxLines = 1}) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
+        color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05)),
       ),
       child: TextField(
         controller: ctrl,
         maxLines: maxLines,
-        style: GoogleFonts.inter(color: Colors.white),
+        style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: GoogleFonts.inter(color: Colors.white24),
+          hintStyle: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white24),
           contentPadding: const EdgeInsets.all(16),
           border: InputBorder.none,
         ),
@@ -781,12 +872,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             margin: const EdgeInsets.only(right: 8),
             padding: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
-              color: _gender == g ? const Color(0xFFFF6B00).withValues(alpha: 0.1) : const Color(0xFF1A1A2E),
+              color: _gender == g ? (isDoodleMode(context) ? DoodleColors.amber : const Color(0xFFFF6B00).withValues(alpha: 0.1)) : (isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E)),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _gender == g ? const Color(0xFFFF6B00) : Colors.white.withValues(alpha: 0.05)),
+              border: Border.all(color: _gender == g ? (isDoodleMode(context) ? DoodleColors.amber : const Color(0xFFFF6B00)) : (isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05))),
             ),
             alignment: Alignment.center,
-            child: Text(g, style: GoogleFonts.inter(color: _gender == g ? Colors.white : const Color(0xFF94A3B8), fontWeight: _gender == g ? FontWeight.bold : FontWeight.normal)),
+            child: Text(g, style: GoogleFonts.inter(color: _gender == g ? (isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white) : (isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8)), fontWeight: _gender == g ? FontWeight.bold : FontWeight.normal)),
           ),
         ),
       )).toList(),
@@ -799,11 +890,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFF6B00).withValues(alpha: 0.1) : const Color(0xFF1A1A2E),
+          color: selected ? (isDoodleMode(context) ? DoodleColors.amber : const Color(0xFFFF6B00).withValues(alpha: 0.1)) : (isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E)),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? const Color(0xFFFF6B00) : Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: selected ? (isDoodleMode(context) ? DoodleColors.amber : const Color(0xFFFF6B00)) : (isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05))),
         ),
-        child: Text(label, style: GoogleFonts.inter(color: selected ? Colors.white : const Color(0xFF94A3B8), fontSize: 13)),
+        child: Text(label, style: GoogleFonts.inter(color: selected ? (isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white) : (isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8)), fontSize: 13)),
       ),
     );
   }
@@ -812,16 +903,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
       decoration: BoxDecoration(
-        color: const Color(0xFF13131D),
+        color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF13131D),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05)),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          iconColor: const Color(0xFFFF6B00),
-          collapsedIconColor: const Color(0xFF94A3B8),
-          title: Text(title, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          iconColor: isDoodleMode(context) ? DoodleColors.amber : const Color(0xFFFF6B00),
+          collapsedIconColor: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8),
+          title: Text(title, style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           children: [
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: children)

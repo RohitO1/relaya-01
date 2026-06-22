@@ -124,7 +124,7 @@ class LocationService {
       });
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as List;
-        return data.map<Map<String, dynamic>>((it) {
+        final mappedData = data.map<Map<String, dynamic>>((it) {
           final displayName = it['display_name']?.toString() ?? '';
           final addr = it['address'] as Map<String, dynamic>? ?? {};
           final rawDistrict = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['municipality'] ?? addr['county'] ?? addr['state_district'] ?? addr['district'] ?? '';
@@ -139,6 +139,17 @@ class LocationService {
             'lng': double.tryParse(it['lon']?.toString() ?? '') ?? 0.0,
           };
         }).toList();
+
+        final seen = <String>{};
+        final uniqueData = <Map<String, dynamic>>[];
+        for (final item in mappedData) {
+          final key = '${item['name']}_${item['state']}';
+          if (!seen.contains(key)) {
+            seen.add(key);
+            uniqueData.add(item);
+          }
+        }
+        return uniqueData;
       }
     } catch (e) {
       debugPrint('LocationService search error: $e');

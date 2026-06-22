@@ -7,6 +7,7 @@ import 'bolroom_communities_screen.dart';
 import 'bolroom_dm_screen.dart';
 import 'bolroom_profile_screen.dart';
 import '../chatroom_live_screen.dart'; // for BolRoomManager.hasActiveRoom
+import '../services/doodle_theme.dart';
 
 class BolroomShell extends StatefulWidget {
   const BolroomShell({super.key});
@@ -91,6 +92,7 @@ class _BolroomShellState extends State<BolroomShell> {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     return PopScope(
       // Only allow the system pop when we've exhausted all internal navigation
       canPop: _canPop,
@@ -109,7 +111,7 @@ class _BolroomShellState extends State<BolroomShell> {
         }
       },
       child: Scaffold(
-        backgroundColor: bgColor,
+        backgroundColor: doodle ? DoodleColors.paper : bgColor,
         body: PageView(
           controller: _pageCtrl,
           physics: const NeverScrollableScrollPhysics(),
@@ -122,26 +124,31 @@ class _BolroomShellState extends State<BolroomShell> {
         ),
         bottomNavigationBar: Container(
           height: 80,
-          decoration: BoxDecoration(
-            color: navBg,
-            border: const Border(top: BorderSide(color: Color(0xFF1D182E), width: 1)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 20,
-                offset: const Offset(0, -5),
+          decoration: doodle
+            ? BoxDecoration(
+                color: DoodleColors.cream,
+                border: Border(top: BorderSide(color: DoodleColors.brown, width: 2)),
+              )
+            : BoxDecoration(
+                color: navBg,
+                border: const Border(top: BorderSide(color: Color(0xFF1D182E), width: 1)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 20,
+                    offset: const Offset(0, -5),
+                  ),
+                ],
               ),
-            ],
-          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 30),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildNavItem(Icons.mic_none_outlined, 'Voiceroom', 0),
-                _buildNavItem(Icons.explore_outlined, 'Communities', 1),
-                _buildNavItem(Icons.chat_bubble_outline, 'DM', 2),
-                _buildNavItem(Icons.person_outline, 'Profile', 3),
+                _buildNavItem(Icons.mic_none_outlined, 'Voiceroom', 0, doodle),
+                _buildNavItem(Icons.explore_outlined, 'Communities', 1, doodle),
+                _buildNavItem(Icons.chat_bubble_outline, 'DM', 2, doodle),
+                _buildNavItem(Icons.person_outline, 'Profile', 3, doodle),
               ],
             ),
           ),
@@ -150,7 +157,7 @@ class _BolroomShellState extends State<BolroomShell> {
     );
   }
 
-  Widget _buildNavItem(IconData icon, String label, int index) {
+  Widget _buildNavItem(IconData icon, String label, int index, bool doodle) {
     bool isActive = _currentIndex == index;
     return GestureDetector(
       onTap: () => _switchTab(index),
@@ -160,17 +167,22 @@ class _BolroomShellState extends State<BolroomShell> {
         children: [
           Icon(
             icon,
-            color: isActive ? purplePrimary : textMuted,
+            color: isActive ? (doodle ? DoodleColors.blue : purplePrimary) : (doodle ? DoodleColors.brown.withValues(alpha: 0.5) : textMuted),
             size: 26,
           ),
           const SizedBox(height: 4),
           Text(
             label,
-            style: TextStyle(
-              color: isActive ? purplePrimary : textMuted,
-              fontSize: 11,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-            ),
+            style: doodle
+              ? DoodleFonts.body(
+                  color: isActive ? DoodleColors.blue : DoodleColors.brown.withValues(alpha: 0.5),
+                  fontSize: 12,
+                ).copyWith(fontWeight: isActive ? FontWeight.w600 : FontWeight.w400)
+              : TextStyle(
+                  color: isActive ? purplePrimary : textMuted,
+                  fontSize: 11,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                ),
           ),
           if (isActive)
             Container(
@@ -178,9 +190,9 @@ class _BolroomShellState extends State<BolroomShell> {
               width: 4,
               height: 4,
               decoration: BoxDecoration(
-                color: purplePrimary,
+                color: doodle ? DoodleColors.blue : purplePrimary,
                 shape: BoxShape.circle,
-                boxShadow: [
+                boxShadow: doodle ? [] : [
                   BoxShadow(
                     color: purplePrimary.withValues(alpha: 0.5),
                     blurRadius: 4,

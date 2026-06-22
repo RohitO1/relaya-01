@@ -37,10 +37,12 @@ import 'spark_screen.dart';
 import 'services/theme_service.dart';
 import 'services/nearby_agent.dart';
 import 'splash_screen.dart';
+import 'location_permission_screen.dart';
 import 'widgets/app_header_actions.dart';
 import 'package:app_links/app_links.dart';
 import 'chatroom_live_screen.dart';
 import 'explore_screen.dart';
+import 'services/doodle_theme.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -49,7 +51,7 @@ void main() async {
 
   await Supabase.initialize(
     url: 'https://tkcdzuthjrxpfczqathy.supabase.co',
-    anonKey: 'sb_publishable_CtJZjslr5h0rVC5_FMi2UQ_Q7bFuqcj',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrY2R6dXRoanJ4cGZjenFhdGh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MDc2MzAsImV4cCI6MjA5MTQ4MzYzMH0.RSwwJlPUxvvF2K8ZTER54WXuq91H-wgNW105JnzxJv8',
   );
 
   // Initialize services
@@ -71,6 +73,7 @@ class MeetraApp extends StatefulWidget {
 
 class _MeetraAppState extends State<MeetraApp> {
   bool _showSplash = true;
+  bool _showLocationGate = false;
   late AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
 
@@ -120,17 +123,17 @@ class _MeetraAppState extends State<MeetraApp> {
           themeMode: mode,
           theme: ThemeData(
             brightness: Brightness.light,
-            scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-            primaryColor: const Color(0xFFFF5C00),
+            scaffoldBackgroundColor: DoodleColors.cream,
+            primaryColor: DoodleColors.orange,
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFFFF5C00),
-              secondary: Color(0xFFFF6B00),
-              surface: Colors.white,
+              primary: DoodleColors.orange,
+              secondary: DoodleColors.amber,
+              surface: DoodleColors.paper,
             ),
             textTheme: GoogleFonts.outfitTextTheme(ThemeData.light().textTheme)
                 .apply(
-                    bodyColor: const Color(0xFF1E293B),
-                    displayColor: const Color(0xFF0F172A)),
+                    bodyColor: DoodleColors.textPrimary,
+                    displayColor: DoodleColors.textPrimary),
             pageTransitionsTheme: const PageTransitionsTheme(
               builders: <TargetPlatform, PageTransitionsBuilder>{
                 TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
@@ -158,9 +161,25 @@ class _MeetraAppState extends State<MeetraApp> {
           home: _showSplash
             ? SplashScreen(
                 onComplete: () {
-                  if (mounted) setState(() => _showSplash = false);
+                  if (mounted) {
+                    // After splash: show location gate if not fetched this session
+                    if (!locationFetchedThisSession) {
+                      setState(() {
+                        _showSplash = false;
+                        _showLocationGate = true;
+                      });
+                    } else {
+                      setState(() => _showSplash = false);
+                    }
+                  }
                 },
               )
+            : _showLocationGate
+              ? LocationPermissionScreen(
+                  onPermissionGranted: () {
+                    if (mounted) setState(() => _showLocationGate = false);
+                  },
+                )
             : StreamBuilder<AuthState>(
             stream: Supabase.instance.client.auth.onAuthStateChange,
             builder: (context, snapshot) {
@@ -188,7 +207,7 @@ class _MeetraAppState extends State<MeetraApp> {
                                 height: 80,
                               ).animate(onPlay: (controller) => controller.repeat(reverse: true))
                                .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 800.ms, 
-curve: Curves.easeInOut),
+ curve: Curves.easeInOut),
                             ],
                           ),
                         ),
@@ -454,7 +473,7 @@ class _MainDashboardState extends State<MainDashboard> {
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF000000),
+        backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF000000),
         body: Stack(
           children: [
             GestureDetector(
@@ -469,7 +488,7 @@ class _MainDashboardState extends State<MainDashboard> {
                 }
               },
               child: Padding(
-                padding: EdgeInsets.only(bottom: 80 + bottomSafeArea),
+                padding: EdgeInsets.only(bottom: (isDoodleMode(context) ? 84 : 80) + bottomSafeArea),
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
                   transitionBuilder: (Widget child, Animation<double> animation) {
@@ -511,40 +530,37 @@ class _MainDashboardState extends State<MainDashboard> {
               ),
             ),
 
-            // ── Flat Bottom Nav Bar ──
+            // ── Bottom Nav Bar — Doodle in light, Dark neon in dark ──
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: Container(
-                padding: EdgeInsets.only(bottom: bottomSafeArea),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0A0A0F),
-                  border: Border(
-                    top: BorderSide(
-                      color: Color(0xFF2A1F3D),
-                      width: 1.0,
+              child: isDoodleMode(context)
+                ? _buildDoodleNavBar(bottomSafeArea)
+                : Container(
+                    padding: EdgeInsets.only(bottom: bottomSafeArea),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF0A0A0F),
+                      border: Border(
+                        top: BorderSide(
+                          color: Color(0xFF2A1F3D),
+                          width: 1.0,
+                        ),
+                      ),
+                    ),
+                    child: SizedBox(
+                      height: 60,
+                      child: Row(
+                        children: [
+                          _buildNavItem(Icons.home_outlined, Icons.home_rounded, 0),
+                          _buildNavItem(Icons.explore_outlined, Icons.explore_rounded, 1),
+                          _buildCenterRushInButton(),
+                          _buildNavItem(Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 3),
+                          _buildNavItem(Icons.person_outline_rounded, Icons.person_rounded, 4),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                child: SizedBox(
-                  height: 60,
-                  child: Row(
-                    children: [
-                      // Home
-                      _buildNavItem(Icons.home_outlined, Icons.home_rounded, 0),
-                      // Explore
-                      _buildNavItem(Icons.explore_outlined, Icons.explore_rounded, 1),
-                      // Center Rush-in button
-                      _buildCenterRushInButton(),
-                      // Messages
-                      _buildNavItem(Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 3),
-                      // Profile
-                      _buildNavItem(Icons.person_outline_rounded, Icons.person_rounded, 4),
-                    ],
-                  ),
-                ),
-              ),
             ),
           ],
         ),
@@ -611,6 +627,92 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 
+  /// Builds the doodle-style bottom nav bar (cream background, hand-drawn icons with labels)
+  Widget _buildDoodleNavBar(double bottomSafeArea) {
+    const labels = ['Home', 'Explore', '', 'Chat', 'Profile'];
+    const outlines = [Icons.home_outlined, Icons.explore_outlined, Icons.electric_bolt_rounded, Icons.chat_bubble_outline_rounded, Icons.person_outline_rounded];
+    const filled = [Icons.home_rounded, Icons.explore_rounded, Icons.electric_bolt_rounded, Icons.chat_bubble_rounded, Icons.person_rounded];
+
+    return Container(
+      padding: EdgeInsets.only(bottom: bottomSafeArea),
+      decoration: const BoxDecoration(
+        color: DoodleColors.navBg,
+        border: Border(
+          top: BorderSide(color: DoodleColors.navBorder, width: 1.5),
+        ),
+      ),
+      child: SizedBox(
+        height: 64,
+        child: Row(
+          children: List.generate(5, (i) {
+            if (i == 2) return _buildDoodleCenterButton();
+            final isSelected = _currentIndex == i;
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => _onSelectTab(i),
+                behavior: HitTestBehavior.opaque,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isSelected ? filled[i] : outlines[i],
+                      color: isSelected ? DoodleColors.navActive : DoodleColors.navInactive,
+                      size: 24,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      labels[i],
+                      style: DoodleFonts.caption(
+                        fontSize: 10,
+                        color: isSelected ? DoodleColors.navActive : DoodleColors.navInactive,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  /// Center button for doodle nav bar
+  Widget _buildDoodleCenterButton() {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _onSelectTab(2),
+        behavior: HitTestBehavior.opaque,
+        child: Center(
+          child: Transform.translate(
+            offset: const Offset(0, -16),
+            child: Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [DoodleColors.amber, DoodleColors.orange],
+                ),
+                border: Border.all(color: DoodleColors.orangeDark, width: 2.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: DoodleColors.orange.withValues(alpha: 0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.electric_bolt_rounded, color: Colors.white, size: 28),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildNavItem(IconData outlineIcon, IconData filledIcon, int index) {
     bool isSelected = _currentIndex == index;
     Color color = isSelected ? Colors.white : const Color(0xFF8E8E93);
@@ -624,7 +726,7 @@ class _MainDashboardState extends State<MainDashboard> {
             Icon(
               isSelected ? filledIcon : outlineIcon,
               color: color,
-              size: 28, // Slightly larger to compensate for removed text
+              size: 28,
             ),
           ],
         ),

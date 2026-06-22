@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/location_service.dart';
+import '../services/doodle_theme.dart';
 
 /// A unified, search-driven location picker bottom sheet.
 /// Replaces all hardcoded city lists across the app.

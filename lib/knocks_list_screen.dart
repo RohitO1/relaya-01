@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'knock_review_screen.dart';
+import 'services/doodle_theme.dart';
 
 class KnocksListScreen extends StatefulWidget {
   const KnocksListScreen({super.key});
@@ -69,7 +70,7 @@ class _KnocksListScreenState extends State<KnocksListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF07070F),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF07070F),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,

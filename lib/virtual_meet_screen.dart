@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'bolroom_config.dart';
+import 'services/doodle_theme.dart';
 
 class VirtualMeetScreen extends StatefulWidget {
   final String peerName;
@@ -89,7 +90,7 @@ class _VirtualMeetScreenState extends State<VirtualMeetScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : Colors.black,
       body: SafeArea(
         child: Stack(
           children: [

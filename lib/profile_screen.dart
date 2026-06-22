@@ -25,6 +25,7 @@ import 'package:share_plus/share_plus.dart';
 import 'admin_dashboard_screen.dart';
 import 'widgets/skeleton_loaders.dart';
 import 'hosted_joined_screens.dart';
+import 'services/doodle_theme.dart';
 
 // ----------------------------------------------------
 // UI Constants — Unified App Design System
@@ -255,14 +256,13 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     final username = _profile?['username'] ?? '';
     final url = 'https://meetra.app/profile/$username';
     Share.share('Check out $name on Relaya!\n$url');
-  }
-
-  @override
+  }  @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     if (_loadingProfile) {
       return Scaffold(
-        backgroundColor: ProfileColors.bgPrimary,
-        body: SafeArea(child: SkeletonLoaders.genericListSkeleton()),
+        backgroundColor: doodle ? DoodleColors.cream : ProfileColors.bgPrimary,
+        body: SafeArea(child: SkeletonLoaders.genericListSkeleton(doodle: isDoodleMode(context))),
       );
     }
 
@@ -270,7 +270,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     final isMe = widget.userId == null || widget.userId == _myUid;
     final name = p['name'] ?? p['full_name'] ?? 'User';
     final username = p['username'] ?? name.replaceAll(' ', '.').toLowerCase();
-    final bio = p['bio'] ?? '"Chasing sunsets & stories ✨"';
+    final bio = p['bio'] ?? '"Chasing sunsets & stories \u2728"';
     final location = (locationService.activeLocation.isNotEmpty && isMe)
         ? locationService.activeLocation
         : (p['city'] ?? p['location'] ?? 'Mumbai, India');
@@ -280,11 +280,22 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: ProfileColors.bgPrimary,
+      backgroundColor: doodle ? DoodleColors.cream : ProfileColors.bgPrimary,
       drawer: _buildManagementDashboard(),
       endDrawer: _buildSettingsPanel(),
       body: Stack(
         children: [
+          // Doodle background decorations
+          if (doodle) Positioned.fill(
+            child: IgnorePointer(
+              child: Stack(
+                children: [
+                  Container(decoration: DoodleDecorations.parchmentBg()),
+                  CustomPaint(painter: ScatteredDoodlesPainter(seed: 99, density: 0.3, color: const Color(0x18B8956E))),
+                ],
+              ),
+            ),
+          ),
           SafeArea(
             bottom: false,
             child: Column(
@@ -298,7 +309,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                         _buildHeroSection(name, username, bio, location, avatarUrl, isMe),
                         _buildPostsTabs(),
                         _buildPostsContent(canViewContent, isMe),
-                        const SizedBox(height: 100), // Bottom nav spacer
+                        const SizedBox(height: 100),
                       ],
                     ),
                   ),
@@ -313,6 +324,70 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   // ============== 1. TOP NAV (Glassmorphic) ==============
   Widget _buildTopNav(String username, bool isMe) {
+    final doodle = isDoodleMode(context);
+    if (doodle) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: const BoxDecoration(
+          color: DoodleColors.cream,
+          border: Border(bottom: BorderSide(color: DoodleColors.cardBorder, width: 1)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            if (isMe)
+              GestureDetector(
+                onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                child: Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: DoodleColors.paper,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: DoodleColors.cardBorder),
+                  ),
+                  child: const Icon(Icons.grid_view_rounded, color: DoodleColors.textSecondary, size: 18),
+                ),
+              )
+            else
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: DoodleColors.paper,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: DoodleColors.cardBorder),
+                  ),
+                  child: const Icon(Icons.arrow_back_ios_new, color: DoodleColors.textSecondary, size: 18),
+                ),
+              ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: DoodleDecorations.card(color: DoodleColors.orange),
+              child: Text(
+                'MY PROFILE',
+                style: DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown),
+              ),
+            ),
+            if (isMe)
+              GestureDetector(
+                onTap: () => _scaffoldKey.currentState?.openEndDrawer(),
+                child: Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: DoodleColors.paper,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: DoodleColors.cardBorder),
+                  ),
+                  child: const Icon(Icons.settings_outlined, color: DoodleColors.textSecondary, size: 18),
+                ),
+              )
+            else
+              const SizedBox(width: 40),
+          ],
+        ),
+      );
+    }
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
@@ -398,6 +473,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   // ============== 2. PROFILE HERO ==============
   Widget _buildHeroSection(String name, String username, String bio, String location, String avatarUrl, bool isMe) {
+    final doodle = isDoodleMode(context);
     String initials = name.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase();
     if (initials.isEmpty) initials = 'U';
 
@@ -408,46 +484,69 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // 1. Centered Avatar with premium neon-orange ring
-              Container(
-                width: 106,
-                height: 106,
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFFFF6B00),
-                    width: 3,
-                  ),
-                ),
-                child: avatarUrl.isNotEmpty 
-                  ? CircleAvatar(
-                      backgroundImage: _buildSafeImageProvider(avatarUrl),
-                      backgroundColor: Colors.transparent,
-                    )
-                  : Container(
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFF1E1E1E),
-                      ),
+              // 1. Avatar — doodle hand-drawn circle in light, neon ring in dark
+              doodle
+                ? SizedBox(
+                    width: 110,
+                    height: 110,
+                    child: CustomPaint(
+                      painter: SketchCirclePainter(color: DoodleColors.orange, strokeWidth: 3),
                       child: Center(
-                        child: Text(
-                          initials,
-                          style: GoogleFonts.inter(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFFFF6B00),
+                        child: ClipOval(
+                          child: SizedBox(
+                            width: 96, height: 96,
+                            child: avatarUrl.isNotEmpty
+                              ? Image(image: _buildSafeImageProvider(avatarUrl), fit: BoxFit.cover)
+                              : Container(
+                                  color: DoodleColors.pastelPeach,
+                                  child: Center(
+                                    child: Text(initials, style: DoodleFonts.heading(fontSize: 32, color: DoodleColors.orange)),
+                                  ),
+                                ),
                           ),
                         ),
                       ),
                     ),
-              ),
+                  )
+                : Container(
+                    width: 106,
+                    height: 106,
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: const Color(0xFFFF6B00),
+                        width: 3,
+                      ),
+                    ),
+                    child: avatarUrl.isNotEmpty 
+                      ? CircleAvatar(
+                          backgroundImage: _buildSafeImageProvider(avatarUrl),
+                          backgroundColor: Colors.transparent,
+                        )
+                      : Container(
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFF1E1E1E),
+                          ),
+                          child: Center(
+                            child: Text(
+                              initials,
+                              style: GoogleFonts.inter(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFFFF6B00),
+                              ),
+                            ),
+                          ),
+                        ),
+                  ),
               const SizedBox(height: 16),
 
               // 2. Centered Name
               Text(
                 name,
-                style: GoogleFonts.inter(
+                style: doodle ? DoodleFonts.heading(fontSize: 28, color: DoodleColors.brown) : GoogleFonts.inter(
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
                   color: Colors.white,
@@ -458,7 +557,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               // 3. Centered Username
               Text(
                 '@${username.toLowerCase()}',
-                style: GoogleFonts.inter(
+                style: doodle ? DoodleFonts.body(fontSize: 16, color: DoodleColors.brown) : GoogleFonts.inter(
                   fontSize: 14,
                   color: Colors.white54,
                   fontWeight: FontWeight.w500,
@@ -474,15 +573,15 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.location_on,
-                        color: Color(0xFFFF6B00),
+                        color: doodle ? DoodleColors.brown : const Color(0xFFFF6B00),
                         size: 14,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         displayLoc.isEmpty ? 'New York, NY' : displayLoc,
-                        style: GoogleFonts.inter(
+                        style: doodle ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown.withValues(alpha: 0.8)) : GoogleFonts.inter(
                           fontSize: 12,
                           color: Colors.white54,
                           fontWeight: FontWeight.w600,
@@ -498,9 +597,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Text(
-                  bio.isEmpty ? 'Explorer. Creator. Always curious. Living in the moment.' : bio,
+                  bio.isEmpty ? 'Adventure seeker | Event host | Music lover' : bio,
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
+                  style: doodle ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown) : GoogleFonts.inter(
                     fontSize: 13,
                     color: Colors.white70,
                     fontWeight: FontWeight.w500,
@@ -538,14 +637,16 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               // 7. Large Centered Stats Card Container
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F0F0F),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.06),
-                    width: 1,
-                  ),
-                ),
+                decoration: doodle
+                  ? DoodleDecorations.card(color: DoodleColors.cream, borderColor: DoodleColors.brown)
+                  : BoxDecoration(
+                      color: const Color(0xFF0F0F0F),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        width: 1,
+                      ),
+                    ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -589,15 +690,16 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     required String label,
     required Color iconColor,
   }) {
+    final doodle = isDoodleMode(context);
     return Expanded(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: iconColor, size: 18),
+          Icon(icon, color: doodle ? DoodleColors.brown : iconColor, size: 18),
           const SizedBox(height: 6),
           Text(
             val,
-            style: GoogleFonts.inter(
+            style: doodle ? DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.inter(
               fontSize: 16,
               fontWeight: FontWeight.w900,
               color: Colors.white,
@@ -606,7 +708,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           const SizedBox(height: 4),
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: doodle ? DoodleFonts.body(fontSize: 10, color: DoodleColors.brown) : GoogleFonts.inter(
               fontSize: 8,
               fontWeight: FontWeight.w800,
               color: Colors.white38,
@@ -666,6 +768,22 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   // ============== 3. POSTS LAYOUT ==============
   Widget _buildPostsTabs() {
+    final doodle = isDoodleMode(context);
+    if (doodle) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.all(4),
+        decoration: DoodleDecorations.card(color: DoodleColors.amber.withValues(alpha: 0.3)),
+        child: Row(
+          children: [
+            _buildTabBtn(0, 'GRID'),
+            _buildTabBtn(1, 'REELS'),
+            _buildTabBtn(2, 'VIBES'),
+            _buildTabBtn(3, 'TAGGED'),
+          ],
+        ),
+      );
+    }
     return Container(
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: ProfileColors.borderSubtle)),
@@ -683,6 +801,23 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   Widget _buildTabBtn(int index, String title) {
     bool active = _activeTabIndex == index;
+    final doodle = isDoodleMode(context);
+    
+    if (doodle) {
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => setState(() => _activeTabIndex = index),
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            alignment: Alignment.center,
+            decoration: active ? DoodleDecorations.card(color: DoodleColors.orange, radius: 4) : null,
+            child: Text(title, style: DoodleFonts.heading(fontSize: 14, color: active ? DoodleColors.brown : DoodleColors.brown.withValues(alpha: 0.5))),
+          ),
+        ),
+      );
+    }
+
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _activeTabIndex = index),
@@ -954,19 +1089,20 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   void _showBottomSlider({required String title, required String subtitle, required Widget slider, required VoidCallback onSave}) {
+    final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: ProfileColors.bgSecondary,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: doodle ? DoodleColors.paper : ProfileColors.bgSecondary,
+      shape: doodle ? null : const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: ProfileColors.textPrimary)),
+            Text(title, style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 24) : GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: ProfileColors.textPrimary)),
             const SizedBox(height: 8),
-            Text(subtitle, style: GoogleFonts.inter(fontSize: 13, color: ProfileColors.textMuted)),
+            Text(subtitle, style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 14) : GoogleFonts.inter(fontSize: 13, color: ProfileColors.textMuted)),
             const SizedBox(height: 32),
             slider,
             const SizedBox(height: 32),
@@ -978,8 +1114,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(gradient: mainGradient, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: ProfileColors.cyan.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))]),
-                child: Center(child: Text('Save Changes', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white))),
+                decoration: doodle
+                  ? DoodleDecorations.card(color: DoodleColors.orange).copyWith(borderRadius: BorderRadius.circular(12))
+                  : BoxDecoration(gradient: mainGradient, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: ProfileColors.cyan.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))]),
+                child: Center(child: Text('Save Changes', style: doodle ? DoodleFonts.body(color: DoodleColors.cream, fontSize: 18).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white))),
               ),
             ),
           ],
@@ -990,18 +1128,27 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   void _showMatchRadiusSheet() {
     double tempVal = _matchRadius;
+    final doodle = isDoodleMode(context);
     _showBottomSlider(
       title: 'Match Radius',
       subtitle: 'Set the maximum distance for potential matches.',
       slider: StatefulBuilder(builder: (context, setSheetState) {
         return Column(
           children: [
-            Text('${tempVal.toInt()} km', style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.bold, color: ProfileColors.cyan)),
-            Slider(
-              value: tempVal,
-              min: 1, max: 200, divisions: 199,
-              activeColor: ProfileColors.cyan, inactiveColor: ProfileColors.cyan.withValues(alpha:0.2),
-              onChanged: (v) => setSheetState(() => tempVal = v),
+            Text('${tempVal.toInt()} km', style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 26).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.bold, color: ProfileColors.cyan)),
+            SliderTheme(
+              data: doodle ? SliderThemeData(
+                activeTrackColor: DoodleColors.blue,
+                inactiveTrackColor: DoodleColors.paper,
+                thumbColor: DoodleColors.orange,
+                overlayColor: DoodleColors.orange.withValues(alpha: 0.2),
+              ) : SliderTheme.of(context),
+              child: Slider(
+                value: tempVal,
+                min: 1, max: 200, divisions: 199,
+                activeColor: doodle ? null : ProfileColors.cyan, inactiveColor: doodle ? null : ProfileColors.cyan.withValues(alpha:0.2),
+                onChanged: (v) => setSheetState(() => tempVal = v),
+              ),
             ),
           ],
         );
@@ -1016,18 +1163,27 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   void _showAgePrefSheet() {
     double tempMin = _ageMin;
     double tempMax = _ageMax;
+    final doodle = isDoodleMode(context);
     _showBottomSlider(
       title: 'Age Preference',
       subtitle: 'Select the age range of people you want to see.',
       slider: StatefulBuilder(builder: (context, setSheetState) {
         return Column(
           children: [
-            Text('${tempMin.toInt()} - ${tempMax.toInt()} years old', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.bold, color: ProfileColors.cyan)),
-            RangeSlider(
-              values: RangeValues(tempMin, tempMax),
-              min: 18, max: 99, divisions: 81,
-              activeColor: ProfileColors.cyan, inactiveColor: ProfileColors.cyan.withValues(alpha:0.2),
-              onChanged: (v) => setSheetState(() { tempMin = v.start; tempMax = v.end; }),
+            Text('${tempMin.toInt()} - ${tempMax.toInt()} years old', style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 22).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.bold, color: ProfileColors.cyan)),
+            SliderTheme(
+              data: doodle ? SliderThemeData(
+                activeTrackColor: DoodleColors.blue,
+                inactiveTrackColor: DoodleColors.paper,
+                thumbColor: DoodleColors.orange,
+                overlayColor: DoodleColors.orange.withValues(alpha: 0.2),
+              ) : SliderTheme.of(context),
+              child: RangeSlider(
+                values: RangeValues(tempMin, tempMax),
+                min: 18, max: 99, divisions: 81,
+                activeColor: doodle ? null : ProfileColors.cyan, inactiveColor: doodle ? null : ProfileColors.cyan.withValues(alpha:0.2),
+                onChanged: (v) => setSheetState(() { tempMin = v.start; tempMax = v.end; }),
+              ),
             ),
           ],
         );

@@ -15,10 +15,12 @@ import 'services/location_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'image_upload_service.dart';
 import 'widgets/location_picker_sheet.dart';
+
 import 'bolroom/bolroom_shell.dart';
 import 'communities_screen.dart';
 import 'main.dart';
 import 'notifications_screen.dart';
+import 'services/doodle_theme.dart';
 
 // ==========================================
 // COLORS & CONSTANTS
@@ -128,6 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.initState();
     _scrollCtrl.addListener(_onScroll);
     locationService.activeLocationNotifier.addListener(_onLocationChanged);
+    locationService.coordinatesUpdateNotifier.addListener(_onLocationChanged);
     _loadFeed();
     _loadBookmarks();
     _loadChats();
@@ -142,6 +145,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     locationService.activeLocationNotifier.removeListener(_onLocationChanged);
+    locationService.coordinatesUpdateNotifier.removeListener(_onLocationChanged);
     _scrollCtrl.dispose();
     for (final notifier in _carouselPageMap.values) {
       notifier.dispose();
@@ -511,12 +515,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // ==========================================
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     return Scaffold(
-      backgroundColor: HomeColors.bg,
+      backgroundColor: doodle ? DoodleColors.cream : HomeColors.bg,
       body: Stack(
         children: [
-          // Ambient bg — futuristic 3D glow orbs
-          const Positioned.fill(child: _AmbientBackground()),
+          // Ambient bg — doodle in light, neon orbs in dark
+          Positioned.fill(child: _AmbientBackground()),
 
           // Main content
           CustomScrollView(
@@ -578,22 +583,41 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // HEADER
   // ==========================================
   Widget _buildHeader() {
+    final doodle = isDoodleMode(context);
     return Container(
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 16, left: 20, right: 20, bottom: 8),
-      color: Colors.black,
+      color: doodle ? DoodleColors.cream : Colors.black,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            'RELAYA',
-            style: GoogleFonts.inter(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              fontStyle: FontStyle.italic,
-              letterSpacing: 1.0,
-            ),
-          ),
+          doodle
+            ? Row(
+                children: [
+                  Text(
+                    'Relaya',
+                    style: DoodleFonts.heading(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w700,
+                      color: DoodleColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Transform.rotate(
+                    angle: -0.2,
+                    child: Icon(Icons.send_rounded, color: DoodleColors.sketchLineLight, size: 20),
+                  ),
+                ],
+              )
+            : Text(
+                'RELAYA',
+                style: GoogleFonts.inter(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  fontStyle: FontStyle.italic,
+                  letterSpacing: 1.0,
+                ),
+              ),
           // Notification Icon
           StreamBuilder<List<Map<String, dynamic>>>(
             stream: Supabase.instance.client
@@ -615,7 +639,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      const Icon(Icons.notifications_none, color: Colors.white, size: 28),
+                      Icon(Icons.notifications_none, color: doodle ? DoodleColors.textSecondary : Colors.white, size: 28),
                       if (hasUnread)
                         Positioned(
                           top: 4,
@@ -624,9 +648,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             width: 10,
                             height: 10,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFF3B30), // iOS red style
+                              color: doodle ? DoodleColors.coral : const Color(0xFFFF3B30),
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.black, width: 2),
+                              border: Border.all(color: doodle ? DoodleColors.cream : Colors.black, width: 2),
                             ),
                           ),
                         ),
@@ -676,6 +700,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildPostCard(Map<String, dynamic> post) {
+    final doodle = isDoodleMode(context);
     final postId = post['id'].toString();
     final userName = post['user_name'] ?? post['author_name'] ?? 'User';
     final initial = userName.isNotEmpty ? userName[0].toUpperCase() : 'U';
@@ -699,12 +724,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final postUserId = post['user_id']?.toString() ?? '';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: EdgeInsets.only(bottom: 8, left: doodle ? 12 : 0, right: doodle ? 12 : 0, top: doodle ? 4 : 0),
       padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: BoxDecoration(
-        color: HomeColors.bg,
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
-      ),
+      decoration: doodle
+        ? DoodleDecorations.card()
+        : BoxDecoration(
+            color: HomeColors.bg,
+            border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+          ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1027,34 +1054,40 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (ctx) => Container(
-        height: MediaQuery.of(ctx).size.height * 0.55,
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        decoration: BoxDecoration(
-          color: HomeColors.bg2,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border.all(color: HomeColors.gb),
-        ),
-        child: Column(
+      builder: (ctx) {
+        final doodle = isDoodleMode(ctx);
+        return Container(
+          height: MediaQuery.of(ctx).size.height * 0.55,
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          decoration: doodle
+            ? DoodleDecorations.card(color: DoodleColors.cream)
+            : BoxDecoration(
+                color: HomeColors.bg2,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                border: Border.all(color: HomeColors.gb),
+              ),
+          child: Column(
           children: [
-            Container(width: 40, height: 4, margin: const EdgeInsets.only(top: 12), decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+            Container(width: 40, height: 4, margin: const EdgeInsets.only(top: 12), decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.3) : Colors.white24, borderRadius: BorderRadius.circular(2))),
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('Comments', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: HomeColors.txt)),
+              child: Text('Comments', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 20) : GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: HomeColors.txt)),
             ),
             Expanded(
               child: previews.isEmpty
-                  ? Center(child: Text('No comments yet', style: GoogleFonts.inter(color: HomeColors.muted, fontSize: 13)))
+                  ? Center(child: Text('No comments yet', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5), fontSize: 16) : GoogleFonts.inter(color: HomeColors.muted, fontSize: 13)))
                   : ListView(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: previews.map((c) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          CircleAvatar(radius: 14, backgroundColor: HomeColors.card, child: Text((c['user_name'] ?? 'U')[0], style: GoogleFonts.inter(fontSize: 10, color: HomeColors.txt))),
+                          doodle 
+                            ? DoodleAvatar(size: 28, url: '', borderColor: DoodleColors.orange, fallback: Center(child: Text((c['user_name'] ?? 'U')[0], style: DoodleFonts.label(color: DoodleColors.orange))))
+                            : CircleAvatar(radius: 14, backgroundColor: HomeColors.card, child: Text((c['user_name'] ?? 'U')[0], style: GoogleFonts.inter(fontSize: 10, color: HomeColors.txt))),
                           const SizedBox(width: 8),
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(c['user_name'] ?? 'User', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: HomeColors.txt)),
-                            Text(c['text'] ?? '', style: GoogleFonts.inter(fontSize: 12, color: HomeColors.txt2)),
+                            Text(c['user_name'] ?? 'User', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14) : GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: HomeColors.txt)),
+                            Text(c['text'] ?? '', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 14) : GoogleFonts.inter(fontSize: 12, color: HomeColors.txt2)),
                           ])),
                         ]),
                       )).toList(),
@@ -1063,20 +1096,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // Input
             Container(
               padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
-              decoration: BoxDecoration(border: Border(top: BorderSide(color: HomeColors.gb))),
+              decoration: BoxDecoration(border: Border(top: BorderSide(color: doodle ? DoodleColors.brown.withValues(alpha: 0.3) : HomeColors.gb))),
               child: Row(children: [
                 Expanded(child: TextField(
                   controller: textCtrl,
-                  style: GoogleFonts.inter(fontSize: 13, color: HomeColors.txt),
+                  style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16) : GoogleFonts.inter(fontSize: 13, color: HomeColors.txt),
                   decoration: InputDecoration(
                     hintText: 'Add a comment...',
-                    hintStyle: GoogleFonts.inter(color: HomeColors.muted),
+                    hintStyle: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5), fontSize: 16) : GoogleFonts.inter(color: HomeColors.muted),
                     border: InputBorder.none,
                     isDense: true,
                   ),
                 )),
                 IconButton(
-                  icon: Icon(Icons.send, color: HomeColors.cyan, size: 20),
+                  icon: Icon(Icons.send, color: doodle ? DoodleColors.blue : HomeColors.cyan, size: 20),
                   onPressed: () {
                     if (textCtrl.text.trim().isNotEmpty) {
                       _addComment(postId, textCtrl.text);
@@ -1088,7 +1121,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ],
         ),
-      ),
+      );
+      },
     );
   }
 
@@ -1107,29 +1141,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          height: MediaQuery.of(ctx).size.height * 0.88,
-          decoration: BoxDecoration(
-            color: HomeColors.bg2,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: HomeColors.gb),
-          ),
-          child: Column(
-            children: [
-              Container(width: 40, height: 4, margin: const EdgeInsets.only(top: 12), decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+      builder: (ctx) {
+        final doodle = isDoodleMode(ctx);
+        return StatefulBuilder(builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            height: MediaQuery.of(ctx).size.height * 0.88,
+            decoration: doodle
+              ? DoodleDecorations.card(color: DoodleColors.cream)
+              : BoxDecoration(
+                  color: HomeColors.bg2,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  border: Border.all(color: HomeColors.gb),
+                ),
+            child: Column(
+              children: [
+                Container(width: 40, height: 4, margin: const EdgeInsets.only(top: 12), decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.3) : Colors.white24, borderRadius: BorderRadius.circular(2))),
               // Header
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Create Post', style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: HomeColors.txt)),
+                    Text('Create Post', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 20) : GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: HomeColors.txt)),
                     GestureDetector(onTap: () => Navigator.pop(ctx), child: Container(
                       width: 32, height: 32,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: HomeColors.glass, border: Border.all(color: HomeColors.gb)),
-                      child: Icon(Icons.close, color: HomeColors.txt2, size: 16),
+                      decoration: doodle 
+                        ? DoodleDecorations.card(color: DoodleColors.paper)
+                        : BoxDecoration(shape: BoxShape.circle, color: HomeColors.glass, border: Border.all(color: HomeColors.gb)),
+                      child: Icon(Icons.close, color: doodle ? DoodleColors.brown : HomeColors.txt2, size: 16),
                     )),
                   ],
                 ),
@@ -1142,42 +1182,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     children: [
                       // User row
                       Row(children: [
-                        Container(
-                          width: 40, height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(colors: [HomeColors.cyan, HomeColors.purple]),
-                          ),
-                          child: Center(child: Text(
-                            (_myProfile?['name'] ?? 'M')[0].toUpperCase(),
-                            style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
-                          )),
-                        ),
+                        doodle 
+                          ? DoodleAvatar(size: 40, url: '', borderColor: DoodleColors.orange, fallback: Center(child: Text((_myProfile?['name'] ?? 'M')[0].toUpperCase(), style: DoodleFonts.heading(color: DoodleColors.orange))))
+                          : Container(
+                              width: 40, height: 40,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(colors: [HomeColors.cyan, HomeColors.purple]),
+                              ),
+                              child: Center(child: Text(
+                                (_myProfile?['name'] ?? 'M')[0].toUpperCase(),
+                                style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                              )),
+                            ),
                         const SizedBox(width: 10),
                         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(_myProfile?['name'] ?? _myProfile?['full_name'] ?? 'You', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: HomeColors.txt)),
+                          Text(_myProfile?['name'] ?? _myProfile?['full_name'] ?? 'You', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 16) : GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: HomeColors.txt)),
                           Row(children: [
-                            Icon(Icons.public, size: 9, color: HomeColors.muted),
+                            Icon(Icons.public, size: 10, color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : HomeColors.muted),
                             const SizedBox(width: 4),
-                            Text('Public Post', style: GoogleFonts.inter(fontSize: 10, color: HomeColors.muted)),
+                            Text('Public Post', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.6), fontSize: 12) : GoogleFonts.inter(fontSize: 10, color: HomeColors.muted)),
                           ]),
                         ]),
                       ]),
                       const SizedBox(height: 14),
                       // Text area
                       Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          color: HomeColors.card,
-                          border: Border.all(color: HomeColors.gb),
-                        ),
+                        decoration: doodle
+                          ? DoodleDecorations.card(color: DoodleColors.paper)
+                          : BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              color: HomeColors.card,
+                              border: Border.all(color: HomeColors.gb),
+                            ),
                         child: TextField(
                           controller: textCtrl,
                           maxLines: 5,
-                          style: GoogleFonts.inter(fontSize: 14, color: HomeColors.txt, height: 1.6),
+                          style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16).copyWith(height: 1.6) : GoogleFonts.inter(fontSize: 14, color: HomeColors.txt, height: 1.6),
                           decoration: InputDecoration(
                             hintText: "What's on your mind? Share your thoughts, experiences, or ask a question...",
-                            hintStyle: GoogleFonts.inter(color: HomeColors.muted),
+                            hintStyle: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5), fontSize: 16) : GoogleFonts.inter(color: HomeColors.muted),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.all(14),
                           ),
@@ -1213,7 +1257,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ],
                       const SizedBox(height: 14),
                       // Tags
-                      Text('Tag Interests', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: HomeColors.txt2)),
+                      Text('Tag Interests', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 14) : GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: HomeColors.txt2)),
                       const SizedBox(height: 6),
                       Wrap(spacing: 6, runSpacing: 6, children: [
                         '🎵 Music', '💪 Health', '💻 Tech', '💃 Dance', '🎨 Art',
@@ -1224,19 +1268,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         }),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: selectedTags.contains(t) ? HomeColors.cyan.withValues(alpha: 0.08) : HomeColors.card,
-                            border: Border.all(color: selectedTags.contains(t) ? HomeColors.cyan : HomeColors.gb),
-                          ),
-                          child: Text(t, style: GoogleFonts.inter(fontSize: 11, color: selectedTags.contains(t) ? HomeColors.cyan : HomeColors.txt2, fontWeight: FontWeight.w500)),
+                          decoration: doodle
+                            ? DoodleDecorations.card(color: selectedTags.contains(t) ? DoodleColors.orange.withValues(alpha: 0.3) : DoodleColors.paper)
+                            : BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: selectedTags.contains(t) ? HomeColors.cyan.withValues(alpha: 0.08) : HomeColors.card,
+                                border: Border.all(color: selectedTags.contains(t) ? HomeColors.cyan : HomeColors.gb),
+                              ),
+                          child: Text(t, style: doodle ? DoodleFonts.body(color: selectedTags.contains(t) ? DoodleColors.orange : DoodleColors.brown, fontSize: 13) : GoogleFonts.inter(fontSize: 11, color: selectedTags.contains(t) ? HomeColors.cyan : HomeColors.txt2, fontWeight: FontWeight.w500)),
                         ),
                       )).toList()),
                       const SizedBox(height: 14),
-                      // Options + Post btn
+                        // Options + Post btn
                       Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(border: Border(top: BorderSide(color: HomeColors.gb))),
+                        decoration: BoxDecoration(border: Border(top: BorderSide(color: doodle ? DoodleColors.brown.withValues(alpha: 0.3) : HomeColors.gb))),
                         child: Row(
                           children: [
                             // Image upload button
@@ -1248,12 +1294,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               child: Container(
                                 width: 34, height: 34,
                                 margin: const EdgeInsets.only(right: 8),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  color: uploadedImageUrl != null ? HomeColors.cyan.withValues(alpha: 0.15) : HomeColors.glass,
-                                  border: Border.all(color: uploadedImageUrl != null ? HomeColors.cyan : HomeColors.gb),
-                                ),
-                                child: Icon(Icons.image, color: uploadedImageUrl != null ? HomeColors.cyan : HomeColors.txt2, size: 16),
+                                decoration: doodle
+                                  ? DoodleDecorations.card(color: uploadedImageUrl != null ? DoodleColors.green.withValues(alpha: 0.3) : DoodleColors.paper)
+                                  : BoxDecoration(
+                                      borderRadius: BorderRadius.circular(10),
+                                      color: uploadedImageUrl != null ? HomeColors.cyan.withValues(alpha: 0.15) : HomeColors.glass,
+                                      border: Border.all(color: uploadedImageUrl != null ? HomeColors.cyan : HomeColors.gb),
+                                    ),
+                                child: Icon(Icons.image, color: uploadedImageUrl != null ? (doodle ? DoodleColors.green : HomeColors.cyan) : (doodle ? DoodleColors.brown.withValues(alpha: 0.5) : HomeColors.txt2), size: 16),
                               ),
                             ),
                             // Live location text
@@ -1272,9 +1320,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.location_on, color: HomeColors.cyan, size: 14),
+                                      Icon(Icons.location_on, color: doodle ? DoodleColors.orange : HomeColors.cyan, size: 14),
                                       const SizedBox(width: 4),
-                                      Text(displayText, style: GoogleFonts.inter(fontSize: 11, color: HomeColors.cyan, fontWeight: FontWeight.w600)),
+                                      Text(displayText, style: doodle ? DoodleFonts.body(color: DoodleColors.orange, fontSize: 13) : GoogleFonts.inter(fontSize: 11, color: HomeColors.cyan, fontWeight: FontWeight.w600)),
                                     ],
                                   ),
                                 );
@@ -1318,16 +1366,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               },
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  gradient: LinearGradient(colors: isPosting ? [HomeColors.muted, HomeColors.muted] : [HomeColors.cyan, HomeColors.green]),
-                                ),
+                                decoration: doodle
+                                  ? DoodleDecorations.card(color: isPosting ? DoodleColors.paper : DoodleColors.green)
+                                  : BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      gradient: LinearGradient(colors: isPosting ? [HomeColors.muted, HomeColors.muted] : [HomeColors.cyan, HomeColors.green]),
+                                    ),
                                 child: isPosting
                                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
                                     : Row(children: [
                                         Icon(Icons.send, size: 14, color: Colors.black),
                                         const SizedBox(width: 4),
-                                        Text('Post', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black)),
+                                        Text('Post', style: doodle ? DoodleFonts.heading(color: Colors.black, fontSize: 16) : GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black)),
                                       ]),
                               ),
                             ),
@@ -1341,7 +1391,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ],
           ),
         ),
-      )),
+      ));
+      },
     );
   }
 
@@ -1744,24 +1795,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildEmptyFeed() {
+    final doodle = isDoodleMode(context);
+    final city = locationService.activeDistrict.isNotEmpty
+        ? locationService.activeDistrict
+        : 'your area';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40),
         child: Column(children: [
           const SizedBox(height: 48),
           Container(
-            width: 72, height: 72,
+            width: 80, height: 80,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)], begin: Alignment.topLeft, end: Alignment.bottomRight),
               boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 24)],
             ),
-            child: const Center(child: Icon(Icons.auto_awesome, color: Colors.white, size: 30)),
+            child: const Center(child: Icon(Icons.location_city_rounded, color: Colors.white, size: 34)),
           ),
-          const SizedBox(height: 16),
-          Text('Nothing here yet', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: HomeColors.txt)),
-          const SizedBox(height: 6),
-          Text('Be the first to spark a conversation!', style: GoogleFonts.inter(fontSize: 13, color: HomeColors.muted)),
+          const SizedBox(height: 20),
+          Text(
+            'No posts in $city yet',
+            textAlign: TextAlign.center,
+            style: doodle
+                ? DoodleFonts.heading(fontSize: 20, fontWeight: FontWeight.w800)
+                : GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: HomeColors.txt),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Be the first to spark a conversation in $city!',
+            textAlign: TextAlign.center,
+            style: doodle
+                ? DoodleFonts.body(fontSize: 13, color: DoodleColors.textSecondary)
+                : GoogleFonts.inter(fontSize: 13, color: HomeColors.muted),
+          ),
+          const SizedBox(height: 24),
+          GestureDetector(
+            onTap: () => showLocationSearchSheet(context),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6B00).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 14),
+                  const SizedBox(width: 6),
+                  Text('Try a different city',
+                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: const Color(0xFFFF6B00))),
+                ],
+              ),
+            ),
+          ),
         ]),
       ),
     );
@@ -1789,10 +1877,11 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final doodle = isDoodleMode(context);
     return SizedBox(
       height: 50,
       child: Container(
-        color: Colors.black,
+        color: doodle ? DoodleColors.cream : Colors.black,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
@@ -1802,12 +1891,14 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
                 builder: (context, district, _) {
                   return Text(
                     district.isNotEmpty ? district : 'Nearby',
-                    style: GoogleFonts.inter(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: -0.2,
-                    ),
+                    style: doodle
+                      ? DoodleFonts.subheading(fontSize: 22, fontWeight: FontWeight.w700)
+                      : GoogleFonts.inter(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: -0.2,
+                        ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   );
@@ -1817,18 +1908,18 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
             const SizedBox(width: 10),
             Row(
               children: [
-                _buildFilterChip('Trending', activeFilter == 'Trending', () => onFilterChanged('Trending')),
+                _buildFilterChip('Trending', activeFilter == 'Trending', () => onFilterChanged('Trending'), doodle),
                 const SizedBox(width: 6),
                 GestureDetector(
                   onTap: onLocationTap,
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E1E),
+                      color: doodle ? DoodleColors.paper : const Color(0xFF1E1E1E),
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white24, width: 1),
+                      border: Border.all(color: doodle ? DoodleColors.cardBorder : Colors.white24, width: 1),
                     ),
-                    child: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 16),
+                    child: Icon(Icons.location_on, color: doodle ? DoodleColors.orange : const Color(0xFFFF6B00), size: 16),
                   ),
                 ),
               ],
@@ -1839,26 +1930,33 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
     );
   }
 
-  Widget _buildFilterChip(String label, bool isActive, VoidCallback onTap) {
+  Widget _buildFilterChip(String label, bool isActive, VoidCallback onTap, bool doodle) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF1E1E1E) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isActive ? Colors.white24 : Colors.white12,
-            width: 1,
-          ),
-        ),
+        decoration: doodle
+          ? DoodleDecorations.chip(selected: isActive)
+          : BoxDecoration(
+              color: isActive ? const Color(0xFF1E1E1E) : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isActive ? Colors.white24 : Colors.white12,
+                width: 1,
+              ),
+            ),
         child: Text(
           label,
-          style: GoogleFonts.inter(
-            color: isActive ? Colors.white : Colors.white54,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-          ),
+          style: doodle
+            ? DoodleFonts.label(
+                fontSize: 11,
+                color: isActive ? DoodleColors.textPrimary : DoodleColors.textMuted,
+              )
+            : GoogleFonts.inter(
+                color: isActive ? Colors.white : Colors.white54,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
         ),
       ),
     );
@@ -1880,14 +1978,35 @@ class _AmbientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Doodle mode: parchment background with scattered doodle decorations
+    if (isDoodleMode(context)) {
+      return IgnorePointer(
+        child: Stack(
+          children: [
+            Container(
+              decoration: DoodleDecorations.parchmentBg(),
+            ),
+            Positioned.fill(
+              child: CustomPaint(
+                painter: ScatteredDoodlesPainter(
+                  seed: 77,
+                  density: 0.35,
+                  color: const Color(0x1AB8956E),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Dark mode: original neon orbs
     return IgnorePointer(
       child: Stack(
         children: [
-          // Base gradient wash — deep black
           Container(
             color: HomeColors.bg,
           ),
-          // Large cyan orb — top right
           Positioned(top: -100, right: -80, child: Container(
             width: 340, height: 340,
             decoration: BoxDecoration(
@@ -1900,7 +2019,6 @@ class _AmbientBackground extends StatelessWidget {
           ).animate(onPlay: (c) => c.repeat(reverse: true))
             .move(duration: 10.seconds, begin: Offset.zero, end: Offset(30, -20))
             .scale(begin: Offset(1, 1), end: Offset(1.1, 1.1))),
-          // Vivid purple orb — center-left
           Positioned(top: 180, left: -70, child: Container(
             width: 300, height: 300,
             decoration: BoxDecoration(
@@ -1913,7 +2031,6 @@ class _AmbientBackground extends StatelessWidget {
           ).animate(onPlay: (c) => c.repeat(reverse: true))
             .move(duration: 12.seconds, begin: Offset.zero, end: Offset(-20, 25), delay: 2.seconds)
             .scale(begin: Offset(1, 1), end: Offset(0.9, 0.9))),
-          // Hot magenta orb — bottom right
           Positioned(bottom: 120, right: -50, child: Container(
             width: 260, height: 260,
             decoration: BoxDecoration(

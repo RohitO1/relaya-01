@@ -12,6 +12,7 @@ import 'image_upload_service.dart';
 import 'services/theme_service.dart';
 import 'services/location_service.dart';
 import 'widgets/location_picker_sheet.dart';
+import 'services/doodle_theme.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -346,21 +347,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
+    final textP = doodle ? DoodleColors.textPrimary : Colors.white;
+    final textM = doodle ? DoodleColors.textMuted : Colors.white38;
+
     if (_loading) {
       return Scaffold(
-        backgroundColor: const Color(0xFF050508),
-        appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: IconButton(icon: const Icon(Icons.arrow_back_ios, size: 18), onPressed: () => Navigator.pop(context))),
+        backgroundColor: doodle ? DoodleColors.cream : const Color(0xFF050508),
+        appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: IconButton(icon: Icon(Icons.arrow_back_ios, size: 18, color: textP), onPressed: () => Navigator.pop(context))),
         body: const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00))),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF050508),
+      backgroundColor: doodle ? DoodleColors.cream : const Color(0xFF050508),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(icon: Icon(Icons.arrow_back_ios, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black, size: 18), onPressed: () => Navigator.pop(context)),
-        title: const Text('Settings', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 1)),
+        leading: IconButton(icon: Icon(Icons.arrow_back_ios, color: textP, size: 18), onPressed: () => Navigator.pop(context)),
+        title: Text('Settings', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 1)),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -468,20 +473,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(color: const Color(0xFF101015), borderRadius: BorderRadius.circular(14)),
+                    decoration: BoxDecoration(color: doodle ? DoodleColors.paper : const Color(0xFF101015), borderRadius: BorderRadius.circular(14), border: Border.all(color: doodle ? DoodleColors.cardBorder : Colors.transparent)),
                     child: Row(
                       children: [
-                        const Icon(Icons.account_circle_outlined, color: Colors.white54, size: 28),
+                        Icon(Icons.account_circle_outlined, color: textM, size: 28),
                         const SizedBox(width: 12),
-                        const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Standard', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                          Text('Free Account', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('Standard', style: TextStyle(color: textP, fontWeight: FontWeight.bold, fontSize: 14)),
+                          Text('Free Account', style: TextStyle(color: textM, fontSize: 11)),
                         ]),
                         const Spacer(),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                          child: const Text('Active', style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold)),
+                          decoration: BoxDecoration(color: doodle ? DoodleColors.amber : const Color(0xFF10B981).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                          child: Text('Active', style: TextStyle(color: doodle ? DoodleColors.brown : const Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -598,7 +603,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: activeLoc.isEmpty ? Colors.white38 : Colors.white,
+                                    color: activeLoc.isEmpty ? textM : textP,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 14,
                                   ),
@@ -667,12 +672,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Column(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Public Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
-                          SizedBox(height: 4),
-                          Text('When off, only followers will see your posts.', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                          Text('Public Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textP)),
+                          const SizedBox(height: 4),
+                          Text('When off, only followers will see your posts.', style: TextStyle(color: textM, fontSize: 11)),
                         ],
                       ),
                       Switch(
@@ -818,14 +823,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     controller: _bioController,
                     maxLines: 3,
                     maxLength: 300,
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    style: TextStyle(color: doodle ? DoodleColors.textPrimary : Colors.white70, fontSize: 13),
                     decoration: InputDecoration(
                       hintText: 'Write something about yourself...',
-                      hintStyle: const TextStyle(color: Colors.white24),
+                      hintStyle: TextStyle(color: doodle ? DoodleColors.textMuted : Colors.white24),
                       filled: true,
-                      fillColor: const Color(0xFF101015),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      counterStyle: const TextStyle(color: Colors.white24),
+                      fillColor: doodle ? DoodleColors.paper : const Color(0xFF101015),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: doodle ? BorderSide(color: DoodleColors.cardBorder) : BorderSide.none),
+                      counterStyle: TextStyle(color: doodle ? DoodleColors.textMuted : Colors.white24),
                     ),
                   ),
                 ],
@@ -859,7 +864,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ? Stack(
                               alignment: Alignment.topRight,
                               children: [
-                                Image(image: _safeImageProvider(_avatarUrl), height: 220, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(height: 220, width: double.infinity, color: const Color(0xFF101015), child: const Center(child: Icon(Icons.broken_image, color: Colors.white24, size: 40)))),
+                                Image(image: _safeImageProvider(_avatarUrl), height: 220, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(height: 220, width: double.infinity, color: doodle ? DoodleColors.paper : const Color(0xFF101015), child: Center(child: Icon(Icons.broken_image, color: doodle ? DoodleColors.textMuted : Colors.white24, size: 40)))),
                                 Container(
                                   margin: const EdgeInsets.all(12),
                                   padding: const EdgeInsets.all(8),
@@ -868,7 +873,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ],
                             )
-                          : Container(height: 220, width: double.infinity, color: const Color(0xFF101015), child: const Center(child: Icon(Icons.add_a_photo, color: Colors.white24, size: 40))),
+                          : Container(height: 220, width: double.infinity, decoration: BoxDecoration(color: doodle ? DoodleColors.paper : const Color(0xFF101015), border: Border.all(color: doodle ? DoodleColors.cardBorder : Colors.transparent), borderRadius: BorderRadius.circular(16)), child: Center(child: Icon(Icons.add_a_photo, color: doodle ? DoodleColors.textMuted : Colors.white24, size: 40))),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -883,7 +888,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         }
                       },
                       child: Container(
-                        decoration: BoxDecoration(color: const Color(0xFF101015), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white10)),
+                        decoration: BoxDecoration(color: doodle ? DoodleColors.paper : const Color(0xFF101015), borderRadius: BorderRadius.circular(12), border: Border.all(color: doodle ? DoodleColors.cardBorder : Colors.white10)),
                         child: _galleryUrls[i].isNotEmpty
                             ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image(image: _safeImageProvider(_galleryUrls[i]), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()))
                             : const Center(child: Icon(Icons.add, color: Color(0xFFFF6B00), size: 24)),
@@ -936,9 +941,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         margin: const EdgeInsets.only(bottom: 10),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                         decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFFFF6B00).withValues(alpha: 0.08) : const Color(0xFF101015),
+                          color: isSelected ? (doodle ? DoodleColors.amber : const Color(0xFFFF6B00).withValues(alpha: 0.08)) : (doodle ? DoodleColors.paper : const Color(0xFF101015)),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: isSelected ? const Color(0xFFFF6B00).withValues(alpha: 0.4) : Colors.white10),
+                          border: Border.all(color: isSelected ? (doodle ? DoodleColors.brown : const Color(0xFFFF6B00).withValues(alpha: 0.4)) : (doodle ? DoodleColors.cardBorder : Colors.white10)),
                         ),
                         child: Row(children: [
                           Icon(opt['icon'] as IconData, color: isSelected ? const Color(0xFFFF6B00) : Colors.white54, size: 22),
@@ -974,9 +979,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFFFF6B00).withValues(alpha: 0.12) : const Color(0xFF101015),
+                            color: isSelected ? (doodle ? DoodleColors.amber : const Color(0xFFFF6B00).withValues(alpha: 0.12)) : (doodle ? DoodleColors.paper : const Color(0xFF101015)),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: isSelected ? const Color(0xFFFF6B00).withValues(alpha: 0.5) : Colors.white12),
+                            border: Border.all(color: isSelected ? (doodle ? DoodleColors.brown : const Color(0xFFFF6B00).withValues(alpha: 0.5)) : (doodle ? DoodleColors.cardBorder : Colors.white12)),
                           ),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             Icon(opt['icon'] as IconData, color: isSelected ? const Color(0xFFFF6B00) : Colors.white54, size: 16),
@@ -1086,6 +1091,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildSectionCard({required Widget child, Color? borderColor}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final doodle = isDoodleMode(context);
+
+    if (doodle) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: DoodleDecorations.card(color: DoodleColors.paper, borderColor: borderColor ?? DoodleColors.brown),
+        child: child,
+      );
+    }
 
     return Container(
       width: double.infinity,
@@ -1223,6 +1238,12 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
   void initState() {
     super.initState();
     _reverseGeocode(_selectedPoint);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _isMapDarkMode = !isDoodleMode(context);
   }
 
   @override

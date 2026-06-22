@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'messages_screen.dart';
 import 'services/notification_service.dart';
 import 'widgets/hangout_choice_sheet.dart';
+import 'services/doodle_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // KNOCK REVIEW SCREEN
@@ -389,7 +390,7 @@ class _KnockReviewScreenState extends State<KnockReviewScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : _bg,
       body: _loading
           ? _buildLoading()
           : Stack(children: [

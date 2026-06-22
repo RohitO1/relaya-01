@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'dart:convert';
+import 'services/doodle_theme.dart';
 
 
 // =============================================================================
@@ -433,7 +434,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : _bg,
       appBar: AppBar(
         backgroundColor: _card,
         elevation: 0,

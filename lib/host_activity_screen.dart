@@ -12,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'services/notification_service.dart';
 import 'services/location_service.dart';
+import 'services/doodle_theme.dart';
 
 // =============================================================================
 // HOST ACTIVITY SCREEN - SUPREME EDITION
@@ -573,7 +574,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
     final accentSecondary = _isRushIn ? purple : actSecondary;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF050508),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF050508),
       body: Stack(
         children: [
           // ── AMBIENT ORBS ──

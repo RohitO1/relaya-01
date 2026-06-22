@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'spark_screen.dart';
+import 'services/doodle_theme.dart';
 
 
 class SparkDetailScreen extends StatefulWidget {
@@ -483,7 +484,7 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
         : (item.location ?? 'TBD');
 
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF000000),
       body: Stack(
         children: [
           CustomScrollView(

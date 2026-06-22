@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/doodle_theme.dart';
 import '../main.dart'; // To get CosmicBackgroundPainter and _buildSafeImageProvider if needed
 
 // Helper functions for displaying profile details

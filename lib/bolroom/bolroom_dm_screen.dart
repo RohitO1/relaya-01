@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'bolroom_theme.dart';
 import 'bolroom_dm_chat_screen.dart';
+import '../services/doodle_theme.dart';
 
 class BolroomDmScreen extends StatefulWidget {
   const BolroomDmScreen({super.key});
@@ -83,10 +84,11 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
   }
 
   void _showContextMenu(BuildContext context, String partnerId, String name) {
+    final doodle = isDoodleMode(context);
     HapticFeedback.mediumImpact();
     showModalBottomSheet(
       context: context,
-      backgroundColor: cardColor,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         return SafeArea(
@@ -96,31 +98,31 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
               Container(
                 margin: const EdgeInsets.only(top: 8, bottom: 16),
                 width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : Colors.white24, borderRadius: BorderRadius.circular(2)),
               ),
               ListTile(
-                leading: const Icon(Icons.push_pin_outlined, color: Colors.white),
-                title: const Text('Pin chat', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.push_pin_outlined, color: doodle ? DoodleColors.brown : Colors.white),
+                title: Text('Pin chat', style: doodle ? DoodleFonts.body(color: DoodleColors.brown) : const TextStyle(color: Colors.white)),
                 onTap: () { Navigator.pop(ctx); },
               ),
               ListTile(
-                leading: const Icon(Icons.archive_outlined, color: Colors.white),
-                title: const Text('Archive chat', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.archive_outlined, color: doodle ? DoodleColors.brown : Colors.white),
+                title: Text('Archive chat', style: doodle ? DoodleFonts.body(color: DoodleColors.brown) : const TextStyle(color: Colors.white)),
                 onTap: () { Navigator.pop(ctx); },
               ),
               ListTile(
-                leading: const Icon(Icons.notifications_off_outlined, color: Colors.white),
-                title: const Text('Mute notifications', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.notifications_off_outlined, color: doodle ? DoodleColors.brown : Colors.white),
+                title: Text('Mute notifications', style: doodle ? DoodleFonts.body(color: DoodleColors.brown) : const TextStyle(color: Colors.white)),
                 onTap: () { Navigator.pop(ctx); },
               ),
               ListTile(
-                leading: const Icon(Icons.mark_chat_unread_outlined, color: Colors.white),
-                title: const Text('Mark as unread', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.mark_chat_unread_outlined, color: doodle ? DoodleColors.brown : Colors.white),
+                title: Text('Mark as unread', style: doodle ? DoodleFonts.body(color: DoodleColors.brown) : const TextStyle(color: Colors.white)),
                 onTap: () { Navigator.pop(ctx); },
               ),
               ListTile(
                 leading: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
-                title: const Text('Delete chat', style: TextStyle(color: Color(0xFFEF4444))),
+                title: Text('Delete chat', style: doodle ? DoodleFonts.body(color: const Color(0xFFEF4444)) : const TextStyle(color: Color(0xFFEF4444))),
                 onTap: () {
                   Navigator.pop(ctx);
                   _confirmDeleteChat(context, partnerId, name);
@@ -134,16 +136,17 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
   }
 
   void _confirmDeleteChat(BuildContext context, String partnerId, String name) {
+    final doodle = isDoodleMode(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: cardColor,
-        title: Text('Delete chat with $name?', style: const TextStyle(color: Colors.white)),
-        content: const Text('This will delete the chat only for you.', style: TextStyle(color: Colors.white70)),
+        backgroundColor: doodle ? DoodleColors.paper : cardColor,
+        title: Text('Delete chat with $name?', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 20) : const TextStyle(color: Colors.white)),
+        content: Text('This will delete the chat only for you.', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 16) : const TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: Text('Cancel', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5), fontSize: 14) : const TextStyle(color: Colors.white54)),
           ),
           TextButton(
             onPressed: () {
@@ -152,7 +155,7 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                 _convos.removeWhere((e) => _otherUserId(e) == partnerId);
               });
             },
-            child: const Text('Delete', style: TextStyle(color: Color(0xFFEF4444))),
+            child: Text('Delete', style: doodle ? DoodleFonts.body(color: const Color(0xFFEF4444), fontSize: 14).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Color(0xFFEF4444))),
           ),
         ],
       )
@@ -161,16 +164,17 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final doodle = isDoodleMode(context);
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: doodle ? DoodleColors.paper : bgColor,
       body: SafeArea(
         child: _loading
-            ? Center(child: CircularProgressIndicator(color: purplePrimary, strokeWidth: 2))
+            ? Center(child: CircularProgressIndicator(color: doodle ? DoodleColors.brown : purplePrimary, strokeWidth: 2))
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader("Messages", Icons.edit_square),
-                  _buildSearchBar("Search messages...", (val) {
+                  _buildHeader("Messages", Icons.edit_square, doodle),
+                  _buildSearchBar("Search messages...", doodle, (val) {
                     setState(() => searchQuery = val);
                   }),
                   
@@ -183,15 +187,17 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: borderColor)),
+                        decoration: doodle
+                          ? DoodleDecorations.card(color: DoodleColors.cream)
+                          : BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: borderColor)),
                         child: Row(
                           children: [
-                            const Icon(Icons.person_add_alt_1_outlined, color: purplePrimary, size: 24),
+                            Icon(Icons.person_add_alt_1_outlined, color: doodle ? DoodleColors.blue : purplePrimary, size: 24),
                             const SizedBox(width: 12),
-                            const Expanded(child: Text('Message Requests', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14))),
-                            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: purplePrimary, borderRadius: BorderRadius.circular(10)), child: const Text('1', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
+                            Expanded(child: Text('Message Requests', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14))),
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: doodle ? DoodleColors.orange : purplePrimary, borderRadius: BorderRadius.circular(10)), child: const Text('1', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
                             const SizedBox(width: 8),
-                            const Icon(Icons.arrow_forward_ios, color: textMuted, size: 14),
+                            Icon(Icons.arrow_forward_ios, color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : textMuted, size: 14),
                           ],
                         ),
                       ),
@@ -199,11 +205,11 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
 
                   // Online / Active Users Scroll
                   if (searchQuery.isEmpty && _convos.isNotEmpty) ...[
-                    const Padding(
-                      padding: EdgeInsets.only(left: 20, top: 4, bottom: 8),
-                      child: Text("Active Now", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 20, top: 4, bottom: 8),
+                      child: Text("Active Now", style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
                     ),
-                    _buildActiveUsersRow(),
+                    _buildActiveUsersRow(doodle),
                   ],
 
                   const SizedBox(height: 10),
@@ -211,11 +217,11 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                   // Chat List
                   Expanded(
                     child: _convos.isEmpty 
-                      ? _empty() 
+                      ? _empty(doodle) 
                       : ListView.builder(
                           itemCount: _convos.length,
                           itemBuilder: (context, index) {
-                            return _buildDynamicChatTile(_convos[index], index);
+                            return _buildDynamicChatTile(_convos[index], index, doodle);
                           },
                         ),
                   ),
@@ -225,7 +231,7 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
     );
   }
 
-  Widget _buildHeader(String title, IconData actionIcon) {
+  Widget _buildHeader(String title, IconData actionIcon, bool doodle) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Row(
@@ -238,18 +244,20 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                 child: Container(
                   margin: const EdgeInsets.only(right: 12),
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                    boxShadow: [BoxShadow(color: purplePrimary.withValues(alpha: 0.2), blurRadius: 8)],
-                  ),
-                  child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+                  decoration: doodle
+                    ? DoodleDecorations.card()
+                    : BoxDecoration(
+                        color: cardColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                        boxShadow: [BoxShadow(color: purplePrimary.withValues(alpha: 0.2), blurRadius: 8)],
+                      ),
+                  child: Icon(Icons.arrow_back_ios_new, color: doodle ? DoodleColors.brown : Colors.white, size: 18),
                 ),
               ),
               Text(
                 title,
-                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 32) : const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 0.5),
               ),
             ],
           ),
@@ -258,15 +266,17 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
             child: Container(
               width: 44,
               height: 44,
-              decoration: BoxDecoration(
-                color: cardColor,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-                boxShadow: [
-                  BoxShadow(color: purplePrimary.withValues(alpha: 0.2), blurRadius: 10, spreadRadius: 1)
-                ]
-              ),
-              child: Icon(actionIcon, color: purplePrimary, size: 20),
+              decoration: doodle
+                ? DoodleDecorations.card()
+                : BoxDecoration(
+                    color: cardColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    boxShadow: [
+                      BoxShadow(color: purplePrimary.withValues(alpha: 0.2), blurRadius: 10, spreadRadius: 1)
+                    ]
+                  ),
+              child: Icon(actionIcon, color: doodle ? DoodleColors.blue : purplePrimary, size: 20),
             ),
           ),
         ],
@@ -274,32 +284,42 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
     );
   }
 
-  Widget _buildSearchBar(String hint, Function(String) onChanged) {
+  Widget _buildSearchBar(String hint, bool doodle, Function(String) onChanged) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
         height: 48,
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor),
-        ),
+        decoration: doodle
+          ? DoodleDecorations.input().copyWith(color: DoodleColors.cream)
+          : BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor),
+            ),
         child: TextField(
           onChanged: onChanged,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(color: textMuted, fontSize: 14),
-            prefixIcon: const Icon(Icons.search, color: textMuted),
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 14),
-          ),
+          style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14) : const TextStyle(color: Colors.white),
+          decoration: doodle
+            ? InputDecoration(
+                hintText: hint,
+                hintStyle: DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5), fontSize: 14),
+                prefixIcon: Icon(Icons.search, color: DoodleColors.brown.withValues(alpha: 0.5)),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              )
+            : InputDecoration(
+                hintText: hint,
+                hintStyle: const TextStyle(color: textMuted, fontSize: 14),
+                prefixIcon: const Icon(Icons.search, color: textMuted),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              ),
         ),
       ),
     );
   }
 
-  Widget _buildActiveUsersRow() {
+  Widget _buildActiveUsersRow(bool doodle) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -323,11 +343,11 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                   onTap: () => _openChat(c, name),
                   child: Column(
                     children: [
-                      _buildGlowingAvatar(aura, 60),
+                      doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 30, child: Icon(Icons.person, color: DoodleColors.cream, size: 30)) : _buildGlowingAvatar(aura, 60),
                       const SizedBox(height: 6),
                       Text(
                         name.length > 5 ? "${name.substring(0, 5)}.." : name,
-                        style: const TextStyle(color: textMuted, fontSize: 12),
+                        style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 12).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: textMuted, fontSize: 12),
                       )
                     ],
                   ),
@@ -340,7 +360,7 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
     );
   }
 
-  Widget _buildDynamicChatTile(Map<String, dynamic> chat, int idx) {
+  Widget _buildDynamicChatTile(Map<String, dynamic> chat, int idx, bool doodle) {
     final otherId = _otherUserId(chat);
     return FutureBuilder<Map<String, dynamic>?>(
       future: _sb.from('bolroom_profiles').select('anon_name, aura_color').eq('id', otherId).maybeSingle(),
@@ -407,16 +427,23 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: hasUnread ? cardColor.withValues(alpha: 0.8) : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
-                border: hasUnread ? Border.all(color: borderColor) : null,
-              ),
+              decoration: doodle
+                ? BoxDecoration(
+                    color: hasUnread ? DoodleColors.paper : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: hasUnread ? DoodleColors.brown : Colors.transparent, width: hasUnread ? 2 : 0),
+                    boxShadow: hasUnread ? [BoxShadow(color: DoodleColors.brown, offset: const Offset(2, 2))] : [],
+                  )
+                : BoxDecoration(
+                    color: hasUnread ? cardColor.withValues(alpha: 0.8) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                    border: hasUnread ? Border.all(color: borderColor) : null,
+                  ),
               child: Row(
                 children: [
                   Stack(
                     children: [
-                      _buildGlowingAvatar(aura, 50),
+                      doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 25, child: Icon(Icons.person, color: DoodleColors.cream, size: 25)) : _buildGlowingAvatar(aura, 50),
                       if (isOnline)
                         Positioned(
                           bottom: 2,
@@ -427,7 +454,7 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFF00FF00), // Online Green
                               shape: BoxShape.circle,
-                              border: Border.all(color: bgColor, width: 2),
+                              border: Border.all(color: doodle ? DoodleColors.paper : bgColor, width: 2),
                             ),
                           ),
                         ),
@@ -440,21 +467,25 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                       children: [
                         Text(
                           name,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
-                          ),
+                          style: doodle
+                            ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18).copyWith(fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600)
+                            : TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
+                              ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           lastMsg,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: hasUnread ? Colors.white70 : textMuted,
-                            fontSize: 13,
-                          ),
+                          style: doodle
+                            ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 14)
+                            : TextStyle(
+                                color: hasUnread ? Colors.white70 : textMuted,
+                                fontSize: 13,
+                              ),
                         ),
                       ],
                     ),
@@ -464,30 +495,38 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                     children: [
                       Text(
                         timeStr.isEmpty ? 'now' : timeStr,
-                        style: TextStyle(
-                          color: hasUnread ? purplePrimary : textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: doodle
+                          ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 12).copyWith(fontWeight: FontWeight.bold)
+                          : TextStyle(
+                              color: hasUnread ? purplePrimary : textMuted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
                       ),
                       const SizedBox(height: 8),
                       if (hasUnread)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            gradient: neonGradient,
-                            borderRadius: BorderRadius.circular(10),
-                            boxShadow: [
-                              BoxShadow(
-                                color: purpleDark.withValues(alpha: 0.4),
-                                blurRadius: 8,
-                                spreadRadius: 1,
+                          decoration: doodle
+                            ? BoxDecoration(
+                                color: DoodleColors.orange,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: DoodleColors.brown),
                               )
-                            ],
-                          ),
-                          child: const Text(
+                            : BoxDecoration(
+                                gradient: neonGradient,
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: purpleDark.withValues(alpha: 0.4),
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                  )
+                                ],
+                              ),
+                          child: Text(
                             "1",
-                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            style: doodle ? DoodleFonts.body(color: DoodleColors.cream, fontSize: 10).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                           ),
                         )
                     ],
@@ -531,20 +570,22 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
     );
   }
 
-  Widget _empty() {
+  Widget _empty(bool doodle) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 90, height: 90,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: cardColor, border: Border.all(color: Color(0xFFFF6B00).withValues(alpha: 0.15))),
-            child: Icon(Icons.send_rounded, size: 40, color: Color(0xFFFF6B00)),
+            decoration: doodle
+              ? DoodleDecorations.card(color: DoodleColors.cream).copyWith(shape: BoxShape.circle)
+              : BoxDecoration(shape: BoxShape.circle, color: cardColor, border: Border.all(color: Color(0xFFFF6B00).withValues(alpha: 0.15))),
+            child: Icon(Icons.send_rounded, size: 40, color: doodle ? DoodleColors.blue : Color(0xFFFF6B00)),
           ),
           SizedBox(height: 18),
-          Text('No messages yet', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          Text('No messages yet', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 24) : TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
           SizedBox(height: 6),
-          Text('Start a conversation anonymously', style: TextStyle(color: textMuted, fontSize: 13)),
+          Text('Start a conversation anonymously', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.6), fontSize: 14) : TextStyle(color: textMuted, fontSize: 13)),
         ],
       ),
     );
@@ -552,41 +593,46 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
 
   void _showNewDm() {
     final ctrl = TextEditingController();
+    final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
         return Container(
           height: MediaQuery.of(context).size.height * 0.65,
-          decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.vertical(top: Radius.circular(28)), border: Border.all(color: borderColor)),
+          decoration: doodle
+            ? BoxDecoration(color: DoodleColors.paper, borderRadius: const BorderRadius.vertical(top: Radius.circular(28)), border: Border.all(color: DoodleColors.brown, width: 2))
+            : BoxDecoration(color: bgColor, borderRadius: const BorderRadius.vertical(top: Radius.circular(28)), border: Border.all(color: borderColor)),
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 16, left: 20, right: 20, top: 14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: borderColor, borderRadius: BorderRadius.circular(2)))),
-            SizedBox(height: 22),
-            Text('New Message', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-            SizedBox(height: 5),
-            Text('Search by anonymous name', style: TextStyle(color: textMuted, fontSize: 12)),
-            SizedBox(height: 16),
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : borderColor, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 22),
+            Text('New Message', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 24) : const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 5),
+            Text('Search by anonymous name', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 14) : const TextStyle(color: textMuted, fontSize: 12)),
+            const SizedBox(height: 16),
             Container(
-              decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(14), border: Border.all(color: borderColor)),
+              decoration: doodle
+                ? DoodleDecorations.input().copyWith(color: DoodleColors.cream)
+                : BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(14), border: Border.all(color: borderColor)),
               child: TextField(
                 controller: ctrl, onChanged: (_) => setSheet(() {}),
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14) : const TextStyle(color: Colors.white, fontSize: 14),
                 decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.search, color: textMuted, size: 20),
-                  hintText: 'Search @username...', hintStyle: TextStyle(color: textMuted.withValues(alpha: 0.5), fontSize: 14),
-                  border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 14),
+                  prefixIcon: Icon(Icons.search, color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : textMuted, size: 20),
+                  hintText: 'Search @username...', hintStyle: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5), fontSize: 14) : TextStyle(color: textMuted.withValues(alpha: 0.5), fontSize: 14),
+                  border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
             ),
-            SizedBox(height: 14),
+            const SizedBox(height: 14),
             Expanded(child: ctrl.text.trim().length < 2
-              ? Center(child: Text('Type at least 2 characters', style: TextStyle(color: textMuted, fontSize: 13)))
+              ? Center(child: Text('Type at least 2 characters', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5), fontSize: 14) : const TextStyle(color: textMuted, fontSize: 13)))
               : FutureBuilder<List<dynamic>>(
                   future: _sb.from('bolroom_profiles').select('id, anon_name, avatar_key, aura_color').ilike('anon_name', '%${ctrl.text.trim()}%').neq('id', _myId).limit(20),
                   builder: (_, snap) {
-                    if (!snap.hasData) return Center(child: CircularProgressIndicator(color: purplePrimary, strokeWidth: 2));
+                    if (!snap.hasData) return Center(child: CircularProgressIndicator(color: doodle ? DoodleColors.brown : purplePrimary, strokeWidth: 2));
                     final results = snap.data ?? [];
-                    if (results.isEmpty) return Center(child: Text('No users found', style: TextStyle(color: textMuted)));
+                    if (results.isEmpty) return Center(child: Text('No users found', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5), fontSize: 14) : const TextStyle(color: textMuted)));
                     return ListView.builder(
                       itemCount: results.length,
                       itemBuilder: (_, i) {
@@ -602,15 +648,17 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                             await _startConversation(u['id'], name);
                           },
                           child: Container(
-                            margin: EdgeInsets.only(bottom: 8),
-                            padding: EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(14), border: Border.all(color: borderColor)),
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(12),
+                            decoration: doodle
+                              ? DoodleDecorations.card(color: DoodleColors.cream)
+                              : BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(14), border: Border.all(color: borderColor)),
                             child: Row(children: [
-                              _buildGlowingAvatar(aura, 40),
-                              SizedBox(width: 12),
-                              Text('@$name', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-                              Spacer(),
-                              Icon(Icons.arrow_forward_ios, color: textMuted, size: 14),
+                              doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 20, child: Icon(Icons.person, color: DoodleColors.cream, size: 20)) : _buildGlowingAvatar(aura, 40),
+                              const SizedBox(width: 12),
+                              Text('@$name', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                              const Spacer(),
+                              Icon(Icons.arrow_forward_ios, color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : textMuted, size: 14),
                             ]),
                           ),
                         );

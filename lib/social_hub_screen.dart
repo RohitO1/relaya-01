@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:latlong2/latlong.dart';
 import 'host_activity_screen.dart';
 import 'rush_in_consumer_detail_view.dart';
+import 'services/doodle_theme.dart';
 
 class SocialHubScreen extends StatefulWidget {
   final VoidCallback onBack;
@@ -35,7 +36,7 @@ class _SocialHubScreenState extends State<SocialHubScreen> with SingleTickerProv
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [

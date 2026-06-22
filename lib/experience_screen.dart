@@ -18,6 +18,7 @@ import 'services/location_service.dart';
 import 'widgets/app_header_actions.dart';
 import 'companions/companion_register_screen.dart';
 import 'services/notification_service.dart';
+import 'services/doodle_theme.dart';
 
 // ════════════════════════════════════════════════════════════════════
 // EXPERIENCE DESIGN SYSTEM
@@ -197,7 +198,7 @@ class _ExperienceScreenState extends State<ExperienceScreen> with TickerProvider
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ExperienceColors.bgPrimary,
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : ExperienceColors.bgPrimary,
       floatingActionButton: _tabController.index == 1 ? _buildCompanionFAB() : null,
       body: Stack(
         children: [

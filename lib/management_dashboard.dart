@@ -9,6 +9,7 @@ import 'rush_in_consumer_detail_view.dart';
 // import 'experience_screen.dart'; // Disabled as per user instruction
 import 'services/notification_service.dart';
 import 'widgets/skeleton_loaders.dart';
+import 'services/doodle_theme.dart';
 
 // ════════════════════════════════════════════════════════════════════
 // NEW: CENTRAL MANAGEMENT DASHBOARD
@@ -19,19 +20,19 @@ class MainDashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF050508),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF050508),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Management Hub', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text('Management Hub', style: isDoodleMode(context) ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 24) : const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        iconTheme: IconThemeData(color: isDoodleMode(context) ? DoodleColors.brown : Colors.white),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Manage your hostings, requests, and network easily from one place.', style: TextStyle(color: Colors.white54, fontSize: 14)),
+            Text('Manage your hostings, requests, and network easily from one place.', style: isDoodleMode(context) ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 14) : const TextStyle(color: Colors.white54, fontSize: 14)),
             const SizedBox(height: 30),
             _buildManagementCard(
               context: context,
@@ -87,39 +88,42 @@ class MainDashboardScreen extends StatelessWidget {
     required Color color,
     required VoidCallback onTap,
   }) {
+    final doodle = isDoodleMode(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF101015),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.05), blurRadius: 10)],
-        ),
+        decoration: doodle
+          ? DoodleDecorations.card(color: DoodleColors.paper, borderColor: DoodleColors.brown)
+          : BoxDecoration(
+              color: const Color(0xFF101015),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: color.withValues(alpha: 0.2)),
+              boxShadow: [BoxShadow(color: color.withValues(alpha: 0.05), blurRadius: 10)],
+            ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
+                color: doodle ? DoodleColors.cream : color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12)),
-              child: Icon(icon, color: color, size: 20),
+              child: Icon(icon, color: doodle ? DoodleColors.brown : color, size: 20),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text(title, style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 16) : const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 4),
-                  Text(desc, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                  Text(desc, style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 12) : const TextStyle(color: Colors.white54, fontSize: 12)),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
+            Icon(Icons.arrow_forward_ios, color: doodle ? DoodleColors.brown : Colors.white24, size: 14),
           ],
         ),
       ),
@@ -138,16 +142,17 @@ class ActivityManagementScreen extends StatelessWidget {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        backgroundColor: const Color(0xFF050508),
+        backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF050508),
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: const Text('My Hosted Activities', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          bottom: const TabBar(
-            indicatorColor: Color(0xFFFF6B00),
-            labelColor: Color(0xFFFF6B00),
-            unselectedLabelColor: Colors.white54,
-            tabs: [
+          title: Text('My Hosted Activities', style: isDoodleMode(context) ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          iconTheme: IconThemeData(color: isDoodleMode(context) ? DoodleColors.brown : Colors.white),
+          bottom: TabBar(
+            indicatorColor: const Color(0xFFFF6B00),
+            labelColor: const Color(0xFFFF6B00),
+            unselectedLabelColor: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white54,
+            tabs: const [
               Tab(text: 'UPCOMING'),
               Tab(text: 'LIVE'),
               Tab(text: 'PAST'),
@@ -177,16 +182,17 @@ class RushInManagementScreen extends StatelessWidget {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: const Color(0xFF050508),
+        backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF050508),
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: const Text('My Rush-Ins', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          bottom: const TabBar(
-            indicatorColor: Color(0xFFFF007F),
-            labelColor: Color(0xFFFF007F),
-            unselectedLabelColor: Colors.white54,
-            tabs: [
+          title: Text('My Rush-Ins', style: isDoodleMode(context) ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          iconTheme: IconThemeData(color: isDoodleMode(context) ? DoodleColors.brown : Colors.white),
+          bottom: TabBar(
+            indicatorColor: const Color(0xFFFF007F),
+            labelColor: const Color(0xFFFF007F),
+            unselectedLabelColor: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white54,
+            tabs: const [
               Tab(text: 'LIVE (24H)'),
               Tab(text: 'PAST'),
             ],
@@ -305,7 +311,7 @@ class _ActivityListHelperState extends State<_ActivityListHelper> {
           .order('created_at', ascending: false),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return SkeletonLoaders.genericListSkeleton();
+          return SkeletonLoaders.genericListSkeleton(doodle: isDoodleMode(context));
         }
 
         final allActivities = snapshot.data ?? [];
@@ -368,7 +374,7 @@ class _ActivityListHelperState extends State<_ActivityListHelper> {
                     margin: const EdgeInsets.only(bottom: 20),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20), 
                     decoration: BoxDecoration(
-                      color: const Color(0xFF111827),
+                      color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF111827),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: widget.isRushIn ? const Color(0xFFFF6B00).withValues(alpha: 0.5) : const Color(0xFF3B82F6).withValues(alpha: 0.5)),
                       boxShadow: [
@@ -506,11 +512,12 @@ class _CompanionManagementScreenState extends State<CompanionManagementScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF050508),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF050508),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Companion Hub', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Text('Companion Hub', style: isDoodleMode(context) ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        iconTheme: IconThemeData(color: isDoodleMode(context) ? DoodleColors.brown : Colors.white),
       ),
       body: StreamBuilder<Map<String, dynamic>?>(
         stream: Supabase.instance.client
@@ -520,7 +527,7 @@ class _CompanionManagementScreenState extends State<CompanionManagementScreen> {
             .map((rows) => rows.isNotEmpty ? rows.first : null),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return SkeletonLoaders.genericListSkeleton();
+            return SkeletonLoaders.genericListSkeleton(doodle: isDoodleMode(context));
           }
 
           final comp = snapshot.data;
@@ -758,16 +765,17 @@ class NetworkHubScreen extends StatelessWidget {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: const Color(0xFF050508),
+        backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF050508),
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: const Text('Outgoing Requests', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          bottom: const TabBar(
-            indicatorColor: Color(0xFFFF7E40),
-            labelColor: Color(0xFFFF7E40),
-            unselectedLabelColor: Colors.white54,
-            tabs: [
+          title: Text('Outgoing Requests', style: isDoodleMode(context) ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          iconTheme: IconThemeData(color: isDoodleMode(context) ? DoodleColors.brown : Colors.white),
+          bottom: TabBar(
+            indicatorColor: const Color(0xFFFF7E40),
+            labelColor: const Color(0xFFFF7E40),
+            unselectedLabelColor: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white54,
+            tabs: const [
               Tab(text: 'PENDING / DECLINED'),
               Tab(text: 'APPROVED'),
             ],
@@ -798,7 +806,7 @@ class _NetworkHubListHelper extends StatelessWidget {
           .eq('sender_id', uid)
           .order('created_at', ascending: false),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return SkeletonLoaders.genericListSkeleton();
+        if (snapshot.connectionState == ConnectionState.waiting) return SkeletonLoaders.genericListSkeleton(doodle: isDoodleMode(context));
         
         final allRequests = snapshot.data ?? [];
         final requests = allRequests.where((r) => approvedOnly ? r['status'] == 'approved' : r['status'] != 'approved').toList();
@@ -1326,7 +1334,7 @@ class _RequestsManagerScreenState extends State<_RequestsManagerScreen> {
               .order('created_at', ascending: false),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return SkeletonLoaders.genericListSkeleton();
+              return SkeletonLoaders.genericListSkeleton(doodle: isDoodleMode(context));
             }
             
             final allRequests = snapshot.data ?? [];
@@ -1523,7 +1531,7 @@ class _MyFeedPostsScreenState extends State<MyFeedPostsScreen> {
                   .order('created_at', ascending: false),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return SkeletonLoaders.genericListSkeleton();
+                  return SkeletonLoaders.genericListSkeleton(doodle: isDoodleMode(context));
                 }
                 final posts = snapshot.data ?? [];
                 if (posts.isEmpty) {
@@ -1710,7 +1718,7 @@ class IncomingFollowRequestsScreen extends StatelessWidget {
             .eq('target_id', uid)
             .order('created_at', ascending: false),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return SkeletonLoaders.genericListSkeleton();
+          if (snapshot.connectionState == ConnectionState.waiting) return SkeletonLoaders.genericListSkeleton(doodle: isDoodleMode(context));
           
           final allRequests = snapshot.data ?? [];
           final requests = allRequests.where((r) => r['target_type'] == 'follow' && r['status'] == 'pending').toList();

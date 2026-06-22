@@ -13,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'chatroom_live_screen.dart';
 import 'services/notification_service.dart';
+import 'services/doodle_theme.dart';
 
 class BolRoomColors {
   static const bg = Color(0xFF0C0914);
@@ -280,7 +281,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
     final trendingRooms = liveRooms.length > 3 ? liveRooms.skip(3).toList() : liveRooms.toList();
 
     return Scaffold(
-      backgroundColor: BolRoomColors.bg,
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : BolRoomColors.bg,
       body: SafeArea(
         child: _loading 
           ? const Center(child: CircularProgressIndicator(color: BolRoomColors.cyan))

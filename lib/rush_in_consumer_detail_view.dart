@@ -11,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'profile_screen.dart';
 import 'services/notification_service.dart';
+import 'services/doodle_theme.dart';
 
 ImageProvider _safeImageProvider(String url) {
   if (url.startsWith('data:image')) {
@@ -808,7 +809,7 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
     final description = _cleanDescription(act['description'] ?? '');
 
     return Scaffold(
-      backgroundColor: const Color(0xFF000000), // Pure luxury black
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF000000),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: Supabase.instance.client
             .from('requests')

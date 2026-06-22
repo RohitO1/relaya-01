@@ -18,6 +18,8 @@ import 'package:http/http.dart' as http;
 import 'rush_in_consumer_detail_view.dart';
 import 'host_activity_screen.dart';
 import 'spark_detail_screen.dart';
+import 'services/doodle_theme.dart';
+
 
 
 // ==========================================
@@ -690,7 +692,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: SparkColors.bg,
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : SparkColors.bg,
       body: Stack(
         children: [
           
@@ -759,11 +761,12 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   }
 
   Widget _buildHeader() {
+    final doodle = isDoodleMode(context);
     bool isLightMap = _activeView == 'map' && !_isMapDark;
-    Color textColor = isLightMap ? Colors.black : Colors.white;
-    Color iconColor = isLightMap ? Colors.black87 : Colors.white70;
-    Color bgBoxColor = isLightMap ? Colors.black.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.05);
-    Color borderBoxColor = isLightMap ? Colors.black.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.1);
+    Color textColor = doodle ? DoodleColors.textPrimary : (isLightMap ? Colors.black : Colors.white);
+    Color iconColor = doodle ? DoodleColors.textSecondary : (isLightMap ? Colors.black87 : Colors.white70);
+    Color bgBoxColor = doodle ? DoodleColors.paper : (isLightMap ? Colors.black.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.05));
+    Color borderBoxColor = doodle ? DoodleColors.cardBorder : (isLightMap ? Colors.black.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.1));
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
@@ -776,16 +779,21 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
               children: [
                 Icon(Icons.arrow_back_ios_new, color: textColor, size: 22),
                 const SizedBox(width: 8),
-                Text(
-                  "RUSH-IN",
-                  style: GoogleFonts.inter(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    fontStyle: FontStyle.italic,
-                    color: textColor,
-                    letterSpacing: 1.5,
-                  ),
-                ),
+                doodle
+                  ? Text(
+                      "Rush-in",
+                      style: DoodleFonts.heading(fontSize: 32, color: textColor, fontWeight: FontWeight.w700),
+                    )
+                  : Text(
+                      "RUSH-IN",
+                      style: GoogleFonts.inter(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        fontStyle: FontStyle.italic,
+                        color: textColor,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
               ],
             ),
           ),
@@ -796,13 +804,16 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
               decoration: BoxDecoration(
                 color: bgBoxColor,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: borderBoxColor),
+                border: Border.all(color: borderBoxColor, width: doodle ? 1.5 : 1.0),
               ),
               child: Row(
                 children: [
                   Icon(_activeView == 'list' ? Icons.map_outlined : Icons.list_rounded, color: iconColor, size: 16),
                   const SizedBox(width: 6),
-                  Text(_activeView == 'list' ? 'Map View' : 'List View', style: GoogleFonts.inter(color: iconColor, fontSize: 13, fontWeight: FontWeight.w600)),
+                  Text(_activeView == 'list' ? 'Map View' : 'List View', 
+                    style: doodle 
+                      ? DoodleFonts.body(color: iconColor, fontSize: 13, fontWeight: FontWeight.w700)
+                      : GoogleFonts.inter(color: iconColor, fontSize: 13, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -814,8 +825,25 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
   // --- LIST VIEW COMPONENTS ---
   Widget _buildListView() {
+    final activeDistrict = locationService.activeDistrict;
+    final myLat = locationService.activeLat;
+    final myLng = locationService.activeLng;
+
     final list = _rushIns;
     var filteredList = list.where((e) {
+      // ── Location filter (list view only) ──
+      if (myLat != null && myLng != null) {
+        // If we have GPS coords, use a 50 km bounding box
+        final dist = locationService.calculateDistanceInKm(myLat, myLng, e.lat, e.lng);
+        if (dist > 50.0) return false;
+      } else if (activeDistrict.isNotEmpty && activeDistrict != 'Unknown') {
+        // Fallback: district string match
+        final itemDistrict = (e.district ?? '').toLowerCase();
+        final itemLocation = (e.location ?? '').toLowerCase();
+        final needle = activeDistrict.toLowerCase();
+        if (!itemDistrict.contains(needle) && !itemLocation.contains(needle)) return false;
+      }
+
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
         final matchTitle = e.title.toLowerCase().contains(query);
@@ -840,18 +868,18 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
     // Sorting logic
     if (_sortBy == 'Nearest') {
-      final myLat = locationService.activeLat ?? 0.0;
-      final myLng = locationService.activeLng ?? 0.0;
+      final myLat0 = locationService.activeLat ?? 0.0;
+      final myLng0 = locationService.activeLng ?? 0.0;
       filteredList.sort((a, b) {
-        final distA = locationService.calculateDistanceInKm(myLat, myLng, a.lat, a.lng);
-        final distB = locationService.calculateDistanceInKm(myLat, myLng, b.lat, b.lng);
+        final distA = locationService.calculateDistanceInKm(myLat0, myLng0, a.lat, a.lng);
+        final distB = locationService.calculateDistanceInKm(myLat0, myLng0, b.lat, b.lng);
         return distA.compareTo(distB);
       });
     } else if (_sortBy == 'Newest') {
       filteredList.sort((a, b) {
         final dateA = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         final dateB = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return dateB.compareTo(dateA); // Descending (Newest first)
+        return dateB.compareTo(dateA);
       });
     } else if (_sortBy == 'Expiring Soon') {
       filteredList.sort((a, b) {
@@ -860,24 +888,24 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         final now = DateTime.now();
         final diffA = timeA.difference(now).inMilliseconds;
         final diffB = timeB.difference(now).inMilliseconds;
-        
-        if (diffA > 0 && diffB > 0) return diffA.compareTo(diffB); // Closest future event first
+        if (diffA > 0 && diffB > 0) return diffA.compareTo(diffB);
         if (diffA > 0) return -1;
         if (diffB > 0) return 1;
-        return diffB.compareTo(diffA); // If both are past, most recent past first
+        return diffB.compareTo(diffA);
       });
     } else if (_sortBy == 'Most Members') {
       filteredList.sort((a, b) => b.joinedMembers.compareTo(a.joinedMembers));
     }
     
     final remainingItems = filteredList;
+    final cityLabel = activeDistrict.isNotEmpty && activeDistrict != 'Unknown' ? activeDistrict : 'your area';
 
     return ListView(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 16).copyWith(bottom: 120),
       children: [
         _buildSearchBar('Search rush-ins...'),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         _buildDashboardOverview(),
         const SizedBox(height: 28),
 
@@ -912,12 +940,27 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
 
         if (remainingItems.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 60),
-            child: Center(
-              child: Text(
-                'No active Rush-ins nearby.',
-                style: GoogleFonts.inter(color: Colors.white54, fontSize: 14),
-              ),
+            padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+            child: Column(
+              children: [
+                Container(
+                  width: 72, height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF3D00)]),
+                    boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 20)],
+                  ),
+                  child: const Center(child: Icon(Icons.electric_bolt_rounded, color: Colors.white, size: 32)),
+                ),
+                const SizedBox(height: 16),
+                Text('No Rush-ins in $cityLabel',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Text('Be the first to create one — hit the ⚡ button!',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(color: Colors.white54, fontSize: 13)),
+              ],
             ),
           )
         else
@@ -985,12 +1028,13 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
       }
     }
 
+    final doodle = isDoodleMode(context);
     return GestureDetector(
       onTap: () => _showDetailSheet(item),
       child: Container(
         height: 240,
         margin: const EdgeInsets.symmetric(horizontal: 20),
-        decoration: BoxDecoration(
+        decoration: doodle ? DoodleDecorations.card() : BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
           boxShadow: [
@@ -1002,7 +1046,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(doodle ? 16 : 24),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -1096,12 +1140,14 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
                   children: [
                     Text(
                       item.title.toUpperCase(),
-                      style: GoogleFonts.inter(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.5,
-                      ),
+                      style: doodle
+                        ? DoodleFonts.subheading(fontSize: 24, color: Colors.white, fontWeight: FontWeight.w800)
+                        : GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
+                          ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1195,12 +1241,93 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     }
     final slotsStr = limit > 0 ? '$joined/$limit Crew' : '$joined Joined';
 
+    final doodle = isDoodleMode(context);
+    if (doodle) {
+      return GestureDetector(
+        onTap: () => _showDetailSheet(item),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: DoodleDecorations.card(color: DoodleColors.cream),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 80, height: 80,
+                  child: _buildCardImageWidget(imageUrl, fit: BoxFit.cover),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.title, style: DoodleFonts.heading(color: DoodleColors.brown, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.calendar_month, color: DoodleColors.brown, size: 12),
+                        const SizedBox(width: 4),
+                        Text('24 May • 7:00 PM', style: DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 10)),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on, color: DoodleColors.brown, size: 12),
+                        const SizedBox(width: 4),
+                        Expanded(child: Text(item.location ?? 'Location', style: DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        // Avatar stack for "going"
+                        SizedBox(
+                          width: 50, height: 20,
+                          child: Stack(
+                            children: [
+                              for (int i=0; i<3; i++)
+                                Positioned(
+                                  left: i * 14.0,
+                                  child: Container(
+                                    width: 20, height: 20,
+                                    decoration: BoxDecoration(color: DoodleColors.paper, shape: BoxShape.circle, border: Border.all(color: DoodleColors.brown, width: 1)),
+                                    child: Center(child: Icon(Icons.person, size: 12, color: DoodleColors.brown)),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        Text('+${limit > 0 ? joined : 12} going', style: DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 10)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: () => _handleJoin(item),
+                child: Container(
+                  margin: const EdgeInsets.only(top: 30),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: DoodleDecorations.card(color: DoodleColors.orange, radius: 20),
+                  child: Text(item.isApproved ? 'Joined' : (item.hasRequested ? 'Pending' : 'Join'), style: DoodleFonts.body(color: DoodleColors.brown, fontWeight: FontWeight.bold, fontSize: 14)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return GestureDetector(
       onTap: () => _showDetailSheet(item),
       child: Container(
         height: 220,
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        decoration: BoxDecoration(
+        decoration: doodle ? DoodleDecorations.card() : BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
           boxShadow: [
@@ -1212,7 +1339,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(doodle ? 16 : 24),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -1346,6 +1473,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   }
 
   Widget _buildDashboardOverview() {
+    final doodle = isDoodleMode(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
@@ -1353,41 +1481,65 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         children: [
           Row(
             children: [
-              Text('Your ', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-              Text("Rush-Ins", style: GoogleFonts.plusJakartaSans(color: SparkColors.orange, fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 8),
-              const Icon(Icons.auto_awesome, color: SparkColors.purple, size: 20),
+              if (doodle)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: DoodleDecorations.card(color: DoodleColors.amber.withValues(alpha: 0.5)).copyWith(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      const DoodleDecoration(icon: Icons.star_border, color: DoodleColors.orange, size: 16, rotation: -10),
+                      const SizedBox(width: 8),
+                      Text('YOUR RUSH-INS', style: DoodleFonts.heading(fontSize: 18, color: DoodleColors.brown)),
+                      const SizedBox(width: 8),
+                      const DoodleDecoration(icon: Icons.star_border, color: DoodleColors.orange, size: 16, rotation: 10),
+                    ],
+                  ),
+                )
+              else ...[
+                Text('Your ', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                Text("Rush-Ins", style: GoogleFonts.plusJakartaSans(color: SparkColors.orange, fontSize: 24, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 8),
+                const Icon(Icons.auto_awesome, color: SparkColors.purple, size: 20),
+              ]
             ],
           ),
-          const SizedBox(height: 4),
-          Text('Manage events you create and the ones you\'re part of.', style: GoogleFonts.inter(color: Colors.white54, fontSize: 13)),
+          if (!doodle) ...[
+            const SizedBox(height: 4),
+            Text('Manage events you create and the ones you\'re part of.', style: GoogleFonts.inter(color: Colors.white54, fontSize: 13)),
+          ],
           const SizedBox(height: 20),
           Row(
             children: [
               Expanded(
                 child: _buildHeroCard(
-                  title: 'Events I\'m\nHosting',
+                  doodle: doodle,
+                  title: doodle ? "EVENTS I'M\nHOSTING" : 'Events I\'m\nHosting',
                   subtitle: '${_myHostedRushIns.length + 0} Active Event(s)',
-                  desc: 'Events you created\nand are hosting.',
+                  desc: doodle ? 'Events you created\nand are hosting.' : 'Events you created\nand are hosting.',
                   colors: [SparkColors.orange.withValues(alpha: 0.15), SparkColors.orange.withValues(alpha: 0.05)],
                   borderColor: SparkColors.orange.withValues(alpha: 0.3),
                   accentColor: SparkColors.orange,
+                  doodleColor: DoodleColors.orange,
                   icon: Icons.mic_external_on,
-                  chipLabel: 'You create',
+                  chipLabel: doodle ? 'YOU CREATE' : 'You create',
                   onTap: _showHostedSheet,
                 ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: _buildHeroCard(
-                  title: 'Upcoming\nEvents',
+                  doodle: doodle,
+                  title: doodle ? "UPCOMING\nEVENTS" : 'Upcoming\nEvents',
                   subtitle: '${_myJoinedRushIns.length + 0} Upcoming',
-                  desc: 'Events you\'re going to\nor have joined.',
+                  desc: doodle ? 'Events you\'re going to\nor have joined.' : 'Events you\'re going to\nor have joined.',
                   colors: [SparkColors.blue.withValues(alpha: 0.15), SparkColors.purple.withValues(alpha: 0.05)],
                   borderColor: SparkColors.blue.withValues(alpha: 0.3),
                   accentColor: SparkColors.blue,
+                  doodleColor: DoodleColors.blue,
                   icon: Icons.calendar_month,
-                  chipLabel: 'You join',
+                  chipLabel: doodle ? 'YOU JOIN' : 'You join',
                   onTap: _showJoinedSheet,
                 ),
               ),
@@ -1398,7 +1550,58 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     );
   }
 
-  Widget _buildHeroCard({required String title, required String subtitle, required String desc, required List<Color> colors, required Color borderColor, required Color accentColor, required IconData icon, required String chipLabel, required VoidCallback onTap}) {
+  Widget _buildHeroCard({required bool doodle, required String title, required String subtitle, required String desc, required List<Color> colors, required Color borderColor, required Color accentColor, required Color doodleColor, required IconData icon, required String chipLabel, required VoidCallback onTap}) {
+    if (doodle) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 250,
+          decoration: DoodleDecorations.card(color: doodleColor, borderColor: DoodleColors.brown, radius: 12),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -10,
+                bottom: 10,
+                child: Transform.rotate(
+                  angle: 0.1,
+                  child: DoodleDecoration(icon: icon, color: DoodleColors.brown, size: 80, rotation: 0),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      color: DoodleColors.brown,
+                      child: Text(chipLabel, style: DoodleFonts.body(color: Colors.white, fontSize: 10)),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(title, style: DoodleFonts.heading(color: DoodleColors.brown, fontSize: 22).copyWith(height: 1.1)),
+                    const SizedBox(height: 12),
+                    Text(subtitle, style: DoodleFonts.body(color: DoodleColors.brown, fontSize: 12, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    Text(desc, style: DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 12).copyWith(height: 1.2)),
+                    const Spacer(),
+                    Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: DoodleColors.brown, width: 2),
+                      ),
+                      child: const Icon(Icons.arrow_forward, color: DoodleColors.brown, size: 20),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1694,6 +1897,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   }
 
   Widget _buildSearchBar(String hint) {
+    final doodle = isDoodleMode(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 16, left: 20, right: 20),
       child: Row(
@@ -1701,23 +1905,25 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
           Expanded(
             child: Container(
               height: 48,
-              decoration: BoxDecoration(
-                color: SparkColors.card,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: SparkColors.gborder),
-              ),
+              decoration: doodle
+                ? DoodleDecorations.input()
+                : BoxDecoration(
+                    color: SparkColors.card,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: SparkColors.gborder),
+                  ),
               child: Row(
                 children: [
                   const SizedBox(width: 15),
-                  const Icon(Icons.search, color: SparkColors.muted, size: 16),
+                  Icon(Icons.search, color: doodle ? DoodleColors.brown : SparkColors.muted, size: 18),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
-                      style: const TextStyle(color: SparkColors.txt, fontSize: 13),
+                      style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14) : const TextStyle(color: SparkColors.txt, fontSize: 13),
                       onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
                       decoration: InputDecoration(
                         hintText: hint,
-                        hintStyle: const TextStyle(color: SparkColors.muted),
+                        hintStyle: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5)) : const TextStyle(color: SparkColors.muted),
                         border: InputBorder.none,
                         isDense: true,
                       ),
@@ -1728,19 +1934,21 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
                     child: Container(
                       width: 34, height: 34,
                       margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [SparkColors.orange, SparkColors.yellow]),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.tune, color: Colors.black, size: 14),
+                      decoration: doodle 
+                        ? DoodleDecorations.card(color: DoodleColors.orange, radius: 8)
+                        : BoxDecoration(
+                            gradient: const LinearGradient(colors: [SparkColors.orange, SparkColors.yellow]),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                      child: Icon(Icons.tune, color: doodle ? DoodleColors.brown : Colors.black, size: 16),
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          GestureDetector(
+          if (!doodle) const SizedBox(width: 12),
+          if (!doodle) GestureDetector(
             onTap: () {
               final lat = locationService.activeLat ?? 28.6139;
               final lng = locationService.activeLng ?? 77.2090;
@@ -1773,6 +1981,34 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   }
 
   Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    final doodle = isDoodleMode(context);
+    if (doodle) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: DoodleDecorations.card(color: DoodleColors.amber.withValues(alpha: 0.5)).copyWith(
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(title.toUpperCase(), style: DoodleFonts.heading(fontSize: 16, color: DoodleColors.brown)),
+            ),
+            GestureDetector(
+              onTap: _showFilterSheet,
+              child: Row(
+                children: [
+                  Text('See all', style: DoodleFonts.heading(color: DoodleColors.brown, fontSize: 14)),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_forward, color: DoodleColors.brown, size: 14),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(
@@ -1795,7 +2031,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
               children: [
                 Text('Filter', style: TextStyle(color: SparkColors.orange, fontSize: 12, fontWeight: FontWeight.bold)),
                 SizedBox(width: 4),
-                Icon(Icons.keyboard_arrow_down, color: SparkColors.orange, size: 14),
+                Icon(Icons.tune, color: SparkColors.orange, size: 12),
               ],
             ),
           ),
@@ -3098,29 +3334,29 @@ class _SparkDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Compute dynamic timer for detail view
-    String _detailTimer = item.timer ?? '...';
-    bool _detailIsLive = false;
+    String detailTimer = item.timer ?? '...';
+    bool detailIsLive = false;
     if (item.activityTime != null) {
       final now = DateTime.now();
       final diff = item.activityTime!.difference(now);
       if (diff.isNegative) {
-        _detailIsLive = true;
+        detailIsLive = true;
         if (item.expiresAt != null) {
           final endDiff = item.expiresAt!.difference(now);
           if (endDiff.isNegative) {
-            _detailTimer = 'Ended';
+            detailTimer = 'Ended';
           } else if (endDiff.inHours > 0) {
-            _detailTimer = 'Ends in ${endDiff.inHours}h ${endDiff.inMinutes % 60}m';
+            detailTimer = 'Ends in ${endDiff.inHours}h ${endDiff.inMinutes % 60}m';
           } else {
-            _detailTimer = 'Ends in ${endDiff.inMinutes} mins';
+            detailTimer = 'Ends in ${endDiff.inMinutes} mins';
           }
         } else {
-          _detailTimer = 'Live Now';
+          detailTimer = 'Live Now';
         }
       } else if (diff.inHours > 0) {
-        _detailTimer = 'Starts in ${diff.inHours}h ${diff.inMinutes % 60}m';
+        detailTimer = 'Starts in ${diff.inHours}h ${diff.inMinutes % 60}m';
       } else {
-        _detailTimer = 'Starts in ${diff.inMinutes} mins';
+        detailTimer = 'Starts in ${diff.inMinutes} mins';
       }
     }
 
@@ -3167,9 +3403,9 @@ class _SparkDetailSheet extends StatelessWidget {
                 children: [
                   if (item.type == 'rush') ...[
                     _metaIcon(
-                      _detailIsLive ? Icons.local_fire_department : Icons.hourglass_bottom,
-                      _detailTimer,
-                      _detailIsLive ? SparkColors.red : SparkColors.red,
+                      detailIsLive ? Icons.local_fire_department : Icons.hourglass_bottom,
+                      detailTimer,
+                      detailIsLive ? SparkColors.red : SparkColors.red,
                     ),
                     _metaIcon(Icons.sensors, '${item.radius ?? "..."} radius', SparkColors.cyan),
                   ] else ...[

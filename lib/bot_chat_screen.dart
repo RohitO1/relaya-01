@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'services/doodle_theme.dart';
 
 // The static Bot ID that we will use to identify bot messages
 const String kBotUuid = '00000000-0000-0000-0000-000000000000';
@@ -180,7 +181,7 @@ class _BotChatScreenState extends State<BotChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF020205),
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF020205),
       body: Stack(
         children: [
           // Background ambient lights

@@ -13,6 +13,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'dart:convert';
 import 'package:meetra_app/bolroom/bolroom_dm_chat_screen.dart';
 import 'package:meetra_app/services/notification_service.dart';
+import 'package:meetra_app/services/doodle_theme.dart';
 import 'dart:typed_data';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -353,38 +354,39 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return Scaffold(backgroundColor: bgColor, body: Center(child: CircularProgressIndicator(color: purpleGlow, strokeWidth: 2)));
+    final doodle = isDoodleMode(context);
+    if (_loading) return Scaffold(backgroundColor: doodle ? DoodleColors.paper : bgColor, body: Center(child: CircularProgressIndicator(color: doodle ? DoodleColors.brown : purpleGlow, strokeWidth: 2)));
 
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: doodle ? DoodleColors.paper : bgColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 100), // Space for bottom nav from shell
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _buildTopBar(),
+              _buildTopBar(doodle),
               const SizedBox(height: 10),
-              _buildProfileAvatar(),
+              _buildProfileAvatar(doodle),
               const SizedBox(height: 16),
-              _buildProfileInfo(),
+              _buildProfileInfo(doodle),
               const SizedBox(height: 24),
-              _buildStatsRow(),
+              _buildStatsRow(doodle),
               const SizedBox(height: 20),
-              if (_isMe) _buildEditProfileButton() else _buildPublicActionButtons(),
+              if (_isMe) _buildEditProfileButton(doodle) else _buildPublicActionButtons(),
               const SizedBox(height: 30),
               if (_isMe) ...[
                 _buildFeaturesRow(),
                 const SizedBox(height: 32),
-                _buildVoiceEffectsSection(),
+                _buildVoiceEffectsSection(doodle),
                 const SizedBox(height: 32),
               ],
-              _buildSectionHeader('Badges', 'View All', onActionTap: _showAllBadgesSheet),
+              _buildSectionHeader('Badges', 'View All', doodle, onActionTap: _showAllBadgesSheet),
               _buildBadgesRow(),
               const SizedBox(height: 24),
               if (_isMe) ...[
-                _buildQuickSettingsHeader(),
-                _buildQuickSettingsItem(),
+                _buildQuickSettingsHeader(doodle),
+                _buildQuickSettingsItem(doodle),
                 const SizedBox(height: 40),
               ],
             ],
@@ -394,7 +396,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     );
   }
 
-  Widget _buildTopBar() {
+  Widget _buildTopBar(bool doodle) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
@@ -402,17 +404,17 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
         children: [
           GestureDetector(
             onTap: () => Navigator.maybePop(context),
-            child: _iconButton(Icons.arrow_back_ios_new_rounded),
+            child: _iconButton(Icons.arrow_back_ios_new_rounded, doodle),
           ),
           if (_isMe)
             GestureDetector(
               onTap: _showOptionsMenu,
-              child: _iconButton(Icons.more_horiz),
+              child: _iconButton(Icons.more_horiz, doodle),
             )
           else
             GestureDetector(
               onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report/Block menu coming soon.'))),
-              child: _iconButton(Icons.more_horiz),
+              child: _iconButton(Icons.more_horiz, doodle),
             ),
         ],
       ),
@@ -420,13 +422,14 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   }
 
   void _showOptionsMenu() {
+    final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: cardColor,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+          Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : Colors.white24, borderRadius: BorderRadius.circular(2))),
           _menuTile(Icons.image_outlined, 'Change Profile Picture', const Color(0xFF8A2BE2), () { Navigator.pop(context); _showAvatarOptionsSheet(); }),
           _menuTile(Icons.share_outlined, 'Share Profile', const Color(0xFFFF6B00), () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share link copied!'))); }),
           _menuTile(Icons.palette_outlined, 'Change Aura', const Color(0xFFFFD700), () { Navigator.pop(context); _showAuraChangerSheet(); }),
@@ -442,24 +445,26 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   }
 
   Widget _menuTile(IconData icon, String label, Color color, VoidCallback onTap) {
+    final doodle = isDoodleMode(context);
     return ListTile(
       leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle), child: Icon(icon, color: color, size: 20)),
-      title: Text(label, style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+      title: Text(label, style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 15).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
       onTap: onTap,
     );
   }
 
   void _showAvatarOptionsSheet() {
+    final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: cardColor,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-            const Text('Profile Picture', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : Colors.white24, borderRadius: BorderRadius.circular(2))),
+            Text('Profile Picture', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 20) : const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -477,6 +482,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   }
 
   Widget _buildAvatarActionBtn(IconData icon, String label, Color color, VoidCallback onTap) {
+    final doodle = isDoodleMode(context);
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -492,7 +498,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
             child: Icon(icon, color: color, size: 26),
           ),
           const SizedBox(height: 8),
-          Text(label, style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
+          Text(label, style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 12).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -583,21 +589,23 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     ));
   }
 
-  Widget _iconButton(IconData icon) {
+  Widget _iconButton(IconData icon, bool doodle) {
     return Container(
       width: 44,
       height: 44,
-      decoration: BoxDecoration(
-        color: cardColor,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-      child: Icon(icon, color: Colors.white, size: 20),
+      decoration: doodle
+        ? DoodleDecorations.card()
+        : BoxDecoration(
+            color: cardColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          ),
+      child: Icon(icon, color: doodle ? DoodleColors.brown : Colors.white, size: 20),
     );
   }
 
-  Widget _buildProfileAvatar() {
-    Color aura = purpleGlow;
+  Widget _buildProfileAvatar(bool doodle) {
+    Color aura = doodle ? DoodleColors.orange : purpleGlow;
     try { aura = Color(int.parse('FF${_auraColorHex.replaceFirst('#', '')}', radix: 16)); } catch (_) {}
 
     return GestureDetector(
@@ -607,20 +615,22 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
         children: [
           Container(
             width: 140, height: 140,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: SweepGradient(colors: [aura, const Color(0xFF1E90FF), aura, const Color(0xFFFF8C00), aura]),
-              boxShadow: [BoxShadow(color: aura.withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 5)],
-            ),
+            decoration: doodle
+              ? DoodleDecorations.card(color: DoodleColors.paper)
+              : BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: SweepGradient(colors: [aura, const Color(0xFF1E90FF), aura, const Color(0xFFFF8C00), aura]),
+                  boxShadow: [BoxShadow(color: aura.withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 5)],
+                ),
             child: Padding(
               padding: const EdgeInsets.all(3.0),
               child: Container(
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: bgColor),
+                decoration: BoxDecoration(shape: BoxShape.circle, color: doodle ? DoodleColors.cream : bgColor),
                 child: _uploadingAvatar
-                  ? const CircleAvatar(backgroundColor: cardColor, radius: 65, child: CircularProgressIndicator(color: purpleGlow, strokeWidth: 2))
+                  ? CircleAvatar(backgroundColor: doodle ? DoodleColors.paper : cardColor, radius: 65, child: CircularProgressIndicator(color: doodle ? DoodleColors.brown : purpleGlow, strokeWidth: 2))
                   : (_avatarUrl != null && _avatarUrl!.startsWith('http')
-                    ? CircleAvatar(radius: 65, backgroundImage: NetworkImage(_avatarUrl!), backgroundColor: cardColor)
-                    : const CircleAvatar(backgroundColor: cardColor, radius: 65, child: Icon(Icons.person, size: 60, color: Colors.white24))),
+                    ? CircleAvatar(radius: 65, backgroundImage: NetworkImage(_avatarUrl!), backgroundColor: doodle ? DoodleColors.paper : cardColor)
+                    : CircleAvatar(backgroundColor: doodle ? DoodleColors.paper : cardColor, radius: 65, child: Icon(Icons.person, size: 60, color: doodle ? DoodleColors.brown.withValues(alpha: 0.2) : Colors.white24))),
               ),
             ),
           ),
@@ -630,11 +640,11 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
               bottom: 5, right: 5,
               child: Container(
                 padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(color: bgColor, shape: BoxShape.circle),
+                decoration: BoxDecoration(color: doodle ? DoodleColors.paper : bgColor, shape: BoxShape.circle),
                 child: Container(
                   width: 28, height: 28,
-                  decoration: const BoxDecoration(color: Color(0xFF7B2CBF), shape: BoxShape.circle),
-                  child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
+                  decoration: BoxDecoration(color: doodle ? DoodleColors.brown : const Color(0xFF7B2CBF), shape: BoxShape.circle),
+                  child: Icon(Icons.camera_alt, color: doodle ? DoodleColors.cream : Colors.white, size: 14),
                 ),
               ),
             ),
@@ -643,7 +653,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     );
   }
 
-  Widget _buildProfileInfo() {
+  Widget _buildProfileInfo(bool doodle) {
     return Column(
       children: [
         Row(
@@ -651,32 +661,36 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
           children: [
             Text(
               '@$_anonName',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
+              style: doodle 
+                ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 26)
+                : const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
             ),
             const SizedBox(width: 6),
-            const Icon(Icons.verified, color: Color(0xFF7B2CBF), size: 20),
+            Icon(Icons.verified, color: doodle ? DoodleColors.blue : const Color(0xFF7B2CBF), size: 20),
           ],
         ),
         const SizedBox(height: 8),
         Text(
           _anonBio.isNotEmpty ? '"$_anonBio"' : '"Whisperer of midnight thoughts. Anonymous since 2024."',
-          style: const TextStyle(
-            color: textMuted,
-            fontSize: 14,
-            fontStyle: FontStyle.italic,
-          ),
+          style: doodle 
+            ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 16)
+            : const TextStyle(
+                color: textMuted,
+                fontSize: 14,
+                fontStyle: FontStyle.italic,
+              ),
           textAlign: TextAlign.center,
         ),
       ],
     );
   }
 
-  Widget _buildStatsRow() {
+  Widget _buildStatsRow(bool doodle) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
@@ -684,65 +698,72 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
         children: [
           _buildStatCard(
             _fmtNum(_followerCount), 'Followers',
-            Icons.people_alt_outlined, const [Color(0xFFD433FF), Color(0xFF7B2CBF)],
+            Icons.people_alt_outlined, const [Color(0xFFD433FF), Color(0xFF7B2CBF)], doodle,
             onTap: () => _showFollowListSheet('Followers'),
           ),
           _buildStatCard(
             _fmtNum(_followingCount), 'Following',
-            Icons.person_outline, const [Color(0xFFFFD700), Color(0xFFFF8C00)],
+            Icons.person_outline, const [Color(0xFFFFD700), Color(0xFFFF8C00)], doodle,
             onTap: () => _showFollowListSheet('Following'),
           ),
           _buildStatCard(
             _fmtNum(_roomsHosted), 'Rooms Hosted',
-            Icons.local_fire_department_outlined, const [Color(0xFFFF6B00), Color(0xFF1E90FF)],
+            Icons.local_fire_department_outlined, const [Color(0xFFFF6B00), Color(0xFF1E90FF)], doodle,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard(String value, String label, IconData icon, List<Color> gradientColors, {VoidCallback? onTap}) {
+  Widget _buildStatCard(String value, String label, IconData icon, List<Color> gradientColors, bool doodle, {VoidCallback? onTap}) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 4),
           padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: borderColor),
-          ),
+          decoration: doodle
+            ? DoodleDecorations.card(color: DoodleColors.paper)
+            : BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
           child: Column(
             children: [
-              ShaderMask(
-                shaderCallback: (bounds) => LinearGradient(
-                  colors: gradientColors,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ).createShader(bounds),
-                child: Text(
-                  value,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
+              if (doodle)
+                Text(value, style: DoodleFonts.heading(color: DoodleColors.brown, fontSize: 24))
+              else
+                ShaderMask(
+                  shaderCallback: (bounds) => LinearGradient(
+                    colors: gradientColors,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ).createShader(bounds),
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-              ),
               const SizedBox(height: 6),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, color: textMuted, size: 14),
+                  Icon(icon, color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : textMuted, size: 14),
                   const SizedBox(width: 4),
                   Text(
                     label,
-                    style: const TextStyle(
-                      color: textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: doodle
+                      ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 12)
+                      : const TextStyle(
+                          color: textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
                   ),
                 ],
               ),
@@ -753,7 +774,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     );
   }
 
-  Widget _buildEditProfileButton() {
+  Widget _buildEditProfileButton(bool doodle) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: GestureDetector(
@@ -761,23 +782,27 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
         child: Container(
           width: double.infinity,
           height: 50,
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A132F),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF3B2768)),
-          ),
-          child: const Row(
+          decoration: doodle
+            ? DoodleDecorations.card(color: DoodleColors.paper)
+            : BoxDecoration(
+                color: const Color(0xFF1A132F),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF3B2768)),
+              ),
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.edit_outlined, color: Color(0xFFB983FF), size: 18),
-              SizedBox(width: 8),
+              Icon(Icons.edit_outlined, color: doodle ? DoodleColors.blue : const Color(0xFFB983FF), size: 18),
+              const SizedBox(width: 8),
               Text(
                 'Edit Profile',
-                style: TextStyle(
-                  color: Color(0xFFB983FF),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: doodle
+                  ? DoodleFonts.heading(color: DoodleColors.blue, fontSize: 16)
+                  : const TextStyle(
+                      color: Color(0xFFB983FF),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
             ],
           ),
@@ -932,7 +957,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     }
   }
 
-  Widget _buildSectionHeader(String title, String action, {VoidCallback? onActionTap}) {
+  Widget _buildSectionHeader(String title, String action, bool doodle, {VoidCallback? onActionTap}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       child: Row(
@@ -940,11 +965,13 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
         children: [
           Text(
             title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
+            style: doodle
+              ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18)
+              : const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
           ),
           GestureDetector(
             onTap: onActionTap,
@@ -952,13 +979,15 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
               children: [
                 Text(
                   action,
-                  style: const TextStyle(
-                    color: Color(0xFFB983FF),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: doodle
+                    ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 14)
+                    : const TextStyle(
+                        color: Color(0xFFB983FF),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
                 ),
-                const Icon(Icons.chevron_right, color: Color(0xFFB983FF), size: 16),
+                Icon(Icons.chevron_right, color: doodle ? DoodleColors.blue : const Color(0xFFB983FF), size: 16),
               ],
             ),
           ),
@@ -1042,9 +1071,10 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   }
 
   void _showAuraChangerSheet() {
+    final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: cardColor,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
@@ -1053,7 +1083,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text("Shift Aura Signature", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                Text("Shift Aura Signature", style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1103,24 +1133,26 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   String _voiceMaskPreset = 'ghost';
   bool _isEditingVoiceMask = false;
 
-  Widget _buildVoiceEffectsSection() {
+  Widget _buildVoiceEffectsSection(bool doodle) {
     final presets = VoiceMaskPreset.all;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 24),
-          child: Text("Voice Effects", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Text("Voice Effects", style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
         ),
         const SizedBox(height: 16),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 24),
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: borderColor),
-          ),
+          decoration: doodle
+            ? DoodleDecorations.card(color: DoodleColors.paper)
+            : BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: borderColor),
+              ),
           child: Column(
             children: [
               SwitchListTile(
@@ -1217,7 +1249,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                 // Custom voice pitch graph (only when 'custom' preset is selected)
                 if (_voiceMaskPreset == 'custom') ...[
                   const SizedBox(height: 12),
-                  _buildProfileCustomVoicePad(setState),
+                  _buildProfileCustomVoicePad(setState, isDoodleMode(context)),
                 ],
                 const SizedBox(height: 12),
                 // Test button
@@ -1387,7 +1419,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                                 const SizedBox(height: 16),
                                 if (_voiceMaskEnabled && _voiceMaskPreset == 'custom') ...[
                                   const SizedBox(height: 20),
-                                  _buildProfileCustomVoicePad(setState),
+                                  _buildProfileCustomVoicePad(setState, doodle),
                                 ],
                               ],
                               if (p.id != 'custom') const SizedBox(height: 0),
@@ -1443,17 +1475,19 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   /// Custom 2D voice pad for profile section: pitch (vertical) × formant (horizontal).
   /// Matches the voiceroom custom pad for consistent UX.
   /// Custom 2D voice pad - pitch (vertical, top=high) x brightness/formant (horizontal, right=bright).
-  Widget _buildProfileCustomVoicePad(StateSetter setSheetState) {
+  Widget _buildProfileCustomVoicePad(StateSetter setSheetState, bool doodle) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Custom Voice Tuner', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+        Text('Custom Voice Tuner', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        Text('Drag the dot to find your perfect voice texture', style: TextStyle(color: Colors.white70, fontSize: 11)),
+        Text('Drag the dot to find your perfect voice texture', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 12) : const TextStyle(color: Colors.white70, fontSize: 11)),
         const SizedBox(height: 10),
         Container(
           height: 180,
-          decoration: BoxDecoration(color: const Color(0xFF13101E), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF231D38))),
+          decoration: doodle
+            ? DoodleDecorations.card(color: DoodleColors.paper)
+            : BoxDecoration(color: const Color(0xFF13101E), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF231D38))),
           child: LayoutBuilder(builder: (ctx, constraints) {
             final w = constraints.maxWidth;
             final h = constraints.maxHeight;
@@ -1479,14 +1513,14 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
               child: Stack(
                 children: [
                   Positioned.fill(child: CustomPaint(painter: _VoicePadPainter(dotX: dotX, dotY: dotY))),
-                  Positioned(left: dotX - 14, top: dotY - 14, child: Container(width: 28, height: 28, decoration: BoxDecoration(shape: BoxShape.circle, gradient: const RadialGradient(colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]), boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.6), blurRadius: 12, spreadRadius: 2)]))),
+                  Positioned(left: dotX - 14, top: dotY - 14, child: Container(width: 28, height: 28, decoration: BoxDecoration(shape: BoxShape.circle, gradient: doodle ? null : const RadialGradient(colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]), color: doodle ? DoodleColors.orange : null, border: doodle ? Border.all(color: DoodleColors.brown, width: 2) : null, boxShadow: doodle ? [] : [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.6), blurRadius: 12, spreadRadius: 2)]))),
                 ],
               ),
             );
           }),
         ),
         const SizedBox(height: 12),
-        Center(child: Text('Pitch: ${((_voicePitch - 0.5) * 24).toStringAsFixed(1)} st · Brightness: ${_voiceFormant.toStringAsFixed(1)} st', style: TextStyle(color: Colors.white70, fontSize: 11))),
+        Center(child: Text('Pitch: ${((_voicePitch - 0.5) * 24).toStringAsFixed(1)} st · Brightness: ${_voiceFormant.toStringAsFixed(1)} st', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 12) : const TextStyle(color: Colors.white70, fontSize: 11))),
         const SizedBox(height: 16),
         GestureDetector(
           onTap: () {
@@ -1497,8 +1531,8 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]), borderRadius: BorderRadius.circular(16)),
-            child: const Center(child: Text('Use this voice', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold))),
+            decoration: doodle ? DoodleDecorations.card(color: DoodleColors.blue).copyWith(borderRadius: BorderRadius.circular(16)) : BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]), borderRadius: BorderRadius.circular(16)),
+            child: Center(child: Text('Use this voice', style: doodle ? DoodleFonts.body(color: DoodleColors.cream, fontSize: 16).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold))),
           ),
         ),
       ],
@@ -1510,11 +1544,12 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   void _showVoiceMaskingSheet() {
     bool isRecording = false;
     bool isPlaying = false;
+    final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: cardColor,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: doodle ? null : const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
           final presets = VoiceMaskPreset.all;
@@ -1523,16 +1558,20 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.masks, color: Color(0xFFFF6B00), size: 48),
+                Icon(Icons.masks, color: doodle ? DoodleColors.orange : const Color(0xFFFF6B00), size: 48),
                 const SizedBox(height: 12),
-                const Text("Voice Masking", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                Text("Voice Masking", style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 22) : const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                const Text("Disguise your voice globally across all BolRooms.", textAlign: TextAlign.center, style: TextStyle(color: textMuted, fontSize: 13)),
+                Text("Disguise your voice globally across all BolRooms.", textAlign: TextAlign.center, style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 14) : const TextStyle(color: textMuted, fontSize: 13)),
                 const SizedBox(height: 24),
                 SwitchListTile(
-                  title: const Text("Enable Masking", style: TextStyle(color: Colors.white, fontSize: 16)),
+                  title: Text("Enable Masking", style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 18).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontSize: 16)),
                   value: _voiceMaskEnabled,
-                  activeThumbColor: const Color(0xFFFF6B00),
+                  activeThumbColor: doodle ? DoodleColors.cream : const Color(0xFFFF6B00),
+                  activeTrackColor: doodle ? DoodleColors.blue : null,
+                  inactiveThumbColor: doodle ? DoodleColors.brown : null,
+                  inactiveTrackColor: doodle ? DoodleColors.paper : null,
+                  trackOutlineColor: doodle ? WidgetStateProperty.all(DoodleColors.brown) : null,
                   onChanged: (v) {
                     setState(() => _voiceMaskEnabled = v);
                     setSheetState(() {});
@@ -1544,11 +1583,11 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                 ),
                 if (_voiceMaskEnabled) ...[
                   const SizedBox(height: 16),
-                  const Align(
+                  Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
-                      padding: EdgeInsets.only(left: 4),
-                      child: Text("Select Voice Preset", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text("Select Voice Preset", style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -1584,25 +1623,31 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                             Container(
                               width: 64,
                               height: 64,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: p.colors,
-                                ),
-                                border: Border.all(
-                                  color: isActive ? Colors.white : Colors.transparent,
-                                  width: 2.5,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: p.colors.first.withValues(alpha: 0.4),
-                                    blurRadius: 10,
-                                    spreadRadius: 1,
+                              decoration: doodle
+                                ? BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isActive ? DoodleColors.orange : DoodleColors.paper,
+                                    border: Border.all(color: DoodleColors.brown, width: isActive ? 3 : 2),
                                   )
-                                ],
-                              ),
+                                : BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: p.colors,
+                                    ),
+                                    border: Border.all(
+                                      color: isActive ? Colors.white : Colors.transparent,
+                                      width: 2.5,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: p.colors.first.withValues(alpha: 0.4),
+                                        blurRadius: 10,
+                                        spreadRadius: 1,
+                                      )
+                                    ],
+                                  ),
                               child: Center(
                                 child: Text(p.icon,
                                     style: const TextStyle(fontSize: 30)),
@@ -1611,7 +1656,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                             const SizedBox(height: 8),
                             Text(
                               p.name,
-                              style: TextStyle(
+                              style: doodle ? DoodleFonts.body(color: isActive ? DoodleColors.blue : DoodleColors.brown, fontSize: 12).copyWith(fontWeight: isActive ? FontWeight.bold : FontWeight.normal) : TextStyle(
                                 color: isActive ? Colors.white : Colors.white70,
                                 fontSize: 12,
                                 fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
@@ -1626,25 +1671,33 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                   const SizedBox(height: 8),
                   Text(
                     VoiceMaskPreset.byId(_voiceMaskPreset)?.description ?? '',
-                    style: const TextStyle(color: textMuted, fontSize: 12),
+                    style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 12) : const TextStyle(color: textMuted, fontSize: 12),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
                   // Custom pitch slider (only for custom preset)
                   if (_voiceMaskPreset == 'custom') ...[
-                    const Text("Pitch Shift Level", style: TextStyle(color: Colors.white, fontSize: 14)),
-                    Slider(
-                      value: _voicePitch,
-                      min: 0.0,
-                      max: 1.0,
-                      activeColor: const Color(0xFFFF6B00),
-                      onChanged: (v) {
-                        setState(() => _voicePitch = v);
-                        setSheetState(() {});
-                      },
-                      onChangeEnd: (v) {
-                        _updateProfile({'voice_pitch': v});
-                      },
+                    Text("Pitch Shift Level", style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontSize: 14)),
+                    SliderTheme(
+                      data: doodle ? SliderThemeData(
+                        activeTrackColor: DoodleColors.blue,
+                        inactiveTrackColor: DoodleColors.paper,
+                        thumbColor: DoodleColors.orange,
+                        overlayColor: DoodleColors.orange.withValues(alpha: 0.2),
+                      ) : SliderTheme.of(context),
+                      child: Slider(
+                        value: _voicePitch,
+                        min: 0.0,
+                        max: 1.0,
+                        activeColor: doodle ? null : const Color(0xFFFF6B00),
+                        onChanged: (v) {
+                          setState(() => _voicePitch = v);
+                          setSheetState(() {});
+                        },
+                        onChangeEnd: (v) {
+                          _updateProfile({'voice_pitch': v});
+                        },
+                      ),
                     ),
                     const SizedBox(height: 8),
                   ],
@@ -1655,17 +1708,19 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                       duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: (_isRecordingTest || _isPlayingTest || _hasRecording)
-                            ? const Color(0xFFFF6B00).withValues(alpha: 0.2)
-                            : const Color(0xFF1A132F),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: (_isRecordingTest || _isPlayingTest || _hasRecording)
-                              ? const Color(0xFFFF6B00) 
-                              : const Color(0xFF3B2768),
-                        ),
-                      ),
+                      decoration: doodle
+                        ? DoodleDecorations.card(color: (_isRecordingTest || _isPlayingTest || _hasRecording) ? DoodleColors.cream : DoodleColors.paper).copyWith(borderRadius: BorderRadius.circular(16))
+                        : BoxDecoration(
+                            color: (_isRecordingTest || _isPlayingTest || _hasRecording)
+                                ? const Color(0xFFFF6B00).withValues(alpha: 0.2)
+                                : const Color(0xFF1A132F),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: (_isRecordingTest || _isPlayingTest || _hasRecording)
+                                  ? const Color(0xFFFF6B00) 
+                                  : const Color(0xFF3B2768),
+                            ),
+                          ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -1772,9 +1827,10 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   bool _ghostProtocolEnabled = false;
 
   void _showGhostProtocolSheet() {
+    final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: cardColor,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
@@ -1785,9 +1841,9 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
               children: [
                 const Icon(Icons.visibility_off, color: Color(0xFFFF4655), size: 48),
                 const SizedBox(height: 12),
-                const Text("Ghost Protocol", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                Text("Ghost Protocol", style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 20) : const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                const Text("When active, you will appear fully offline. Your aura will be hidden and read receipts disabled.", textAlign: TextAlign.center, style: TextStyle(color: textMuted, fontSize: 13)),
+                Text("When active, you will appear fully offline. Your aura will be hidden and read receipts disabled.", textAlign: TextAlign.center, style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 13) : const TextStyle(color: textMuted, fontSize: 13)),
                 const SizedBox(height: 24),
                 SwitchListTile(
                   title: const Text("Activate Ghost Protocol", style: TextStyle(color: Colors.white, fontSize: 16)),
@@ -1810,9 +1866,10 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   bool _encryptedRadarEnabled = true;
 
   void _showEncryptedRadarSheet() {
+    final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: cardColor,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
@@ -1823,9 +1880,9 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
               children: [
                 const Icon(Icons.radar, color: Color(0xFF00FF00), size: 48),
                 const SizedBox(height: 12),
-                const Text("Encrypted Radar", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                Text("Encrypted Radar", style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 20) : const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                const Text("Allow nearby users to discover your local Echoes without revealing your exact GPS coordinates.", textAlign: TextAlign.center, style: TextStyle(color: textMuted, fontSize: 13)),
+                Text("Your location and proximity data will be encrypted end-to-end.", textAlign: TextAlign.center, style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 13) : const TextStyle(color: textMuted, fontSize: 13)),
                 const SizedBox(height: 24),
                 SwitchListTile(
                   title: const Text("Radar Broadcasting", style: TextStyle(color: Colors.white, fontSize: 16)),
@@ -1846,24 +1903,25 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   }
 
   Widget _buildBadgesRow() {
+    final doodle = isDoodleMode(context);
     return Padding(
       padding: const EdgeInsets.only(left: 20),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            _buildHexBadge('Founder', Icons.star_rounded, const [Color(0xFFFFDF00), Color(0xFFD4AF37)]),
-            _buildHexBadge('Night Owl', Icons.nightlight_round, const [Color(0xFFB983FF), Color(0xFF7B2CBF)]),
-            _buildHexBadge('Elite Host', Icons.workspace_premium_rounded, const [Color(0xFFFF6B00), Color(0xFF1E90FF)]),
-            _buildHexBadge('Top Speaker', Icons.local_fire_department_rounded, const [Color(0xFFFF00FF), Color(0xFF8A2BE2)]),
-            _buildMoreBadge(),
+            _buildHexBadge(doodle, 'Founder', Icons.star_rounded, const [Color(0xFFFFDF00), Color(0xFFD4AF37)]),
+            _buildHexBadge(doodle, 'Night Owl', Icons.nightlight_round, const [Color(0xFFB983FF), Color(0xFF7B2CBF)]),
+            _buildHexBadge(doodle, 'Elite Host', Icons.workspace_premium_rounded, const [Color(0xFFFF6B00), Color(0xFF1E90FF)]),
+            _buildHexBadge(doodle, 'Top Speaker', Icons.local_fire_department_rounded, const [Color(0xFFFF00FF), Color(0xFF8A2BE2)]),
+            _buildMoreBadge(doodle),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHexBadge(String label, IconData icon, List<Color> colors) {
+  Widget _buildHexBadge(bool doodle, String label, IconData icon, List<Color> colors) {
     return Padding(
       padding: const EdgeInsets.only(right: 16),
       child: Column(
@@ -1893,8 +1951,8 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                   child: Container(
                     width: 66,
                     height: 71,
-                    decoration: const BoxDecoration(
-                      color: cardColor,
+                    decoration: BoxDecoration(
+                      color: doodle ? DoodleColors.paper : cardColor,
                     ),
                   ),
                 ),
@@ -1911,46 +1969,46 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              color: textMuted,
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMoreBadge() {
-    return GestureDetector(
-      onTap: _showAllBadgesSheet,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 20),
-        child: Column(
-          children: [
-            Container(
-              width: 70,
-              height: 75,
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: borderColor),
+            Text(
+              label,
+              style: TextStyle(
+                color: doodle ? DoodleColors.textMuted : textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
               ),
-              child: const Center(
-                child: Text(
-                  '+6',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget _buildMoreBadge(bool doodle) {
+      return GestureDetector(
+        onTap: _showAllBadgesSheet,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 20),
+          child: Column(
+            children: [
+              Container(
+                width: 70,
+                height: 75,
+                decoration: BoxDecoration(
+                  color: doodle ? DoodleColors.paper : cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: doodle ? DoodleColors.cardBorder : borderColor),
+                ),
+                child: Center(
+                  child: Text(
+                    '+6',
+                    style: TextStyle(
+                      color: doodle ? DoodleColors.textPrimary : Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
             const Text(
               'More',
               style: TextStyle(
@@ -1966,10 +2024,11 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   }
 
   void _showAllBadgesSheet() {
+    final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: cardColor,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.8,
@@ -1980,11 +2039,11 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
           return Column(
             children: [
               const SizedBox(height: 12),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: doodle ? DoodleColors.cardBorder : Colors.white24, borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 20),
-              const Text('BolRoom Badges', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+              Text('BolRoom Badges', style: TextStyle(color: doodle ? DoodleColors.textPrimary : Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              const Text('Your digital anonymous achievements', style: TextStyle(color: textMuted, fontSize: 14)),
+              Text('Your digital anonymous achievements', style: TextStyle(color: doodle ? DoodleColors.textMuted : textMuted, fontSize: 14)),
               const SizedBox(height: 24),
               Expanded(
                 child: ListView(
@@ -2011,27 +2070,27 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: bgColor,
+                        color: doodle ? DoodleColors.cream : bgColor,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFF3B2768)),
+                        border: Border.all(color: doodle ? DoodleColors.cardBorder : const Color(0xFF3B2768)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            children: const [
-                              Icon(Icons.info_outline_rounded, color: Color(0xFFB983FF), size: 24),
-                              SizedBox(width: 10),
-                              Text('How Badges Work', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                            children: [
+                              Icon(Icons.info_outline_rounded, color: doodle ? DoodleColors.amber : const Color(0xFFB983FF), size: 24),
+                              const SizedBox(width: 10),
+                              Text('How Badges Work', style: TextStyle(color: doodle ? DoodleColors.textPrimary : Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                             ],
                           ),
                           const SizedBox(height: 16),
-                          const Text(
+                          Text(
                             'Badges in BolRoom are earned through your interactions, hostings, and exploration of the platform. They are a way to showcase your journey while maintaining absolute anonymity.\n\n'
                             '• Earned Badges: Displayed in full vibrant colors.\n'
                             '• Locked Badges: Displayed in grey. The criteria to unlock them is shown next to the badge.\n\n'
                             'Equip up to 4 badges to your public profile to show off your greatest achievements to other users when they tap your avatar in a room.',
-                            style: TextStyle(color: textMuted, fontSize: 14, height: 1.5),
+                            style: TextStyle(color: doodle ? DoodleColors.textMuted : textMuted, fontSize: 14, height: 1.5),
                           ),
                         ],
                       ),
@@ -2062,7 +2121,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                 alignment: Alignment.center,
                 children: [
                   ClipPath(clipper: HexagonClipper(), child: Container(decoration: BoxDecoration(gradient: LinearGradient(colors: colors)))),
-                  ClipPath(clipper: HexagonClipper(), child: Container(width: 46, height: 51, decoration: const BoxDecoration(color: cardColor))),
+                  ClipPath(clipper: HexagonClipper(), child: Container(width: 46, height: 51, decoration: BoxDecoration(color: isDoodleMode(context) ? DoodleColors.paper : cardColor))),
                   ShaderMask(
                     shaderCallback: (bounds) => LinearGradient(colors: colors).createShader(bounds),
                     child: Icon(icon, color: Colors.white, size: 20),
@@ -2078,7 +2137,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
               children: [
                 Row(
                   children: [
-                    Text(title, style: TextStyle(color: unlocked ? Colors.white : textMuted, fontSize: 16, fontWeight: FontWeight.w600)),
+                    Text(title, style: TextStyle(color: unlocked ? (isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white) : (isDoodleMode(context) ? DoodleColors.textMuted : textMuted), fontSize: 16, fontWeight: FontWeight.w600)),
                     if (unlocked) ...[
                       const SizedBox(width: 8),
                       const Icon(Icons.check_circle_rounded, color: Color(0xFF00FF87), size: 14),
@@ -2089,7 +2148,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(desc, style: const TextStyle(color: textMuted, fontSize: 13, height: 1.3)),
+                Text(desc, style: TextStyle(color: isDoodleMode(context) ? DoodleColors.textMuted : textMuted, fontSize: 13, height: 1.3)),
               ],
             ),
           ),
@@ -2099,10 +2158,11 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   }
 
   void _showFollowListSheet(String type) {
+    final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: cardColor,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => _FollowListSheet(
         targetId: _targetId,
@@ -2117,63 +2177,70 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     );
   }
 
-  Widget _buildQuickSettingsHeader() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+  Widget _buildQuickSettingsHeader(bool doodle) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
           'Quick Settings',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: doodle
+            ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18)
+            : const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
         ),
       ),
     );
   }
 
-  Widget _buildQuickSettingsItem() {
+  Widget _buildQuickSettingsItem(bool doodle) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Container(
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor),
-        ),
+        decoration: doodle
+          ? DoodleDecorations.card(color: DoodleColors.paper)
+          : BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor),
+            ),
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           leading: Container(
             padding: const EdgeInsets.all(8),
-            decoration: const BoxDecoration(
-              color: borderColor,
+            decoration: BoxDecoration(
+              color: doodle ? DoodleColors.cream : borderColor,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.shield_outlined, color: textMuted, size: 20),
+            child: Icon(Icons.shield_outlined, color: doodle ? DoodleColors.brown : textMuted, size: 20),
           ),
-          title: const Text(
+          title: Text(
             'Privacy',
-            style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+            style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16).copyWith(fontWeight: FontWeight.w600) : const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
           ),
-          subtitle: const Text(
+          subtitle: Text(
             'Control who sees your profile and activity.',
-            style: TextStyle(color: textMuted, fontSize: 12),
+            style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.6), fontSize: 13) : const TextStyle(color: textMuted, fontSize: 12),
           ),
-          trailing: const Icon(Icons.chevron_right, color: textMuted, size: 20),
+          trailing: Icon(Icons.chevron_right, color: doodle ? DoodleColors.brown : textMuted, size: 20),
         ),
       ),
     );
   }
 
   void _showEditProfile() {
+    final doodle = isDoodleMode(context);
     final nameCtrl = TextEditingController(text: _anonName);
     final bioCtrl = TextEditingController(text: _anonBio);
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.vertical(top: Radius.circular(28)), border: Border.all(color: borderColor)),
+        decoration: doodle
+          ? BoxDecoration(color: DoodleColors.paper, borderRadius: const BorderRadius.vertical(top: Radius.circular(28)), border: Border.all(color: DoodleColors.brown, width: 2))
+          : BoxDecoration(color: bgColor, borderRadius: const BorderRadius.vertical(top: Radius.circular(28)), border: Border.all(color: borderColor)),
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 32, left: 24, right: 24, top: 16),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: borderColor, borderRadius: BorderRadius.circular(2)))),
@@ -2250,6 +2317,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   };
 
   void _showLocationSheet() {
+    final doodle = isDoodleMode(context);
     String searchQuery = '';
     String? selectedState;
     bool isFetching = false;
@@ -2257,7 +2325,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: cardColor,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {

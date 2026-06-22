@@ -14,6 +14,7 @@ import 'image_upload_service.dart';
 import 'feature_guide_screen.dart';
 import 'main.dart';
 import 'services/location_service.dart';
+import 'services/doodle_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────
 // PREMIUM ONBOARDING SCREEN — 16-step ultra-detailed profile setup
@@ -220,7 +221,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : _bg,
       body: SafeArea(
         child: Column(
           children: [

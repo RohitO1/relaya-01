@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'profile_screen.dart';
+import 'services/doodle_theme.dart';
 
 class FollowListScreen extends StatelessWidget {
   final String userId;
@@ -14,7 +15,7 @@ class FollowListScreen extends StatelessWidget {
       length: 2,
       initialIndex: initialIndex,
       child: Scaffold(
-        backgroundColor: const Color(0xFF050508),
+        backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF050508),
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -122,7 +123,7 @@ class _FollowListHelperState extends State<_FollowListHelper> {
         return ListTile(
           onTap: () {
             Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
-              backgroundColor: const Color(0xFF050508),
+              backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF050508),
               body: ProfileScreen(userId: id),
             )));
           },

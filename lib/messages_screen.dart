@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart' as emoji;
 import 'widgets/skeleton_loaders.dart';
 import 'image_upload_service.dart';
 import 'bot_chat_screen.dart';
@@ -14,6 +15,7 @@ import 'knock_review_screen.dart';
 import 'services/notification_service.dart';
 import 'main.dart'; // For CosmicBackgroundPainter
 import 'communities_screen.dart';
+import 'services/doodle_theme.dart';
 
 // =============================================================================
 // SHARED HELPERS
@@ -67,12 +69,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF030305), // Cosmic dark base
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF030305),
       body: Stack(
         children: [
           // Ambient Background
           Positioned.fill(
-            child: CustomPaint(
+            child: isDoodleMode(context) ? Container(color: DoodleColors.cream) : CustomPaint(
               painter: CosmicBackgroundPainter(0.5), // Static value for background
             ),
           ),
@@ -84,37 +86,37 @@ class _MessagesScreenState extends State<MessagesScreen> {
               padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
               child: Row(
                 children: [
-                  const Text('Meetra', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 24, color: Colors.white, letterSpacing: -0.5)),
+                  Text('Meetra', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 24, color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, letterSpacing: -0.5)),
                   const Spacer(),
-                  IconButton(icon: const Icon(Icons.qr_code_scanner, color: Colors.white), onPressed: () {}),
-                  IconButton(icon: const Icon(Icons.camera_alt_outlined, color: Colors.white), onPressed: () {}),
+                  IconButton(icon: Icon(Icons.qr_code_scanner, color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white), onPressed: () {}),
+                  IconButton(icon: Icon(Icons.camera_alt_outlined, color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white), onPressed: () {}),
                   IconButton(
-                    icon: const Icon(Icons.more_vert, color: Colors.white),
+                    icon: Icon(Icons.more_vert, color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white),
                     onPressed: () {},
                   ),
                 ],
               ),
             ),
-            // ── Search Bar ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
                 height: 48,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1B202D), // Dark slate search bg
+                  color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1B202D), // Dark slate search bg
                   borderRadius: BorderRadius.circular(24),
+                  border: isDoodleMode(context) ? Border.all(color: DoodleColors.cardBorder) : null,
                 ),
                 child: TextField(
                   controller: _searchController,
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                  style: TextStyle(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontSize: 15),
                   decoration: InputDecoration(
                     hintText: 'Ask Meetra AI or Search',
-                    hintStyle: const TextStyle(color: Color(0xFF8B95A5), fontSize: 15),
-                    prefixIcon: const Icon(Icons.search, color: Color(0xFF8B95A5), size: 22),
+                    hintStyle: TextStyle(color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF8B95A5), fontSize: 15),
+                    prefixIcon: Icon(Icons.search, color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF8B95A5), size: 22),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? GestureDetector(
                             onTap: () => _searchController.clear(),
-                            child: const Icon(Icons.close, color: Color(0xFF8B95A5), size: 18),
+                            child: Icon(Icons.close, color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF8B95A5), size: 18),
                           )
                         : null,
                     border: InputBorder.none,
@@ -134,20 +136,21 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 itemBuilder: (context, index) {
                   final chip = _chips[index];
                   final isActive = _activeChip == chip;
+                  final doodle = isDoodleMode(context);
                   return GestureDetector(
                     onTap: () => setState(() => _activeChip = chip),
                     child: Container(
                       margin: const EdgeInsets.only(right: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: isActive ? const Color(0xFF0D2B22) : const Color(0xFF1B202D),
+                        color: isActive ? (doodle ? DoodleColors.amber : const Color(0xFF0D2B22)) : (doodle ? DoodleColors.paper : const Color(0xFF1B202D)),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: isActive ? const Color(0xFFFF6B00) : Colors.transparent),
+                        border: Border.all(color: isActive ? (doodle ? DoodleColors.amber : const Color(0xFFFF6B00)) : (doodle ? DoodleColors.cardBorder : Colors.transparent)),
                       ),
                       child: Text(
                         chip,
                         style: TextStyle(
-                          color: isActive ? const Color(0xFFFF6B00) : const Color(0xFF8B95A5),
+                          color: isActive ? (doodle ? DoodleColors.textPrimary : const Color(0xFFFF6B00)) : (doodle ? DoodleColors.textMuted : const Color(0xFF8B95A5)),
                           fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
                           fontSize: 14,
                         ),
@@ -173,9 +176,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
           HapticFeedback.lightImpact();
           Navigator.push(context, MaterialPageRoute(builder: (_) => const BotChatScreen()));
         },
-        backgroundColor: const Color(0xFF1B202D),
+        backgroundColor: isDoodleMode(context) ? DoodleColors.amber : const Color(0xFF1B202D),
         elevation: 4,
-        child: ShaderMask(
+        child: isDoodleMode(context) ? const Icon(Icons.smart_toy_rounded, color: DoodleColors.textPrimary, size: 24) : ShaderMask(
           shaderCallback: (bounds) => const LinearGradient(
             colors: [Color(0xFFFF6B00), Color(0xFFFF0055)],
           ).createShader(bounds),
@@ -592,13 +595,31 @@ class _ChatsViewState extends State<ChatsView> {
 
     if (filtered.isEmpty && widget.searchQuery.isNotEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, color: Colors.white.withValues(alpha: 0.1), size: 64),
-            const SizedBox(height: 16),
-            const Text('No conversations found', style: TextStyle(color: Colors.white24, fontSize: 16, fontWeight: FontWeight.w600)),
-          ],
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          margin: const EdgeInsets.symmetric(horizontal: 24),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.03),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.search_off_rounded, color: Color(0xFF3B82F6), size: 48),
+              ),
+              const SizedBox(height: 24),
+              const Text('No Conversations Found', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              const Text('Try searching for a different\\nname or username.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 14, height: 1.5)),
+            ],
+          ),
         ),
       );
     }
@@ -919,7 +940,7 @@ class _ActivityChatsViewState extends State<_ActivityChatsView> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return SkeletonLoaders.chatListSkeleton();
+      return SkeletonLoaders.chatListSkeleton(doodle: isDoodleMode(context));
     }
 
     final filtered = _activities.where((a) {
@@ -1200,7 +1221,7 @@ class _KnocksViewState extends State<_KnocksView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return SkeletonLoaders.chatListSkeleton();
+    if (_loading) return SkeletonLoaders.chatListSkeleton(doodle: isDoodleMode(context));
     
     final filtered = _profiles.where((p) {
       final name = (p['name'] ?? p['full_name'] ?? '').toLowerCase();
@@ -1411,19 +1432,6 @@ class _KnocksViewState extends State<_KnocksView> {
                           child: const Icon(Icons.bolt, color: Colors.black, size: 11),
                         ),
                       ),
-                    // Unread dot
-                    if (unreadCount > 0 && !isSuper)
-                      Positioned(
-                        top: 0, right: 0,
-                        child: Container(
-                          width: 14, height: 14,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF6B00),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFF0F0F16), width: 1.5),
-                          ),
-                        ),
-                      ),
                   ],
                 ),
                 const SizedBox(width: 14),
@@ -1443,13 +1451,39 @@ class _KnocksViewState extends State<_KnocksView> {
                                   fontWeight: FontWeight.w700),
                                 maxLines: 1, overflow: TextOverflow.ellipsis),
                           ),
-                          if (timeLabel.isNotEmpty)
-                            Text(timeLabel,
-                                style: GoogleFonts.outfit(
-                                  color: unreadCount > 0
-                                      ? const Color(0xFFFF6B00)
-                                      : Colors.white38,
-                                  fontSize: 11, fontWeight: FontWeight.w600)),
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              if (timeLabel.isNotEmpty)
+                                Text(timeLabel,
+                                    style: GoogleFonts.outfit(
+                                      color: unreadCount > 0
+                                          ? const Color(0xFFFF6B00)
+                                          : Colors.white38,
+                                      fontSize: 11, fontWeight: FontWeight.w600)),
+                              if (unreadCount > 0 && !isSuper) ...[
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFFF6B00),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '$unreadCount',
+                                      style: GoogleFonts.inter(
+                                        color: const Color(0xFF0D0F14),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -1631,7 +1665,7 @@ class _CompanionViewState extends State<_CompanionView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return SkeletonLoaders.chatListSkeleton();
+    if (_loading) return SkeletonLoaders.chatListSkeleton(doodle: isDoodleMode(context));
     
     final filtered = _profiles.where((p) {
       final name = (p['name'] ?? p['full_name'] ?? '').toLowerCase();
@@ -1820,6 +1854,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final Map<String, String> _messageReactions = {};
   String? _hangoutRequestStatus;
   String? _hangoutRequestSenderId;
+  bool _showEmojiPicker = false;
 
   Future<void> _markAsRead() async {
     if (_myUid.isEmpty || widget.targetUserId.isEmpty) return;
@@ -3095,9 +3130,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                             fillColor: const Color(0xFF1A1A1A),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                            suffixIcon: const Icon(Icons.sentiment_satisfied_alt, color: Colors.white54, size: 22),
+                            suffixIcon: GestureDetector(
+                              onTap: () {
+                                FocusScope.of(context).unfocus();
+                                setState(() => _showEmojiPicker = !_showEmojiPicker);
+                              },
+                              child: Icon(_showEmojiPicker ? Icons.keyboard : Icons.sentiment_satisfied_alt, color: Colors.white54, size: 22),
+                            ),
                           ),
                           textInputAction: TextInputAction.send,
+                          onTap: () {
+                            if (_showEmojiPicker) setState(() => _showEmojiPicker = false);
+                          },
                           onSubmitted: (_) => _sendMessage(),
                         ),
                       ),
@@ -3122,6 +3166,32 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 ],
               ),
             ),
+            if (_showEmojiPicker)
+              SizedBox(
+                height: 250,
+                child: emoji.EmojiPicker(
+                  textEditingController: _msgController,
+                  config: emoji.Config(
+                    height: 250,
+                    checkPlatformCompatibility: true,
+                    emojiViewConfig: emoji.EmojiViewConfig(
+                      backgroundColor: const Color(0xFF1B202D),
+                      columns: 7,
+                      emojiSizeMax: 28,
+                    ),
+                    categoryViewConfig: const emoji.CategoryViewConfig(
+                      backgroundColor: Color(0xFF1B202D),
+                      iconColorSelected: Color(0xFFFF6B00),
+                      indicatorColor: Color(0xFFFF6B00),
+                    ),
+                    bottomActionBarConfig: const emoji.BottomActionBarConfig(
+                      backgroundColor: Color(0xFF1B202D),
+                      buttonColor: Color(0xFF1B202D),
+                      buttonIconColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
         ],
       ),
     );
@@ -3186,7 +3256,7 @@ class _ComplimentsViewState extends State<_ComplimentsView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return SkeletonLoaders.chatListSkeleton();
+    if (_loading) return SkeletonLoaders.chatListSkeleton(doodle: isDoodleMode(context));
 
     final filtered = _compliments.where((c) {
       final senderData = c['sender'] as Map<String, dynamic>? ?? {};

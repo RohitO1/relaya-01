@@ -41,6 +41,7 @@ dependencies:
   image_cropper: ^12.2.1
   agora_rtc_engine: ^6.5.3
   url_launcher: ^6.3.1
+  supabase: ^2.13.0
 
 # Override flutter_webrtc to use our patched version with VoiceMaskBridge.
 # This is the ONLY reliable way to intercept raw PCM audio before Opus encoding.
@@ -55,7 +56,6 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
 
-  supabase: any
 flutter:
   uses-material-design: true
   assets:

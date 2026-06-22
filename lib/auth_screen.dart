@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'services/doodle_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────
 // AUTH SCREEN — Premium Sign In / Sign Up with animations
@@ -113,7 +114,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     if (raw.contains('unable to validate email') || raw.contains('invalid email')) return 'Please enter a valid email address.';
     if (raw.contains('network') || raw.contains('socketexception') || raw.contains('connection')) return 'Network error. Please check your internet connection.';
     if (raw.contains('rate limit') || raw.contains('too many') || raw.contains('over_email_send_rate_limit') || raw.contains('429')) return 'Too many attempts. Please wait 60 seconds and try again.';
-    return 'Something went wrong. Please try again.';
+    return 'Something went wrong. Error: ${e.toString()}';
   }
 
   void _showError(String msg) {
@@ -287,7 +288,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : _bg,
       body: Stack(
         children: [
           _buildAmbientOrbs(),
