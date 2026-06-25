@@ -242,6 +242,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   bool _isVoiceMasked = false;
   String _voiceMaskPreset = 'ghost';
   bool _isEditingVoiceMask = false;
+  int _bgThemeIndex = 0; // 0 = Default Neon, 1 = Deep Space, 2 = Aurora, 3 = Fire, 4 = Ocean
   bool _isHost = false;
   String _myId = '';
   String _myName = 'User';
@@ -3233,16 +3234,50 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           AnimatedBuilder(
               animation: _pulseCtrl,
               builder: (ctx, _) {
-                return Container(
+                // Background themes
+                final hostColor = _colorForUser(_currentHostId);
+                
+                List<Color> getThemeColors() {
+                  switch (_bgThemeIndex) {
+                    case 1: // Deep Space
+                      return [
+                        const Color(0xFF2A0845).withValues(alpha: 0.8),
+                        const Color(0xFF0C0914),
+                      ];
+                    case 2: // Aurora
+                      return [
+                        const Color(0xFF00C9FF).withValues(alpha: 0.3 + (_pulseCtrl.value * 0.1)),
+                        const Color(0xFF92FE9D).withValues(alpha: 0.1),
+                        const Color(0xFF0C0914),
+                      ];
+                    case 3: // Fire
+                      return [
+                        const Color(0xFFFF416C).withValues(alpha: 0.3 + (_pulseCtrl.value * 0.1)),
+                        const Color(0xFFFF4B2B).withValues(alpha: 0.1),
+                        const Color(0xFF0C0914),
+                      ];
+                    case 4: // Ocean
+                      return [
+                        const Color(0xFF4CB8C4).withValues(alpha: 0.3 + (_pulseCtrl.value * 0.1)),
+                        const Color(0xFF3CD3AD).withValues(alpha: 0.1),
+                        const Color(0xFF0C0914),
+                      ];
+                    case 0: // Default Neon
+                    default:
+                      return [
+                        hostColor.withValues(alpha: 0.15 + (_pulseCtrl.value * 0.05)),
+                        const Color(0xFF0C0914),
+                      ];
+                  }
+                }
+
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 500),
                   decoration: BoxDecoration(
                     gradient: RadialGradient(
                       center: const Alignment(0, -0.6),
-                      radius: 1.2 + (_pulseCtrl.value * 0.1),
-                      colors: [
-                        _colorForUser(_currentHostId).withValues(
-                            alpha: 0.15 + (_pulseCtrl.value * 0.05)),
-                        const Color(0xFF0C0914),
-                      ],
+                      radius: _bgThemeIndex == 0 ? (1.2 + (_pulseCtrl.value * 0.1)) : 1.5,
+                      colors: getThemeColors(),
                     ),
                   ),
                 );
@@ -3539,6 +3574,21 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
             ]),
         ])),
         Row(children: [
+          // Theme Picker
+          GestureDetector(
+            onTap: _showThemePickerSheet,
+            child: Container(
+              width: 38,
+              height: 38,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.08),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+              child: const Icon(Icons.palette_outlined, color: Colors.white60, size: 20),
+            ),
+          ),
           // Game icon — only for game-mode rooms
           if (_gameMode != null && _gameMode!.isNotEmpty)
             GestureDetector(
@@ -3588,6 +3638,80 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         ]),
       ]),
     ).animate().fadeIn(duration: 400.ms);
+  }
+
+  void _showThemePickerSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF13101E),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        final themes = [
+          {'name': 'Neon Pulse', 'colors': [const Color(0xFF7B2CBF), const Color(0xFFFF6B00)]},
+          {'name': 'Deep Space', 'colors': [const Color(0xFF2A0845), const Color(0xFF6441A5)]},
+          {'name': 'Aurora', 'colors': [const Color(0xFF00C9FF), const Color(0xFF92FE9D)]},
+          {'name': 'Fire', 'colors': [const Color(0xFFFF416C), const Color(0xFFFF4B2B)]},
+          {'name': 'Ocean', 'colors': [const Color(0xFF4CB8C4), const Color(0xFF3CD3AD)]},
+        ];
+
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (ctx, setSheetState) => Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(height: 20),
+                  const Text('Voiceroom Theme', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text('Change the background aesthetic', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13)),
+                  const SizedBox(height: 24),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3, mainAxisSpacing: 16, crossAxisSpacing: 16, childAspectRatio: 0.8,
+                    ),
+                    itemCount: themes.length,
+                    itemBuilder: (_, i) {
+                      final isActive = _bgThemeIndex == i;
+                      final t = themes[i];
+                      final gradientColors = t['colors'] as List<Color>;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() => _bgThemeIndex = i);
+                          setSheetState(() {});
+                        },
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 60, height: 60,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradientColors),
+                                border: Border.all(color: isActive ? Colors.white : Colors.transparent, width: 3),
+                                boxShadow: [
+                                  if (isActive) BoxShadow(color: gradientColors.first.withValues(alpha: 0.5), blurRadius: 15, spreadRadius: 2)
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(t['name'] as String, style: TextStyle(color: isActive ? Colors.white : Colors.white70, fontSize: 13, fontWeight: isActive ? FontWeight.bold : FontWeight.normal), textAlign: TextAlign.center),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    );
   }
 
   void _showExitSheet() {

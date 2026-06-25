@@ -1,5 +1,6 @@
 // ignore_for_file: duplicate_ignore, unused_element, unused_local_variable, deprecated_member_use, use_build_context_synchronously, curly_braces_in_flow_control_structures, unnecessary_brace_in_string_interps, avoid_print, unused_field, prefer_final_fields
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -36,6 +37,7 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   // Controllers
   final _suNameCtrl    = TextEditingController();
+  final _suUsernameCtrl = TextEditingController();
   final _suEmailCtrl   = TextEditingController();
   final _suPassCtrl    = TextEditingController();
   final _suConfirmCtrl = TextEditingController();
@@ -51,6 +53,12 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   // Inline errors
   String? _emailError;
   String? _confirmError;
+  String? _usernameError;
+
+  // Username validation
+  bool _isUsernameChecking = false;
+  bool _isUsernameAvailable = false;
+  Timer? _usernameDebounce;
 
   // Password strength
   int _pwStrength = 0; // 0-4
@@ -75,6 +83,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     _orbCtrl.dispose();
     _floatCtrl.dispose();
     _suNameCtrl.dispose();
+    _suUsernameCtrl.dispose();
+    _usernameDebounce?.cancel();
     _suEmailCtrl.dispose();
     _suPassCtrl.dispose();
     _suConfirmCtrl.dispose();
@@ -85,6 +95,64 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
   // ── Validation ──────────────────────────────────────────────────
   bool _isValidEmail(String e) => RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(e);
+
+  void _checkUsername(String val) {
+    if (_usernameDebounce?.isActive ?? false) _usernameDebounce!.cancel();
+    final username = val.trim().toLowerCase();
+    
+    if (username.isEmpty) {
+      setState(() {
+        _usernameError = null;
+        _isUsernameAvailable = false;
+        _isUsernameChecking = false;
+      });
+      return;
+    }
+
+    if (!RegExp(r'^[a-z0-9_]{3,20}$').hasMatch(username)) {
+      setState(() {
+        _usernameError = 'Use 3-20 lowercase letters, numbers, or _';
+        _isUsernameAvailable = false;
+        _isUsernameChecking = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _usernameError = null;
+      _isUsernameChecking = true;
+      _isUsernameAvailable = false;
+    });
+
+    _usernameDebounce = Timer(const Duration(milliseconds: 600), () async {
+      try {
+        final res = await Supabase.instance.client
+            .from('profiles')
+            .select('id')
+            .eq('username', username)
+            .maybeSingle();
+        if (mounted) {
+          setState(() {
+            _isUsernameChecking = false;
+            if (res != null) {
+              _usernameError = 'Username is already taken';
+              _isUsernameAvailable = false;
+            } else {
+              _usernameError = null;
+              _isUsernameAvailable = true;
+            }
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isUsernameChecking = false;
+            _usernameError = 'Error checking username';
+          });
+        }
+      }
+    });
+  }
 
   void _checkPwStrength(String pw) {
     if (pw.isEmpty) { setState(() { _pwStrength = 0; _pwText = ''; }); return; }
@@ -144,14 +212,19 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   // ── Auth Actions ────────────────────────────────────────────────
   Future<void> _handleSignup() async {
     final name    = _suNameCtrl.text.trim();
+    final username = _suUsernameCtrl.text.trim().toLowerCase();
     final email   = _suEmailCtrl.text.trim();
     final pass    = _suPassCtrl.text;
     final confirm = _suConfirmCtrl.text;
 
-    setState(() { _emailError = null; _confirmError = null; });
+    setState(() { _emailError = null; _confirmError = null; _usernameError = null; });
 
     bool hasError = false;
     if (name.isEmpty) { _showError('Please enter your full name.'); hasError = true; }
+    if (username.isEmpty || !_isUsernameAvailable) {
+      setState(() => _usernameError = _usernameError ?? 'Please select a valid, unique username.');
+      hasError = true;
+    }
     if (!_isValidEmail(email)) { setState(() => _emailError = 'Please enter a valid email'); hasError = true; }
     if (pass.length < 6) { _showError('Password must be at least 6 characters.'); hasError = true; }
     if (pass != confirm) { setState(() => _confirmError = 'Passwords do not match'); hasError = true; }
@@ -162,7 +235,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       final res = await Supabase.instance.client.auth.signUp(
         email: email,
         password: pass,
-        data: {'name': name},
+        data: {'name': name, 'username': username},
       );
 
       if (res.user != null) {
@@ -171,6 +244,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           await Supabase.instance.client.from('profiles').upsert({
             'id': res.user!.id,
             'name': name,
+            'username': username,
             'full_name': name,
             'avatar_url': 'https://picsum.photos/seed/${res.user!.id}/200',
             'onboarding_complete': false,
@@ -280,6 +354,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       _isSignup = toSignup;
       _emailError = null;
       _confirmError = null;
+      _usernameError = null;
       _pwStrength = 0;
       _pwText = '';
     });
@@ -381,6 +456,34 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       children: [
         _formLabel(Icons.person, 'Full Name'),
         _inputField(controller: _suNameCtrl, hint: 'Enter your full name', icon: Icons.person_outlined),
+        const SizedBox(height: 16),
+
+        _formLabel(Icons.alternate_email, 'Username'),
+        Container(
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _isUsernameAvailable ? _green.withValues(alpha: 0.5) : _gb),
+          ),
+          child: TextField(
+            controller: _suUsernameCtrl,
+            onChanged: _checkUsername,
+            style: GoogleFonts.inter(color: _txt, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Choose a unique username',
+              hintStyle: GoogleFonts.inter(color: _muted, fontSize: 14),
+              prefixIcon: const Icon(Icons.alternate_email, color: _muted, size: 15),
+              suffixIcon: _isUsernameChecking 
+                  ? const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: _cyan)))
+                  : _isUsernameAvailable
+                      ? const Icon(Icons.check_circle, color: _green, size: 18)
+                      : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+          ),
+        ),
+        if (_usernameError != null) _errorText(_usernameError!),
         const SizedBox(height: 16),
 
         _formLabel(Icons.email, 'Email Address'),

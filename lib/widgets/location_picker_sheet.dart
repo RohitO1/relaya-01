@@ -15,8 +15,8 @@ import '../services/doodle_theme.dart';
 /// ```dart
 /// showLocationSearchSheet(context);
 /// ```
-void showLocationSearchSheet(BuildContext context) {
-  showModalBottomSheet(
+Future<void> showLocationSearchSheet(BuildContext context) {
+  return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,

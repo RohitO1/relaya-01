@@ -228,6 +228,7 @@ class VoiceMaskService {
 
   /// Stop voice masking.
   Future<void> stopMasking() async {
+    if (kIsWeb) return;
     try {
       // Instead of stopping the DSP engine completely (which might kill audio hook),
       // we gracefully bypass it so the original voice plays through naturally.
@@ -241,6 +242,7 @@ class VoiceMaskService {
 
   /// Switch preset mid-call. No restart needed — the native DSP handles it atomically.
   Future<void> setPreset(String presetId) async {
+    if (kIsWeb) return;
     try {
       await _channel.invokeMethod('setPreset', {'preset': presetId});
       _activePreset = presetId;
@@ -254,6 +256,7 @@ class VoiceMaskService {
 
   /// Set custom pitch (for the custom preset slider).
   Future<void> setCustomPitch(double semitones) async {
+    if (kIsWeb) return;
     try {
       await _channel.invokeMethod('setCustomPitch', {'semitones': semitones});
     } catch (e) {
@@ -272,6 +275,7 @@ class VoiceMaskService {
   /// Process a single raw PCM frame (used by bolroom_profile_screen for loopback test).
   /// Returns the DSP-processed bytes, or null on failure.
   Future<Uint8List?> processFrame(Uint8List frame) async {
+    if (kIsWeb) return frame;
     try {
       final result = await _channel.invokeMethod('processFrame', {'bytes': frame});
       if (result is Uint8List) return result;
@@ -285,6 +289,7 @@ class VoiceMaskService {
 
   /// Get diagnostic info from native side.
   Future<Map<String, dynamic>> getDiagnostic() async {
+    if (kIsWeb) return {};
     try {
       final result = await _channel.invokeMethod('getDiagnostic');
       return Map<String, dynamic>.from(result as Map);

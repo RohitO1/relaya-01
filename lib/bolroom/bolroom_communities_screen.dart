@@ -263,14 +263,10 @@ class _BolroomCommunitiesScreenState extends State<BolroomCommunitiesScreen> {
                             children: [
                               Padding(
                                 padding: const EdgeInsets.only(left: 20, top: 10, bottom: 10),
-                                child: Text("Joined by you or Created by", style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                child: Text("Your Communities", style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                               ),
-                              SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                padding: const EdgeInsets.only(left: 20),
-                                child: Row(
-                                  children: joinedOrCreated.map((c) => _buildTrendingCard(c, doodle)).toList(),
-                                ),
+                              Column(
+                                children: joinedOrCreated.map((c) => _buildTrendingCard(c, doodle)).toList(),
                               ),
                               const SizedBox(height: 16),
                             ],
@@ -399,88 +395,96 @@ class _BolroomCommunitiesScreenState extends State<BolroomCommunitiesScreen> {
         Navigator.push(context, BolroomTheme.slideRoute(BolroomCommunityDetailScreen(community: c))).then((_) => _loadData());
       },
       child: Container(
-        width: 170,
-        margin: const EdgeInsets.only(right: 16),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: const BoxDecoration(
-          color: Colors.transparent, // transparent, no background card effect
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: doodle
+          ? BoxDecoration(
+              color: DoodleColors.cream.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: DoodleColors.brown.withValues(alpha: 0.2)),
+            )
+          : BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor),
+            ),
+        child: Row(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Circular Avatar
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: doodle
-                    ? BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isCreator ? DoodleColors.orange.withValues(alpha: 0.12) : bannerColor.withValues(alpha: 0.12),
-                        border: Border.all(
-                          color: isCreator ? DoodleColors.orange : bannerColor,
-                          width: 2,
-                        ),
-                      )
-                    : BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isCreator ? Colors.amber.withValues(alpha: 0.12) : bannerColor.withValues(alpha: 0.12),
-                        border: Border.all(
-                          color: isCreator ? Colors.amber.withValues(alpha: 0.3) : bannerColor.withValues(alpha: 0.3),
-                          width: 1.5,
-                        ),
-                      ),
-                  child: Center(
-                    child: Text(c['icon'] ?? '💬', style: const TextStyle(fontSize: 22)),
-                  ),
-                ),
-                if (isCreator)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: doodle
-                      ? BoxDecoration(
-                          color: DoodleColors.orange.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: DoodleColors.orange.withValues(alpha: 0.3)),
-                        )
-                      : BoxDecoration(
-                          color: Colors.amber.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
-                        ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.star, color: doodle ? DoodleColors.orange : Colors.amber, size: 10),
-                        const SizedBox(width: 2),
-                        Text("Host", style: doodle ? DoodleFonts.body(color: DoodleColors.orange, fontSize: 10).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.bold)),
-                      ],
+            // Circular Avatar
+            Container(
+              width: 52,
+              height: 52,
+              decoration: doodle
+                ? BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isCreator ? DoodleColors.orange.withValues(alpha: 0.12) : bannerColor.withValues(alpha: 0.12),
+                    border: Border.all(
+                      color: isCreator ? DoodleColors.orange : bannerColor,
+                      width: 2,
                     ),
                   )
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: doodle
-                      ? BoxDecoration(
-                          color: DoodleColors.blue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: DoodleColors.blue.withValues(alpha: 0.25)),
-                        )
-                      : BoxDecoration(
-                          color: const Color(0xFF00FF00).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFF00FF00).withValues(alpha: 0.25)),
-                        ),
-                    child: Text("Joined", style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 10).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Color(0xFF00FF00), fontSize: 10, fontWeight: FontWeight.bold)),
+                : BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isCreator ? Colors.amber.withValues(alpha: 0.12) : bannerColor.withValues(alpha: 0.12),
+                    border: Border.all(
+                      color: isCreator ? Colors.amber.withValues(alpha: 0.3) : bannerColor.withValues(alpha: 0.3),
+                      width: 1.5,
+                    ),
                   ),
-              ],
+              child: Center(
+                child: Text(c['icon'] ?? '💬', style: const TextStyle(fontSize: 22)),
+              ),
             ),
-            const SizedBox(height: 12),
-            Text(c['name'] ?? 'Hub', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 16) : const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 4),
-            Text("${c['member_count'] ?? 0} Members", style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 12) : const TextStyle(color: textMuted, fontSize: 12)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(c['name'] ?? 'Hub', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 16) : const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 4),
+                  Text("${c['member_count'] ?? 0} Members", style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 12) : const TextStyle(color: textMuted, fontSize: 12)),
+                ],
+              ),
+            ),
+            if (isCreator)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: doodle
+                  ? BoxDecoration(
+                      color: DoodleColors.orange.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: DoodleColors.orange.withValues(alpha: 0.3)),
+                    )
+                  : BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                    ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.star, color: doodle ? DoodleColors.orange : Colors.amber, size: 10),
+                    const SizedBox(width: 2),
+                    Text("Host", style: doodle ? DoodleFonts.body(color: DoodleColors.orange, fontSize: 10).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: doodle
+                  ? BoxDecoration(
+                      color: DoodleColors.blue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: DoodleColors.blue.withValues(alpha: 0.25)),
+                    )
+                  : BoxDecoration(
+                      color: const Color(0xFF00FF00).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF00FF00).withValues(alpha: 0.25)),
+                    ),
+                child: Text("Joined", style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 10).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Color(0xFF00FF00), fontSize: 10, fontWeight: FontWeight.bold)),
+              ),
           ],
         ),
       ),

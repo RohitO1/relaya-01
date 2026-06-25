@@ -1837,6 +1837,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   final TextEditingController _msgController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final LayerLink _mentionLayerLink = LayerLink();
   
   late final String _myUid;
   
@@ -1855,6 +1856,121 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   String? _hangoutRequestStatus;
   String? _hangoutRequestSenderId;
   bool _showEmojiPicker = false;
+
+  // @mention system
+  List<Map<String, dynamic>> _mentionSuggestions = [];
+  bool _showMentionSuggestions = false;
+  OverlayEntry? _mentionOverlay;
+  String _mentionQuery = '';
+  Timer? _mentionDebounce;
+
+  // ── @mention helpers ──────────────────────────────────────────────
+  void _checkForMentionTrigger() {
+    final text = _msgController.text;
+    final cursor = _msgController.selection.baseOffset;
+    if (cursor <= 0 || cursor > text.length) { _dismissMentionOverlay(); return; }
+
+    final beforeCursor = text.substring(0, cursor);
+    final atIndex = beforeCursor.lastIndexOf('@');
+    if (atIndex == -1) { _dismissMentionOverlay(); return; }
+
+    final query = beforeCursor.substring(atIndex + 1);
+    // Only show if no space after the @
+    if (query.contains(' ')) { _dismissMentionOverlay(); return; }
+
+    _mentionQuery = query;
+    if (_mentionDebounce?.isActive ?? false) _mentionDebounce!.cancel();
+    _mentionDebounce = Timer(const Duration(milliseconds: 400), () async {
+      if (!mounted) return;
+      try {
+        final res = await Supabase.instance.client
+            .from('profiles')
+            .select('id, name, username, avatar_url')
+            .ilike('username', '$query%')
+            .limit(5);
+        if (mounted) {
+          setState(() {
+            _mentionSuggestions = List<Map<String, dynamic>>.from(res as List);
+            _showMentionSuggestions = _mentionSuggestions.isNotEmpty;
+          });
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _insertMention(String username) {
+    final text = _msgController.text;
+    final cursor = _msgController.selection.baseOffset.clamp(0, text.length);
+    final atIndex = text.substring(0, cursor).lastIndexOf('@');
+    if (atIndex == -1) return;
+    final newText = '${text.substring(0, atIndex)}@$username ${text.substring(cursor)}';
+    _msgController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: atIndex + username.length + 2),
+    );
+    setState(() { _mentionSuggestions = []; _showMentionSuggestions = false; });
+  }
+
+  void _dismissMentionOverlay() {
+    if (_showMentionSuggestions || _mentionSuggestions.isNotEmpty) {
+      if (mounted) setState(() { _showMentionSuggestions = false; _mentionSuggestions = []; });
+    }
+  }
+
+  /// Renders message text with tappable @username spans highlighted in orange.
+  Widget _mentionText(String text, {bool isMe = false}) {
+    final parts = RegExp(r'(@[a-z0-9_]+)', caseSensitive: false).allMatches(text);
+    if (parts.isEmpty) {
+      return Text(text, style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4));
+    }
+    final spans = <InlineSpan>[];
+    int lastEnd = 0;
+    for (final m in parts) {
+      if (m.start > lastEnd) {
+        spans.add(TextSpan(text: text.substring(lastEnd, m.start)));
+      }
+      final handle = m.group(0)!;
+      final username = handle.substring(1);
+      spans.add(WidgetSpan(
+        alignment: PlaceholderAlignment.baseline,
+        baseline: TextBaseline.alphabetic,
+        child: GestureDetector(
+          onTap: () async {
+            try {
+              final profile = await Supabase.instance.client
+                  .from('profiles')
+                  .select('id')
+                  .eq('username', username.toLowerCase())
+                  .maybeSingle();
+              if (profile != null && context.mounted) {
+                // Navigate to profile
+                Navigator.pushNamed(context, '/profile', arguments: profile['id']);
+              }
+            } catch (_) {}
+          },
+          child: Text(
+            handle,
+            style: TextStyle(
+              color: isMe ? const Color(0xFFFFC07A) : const Color(0xFFFF6B00),
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ));
+      lastEnd = m.end;
+    }
+    if (lastEnd < text.length) {
+      spans.add(TextSpan(text: text.substring(lastEnd)));
+    }
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
+        children: spans,
+      ),
+    );
+  }
 
   Future<void> _markAsRead() async {
     if (_myUid.isEmpty || widget.targetUserId.isEmpty) return;
@@ -1967,6 +2083,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         setState(() {
           _isComposerEmpty = _msgController.text.trim().isEmpty;
         });
+        _checkForMentionTrigger();
       }
     });
     
@@ -2823,7 +2940,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                                             borderRadius: BorderRadius.circular(16),
                                                             child: _buildImage(msg['text'] as String),
                                                           )
-                                                        : Text(msg['text'] as String, style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4)),
+                                                        : _mentionText(msg['text'] as String, isMe: isMe),
                                                     const SizedBox(height: 6),
                                                     Row(
                                                       mainAxisSize: MainAxisSize.min,
@@ -3069,6 +3186,42 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // ── @mention suggestion tray ──
+                  if (_showMentionSuggestions && _mentionSuggestions.isNotEmpty)
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 180),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A2E),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3)),
+                        boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.08), blurRadius: 12)],
+                      ),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        itemCount: _mentionSuggestions.length,
+                        itemBuilder: (ctx, i) {
+                          final s = _mentionSuggestions[i];
+                          final uname = s['username']?.toString() ?? '';
+                          final name = s['name']?.toString() ?? uname;
+                          final avatar = s['avatar_url']?.toString() ?? '';
+                          return ListTile(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                            leading: CircleAvatar(
+                              radius: 18,
+                              backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+                              backgroundColor: const Color(0xFF1B202D),
+                              child: avatar.isEmpty ? const Icon(Icons.person, color: Colors.white38, size: 16) : null,
+                            ),
+                            title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+                            subtitle: Text('@$uname', style: const TextStyle(color: Color(0xFFFF6B00), fontSize: 11)),
+                            onTap: () => _insertMention(uname),
+                          );
+                        },
+                      ),
+                    ),
                   if (_replyingTo != null) ...[
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

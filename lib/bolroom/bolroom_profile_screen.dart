@@ -5,16 +5,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:convert';
 import 'package:meetra_app/bolroom/bolroom_dm_chat_screen.dart';
+import 'package:meetra_app/bolroom/bolroom_theme.dart';
 import 'package:meetra_app/services/notification_service.dart';
 import 'package:meetra_app/services/doodle_theme.dart';
 import 'dart:typed_data';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
@@ -431,7 +434,10 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : Colors.white24, borderRadius: BorderRadius.circular(2))),
           _menuTile(Icons.image_outlined, 'Change Profile Picture', const Color(0xFF8A2BE2), () { Navigator.pop(context); _showAvatarOptionsSheet(); }),
-          _menuTile(Icons.share_outlined, 'Share Profile', const Color(0xFFFF6B00), () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share link copied!'))); }),
+          _menuTile(Icons.share_outlined, 'Share Profile', const Color(0xFFFF6B00), () { 
+            Navigator.pop(context); 
+            Share.share('Join me on Bolrooms! Check out my profile: https://meetra.app/profile/$_myId'); 
+          }),
           _menuTile(Icons.palette_outlined, 'Change Aura', const Color(0xFFFFD700), () { Navigator.pop(context); _showAuraChangerSheet(); }),
           _menuTile(Icons.block_outlined, 'Blocked Users', const Color(0xFFFF4655), () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No blocked users.'))); }),
           _menuTile(Icons.logout, 'Sign Out', Colors.redAccent, () async {
@@ -654,6 +660,8 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   }
 
   Widget _buildProfileInfo(bool doodle) {
+    int auraLevel = ((_roomsHosted * 2 + _followerCount) ~/ 10) + 1;
+
     return Column(
       children: [
         Row(
@@ -686,6 +694,38 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
               ),
           textAlign: TextAlign.center,
         ),
+        const SizedBox(height: 12),
+        // Aura Level Badge
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: doodle
+            ? BoxDecoration(
+                color: DoodleColors.orange.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: DoodleColors.orange),
+              )
+            : BoxDecoration(
+                color: BolroomTheme.card,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: BolroomTheme.gold.withValues(alpha: 0.5)),
+                boxShadow: [
+                  BoxShadow(color: BolroomTheme.gold.withValues(alpha: 0.1), blurRadius: 10),
+                ],
+              ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.stars_rounded, color: doodle ? DoodleColors.orange : BolroomTheme.gold, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'Lv. $auraLevel Aura',
+                style: doodle
+                  ? DoodleFonts.body(color: DoodleColors.orange, fontSize: 14).copyWith(fontWeight: FontWeight.bold)
+                  : const TextStyle(color: BolroomTheme.gold, fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ).animate().scale(delay: 200.ms, duration: 400.ms, curve: Curves.easeOutBack),
       ],
     );
   }

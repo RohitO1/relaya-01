@@ -6,12 +6,12 @@ import 'package:flutter/material.dart';
 /// ============================================================
 class BolroomTheme {
   // ── Core backgrounds ──
-  static const bg         = Color(0xFF0A0A12);
-  static const bgAlt      = Color(0xFF0E0E1A);
-  static const surface    = Color(0xFF131320);
-  static const card       = Color(0xFF181828);
-  static const cardHover  = Color(0xFF1E1E32);
-  static const sheet      = Color(0xFF14142A);
+  static const bg         = Color(0xFF000000);
+  static const bgAlt      = Color(0xFF050505);
+  static const surface    = Color(0xFF0A0A0A);
+  static const card       = Color(0xFF111111);
+  static const cardHover  = Color(0xFF1A1A1A);
+  static const sheet      = Color(0xFF0A0A0A);
 
   // ── Accent palette (muted) ──
   static const purple     = Color(0xFF7856FF);
@@ -30,10 +30,10 @@ class BolroomTheme {
   static const textHint      = Color(0xFF3E3E5C);
 
   // ── Borders & glass ──
-  static const border        = Color(0xFF262640);
-  static const borderSubtle  = Color(0xFF1E1E35);
-  static const glass         = Color(0x0AFFFFFF);
-  static const glassBorder   = Color(0x14FFFFFF);
+  static const border        = Color(0xFF222222);
+  static const borderSubtle  = Color(0xFF1A1A1A);
+  static const glass         = Color(0x05FFFFFF);
+  static const glassBorder   = Color(0x0AFFFFFF);
 
   // ── Gradients ──
   static const purpleGradient = LinearGradient(
@@ -67,11 +67,11 @@ class BolroomTheme {
     border: Border.all(color: borderColor ?? glassBorder),
   );
 
-  static BoxDecoration glowDecoration({required Color color, double radius = 20, double blur = 12}) => BoxDecoration(
+  static BoxDecoration glowDecoration({required Color color, double radius = 20, double blur = 8}) => BoxDecoration(
     color: card,
     borderRadius: BorderRadius.circular(radius),
-    border: Border.all(color: color.withValues(alpha: 0.2)),
-    boxShadow: [BoxShadow(color: color.withValues(alpha: 0.08), blurRadius: blur)],
+    border: Border.all(color: color.withValues(alpha: 0.1)),
+    boxShadow: [BoxShadow(color: color.withValues(alpha: 0.04), blurRadius: blur)],
   );
 
   // ── Avatar presets ──

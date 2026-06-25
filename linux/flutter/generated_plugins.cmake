@@ -8,7 +8,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_linux
   flutter_webrtc
   gtk
-  livekit_client
   record_linux
   url_launcher_linux
 )

@@ -97,9 +97,9 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
 
   void _skipWithManual() async {
     HapticFeedback.lightImpact();
-    showLocationSearchSheet(context);
-    // Give the sheet time to close before checking state
-    await Future.delayed(const Duration(milliseconds: 800));
+    await showLocationSearchSheet(context);
+    // Give the sheet time to close completely
+    await Future.delayed(const Duration(milliseconds: 300));
     if (!mounted) return;
     // If user picked a location from the picker, proceed
     if (locationService.activeDistrict.isNotEmpty &&

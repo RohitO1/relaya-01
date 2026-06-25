@@ -39,6 +39,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _searchDebounce;
 
+  // Username validation
+  String? _usernameError;
+  bool _isUsernameChecking = false;
+  bool _isUsernameAvailable = false;
+  Timer? _usernameDebounce;
+  String _originalUsername = '';
+
   // DOB wheel state
   int _dobDay = 1;
   int _dobMonth = 1;
@@ -76,6 +83,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     
     _nameCtrl = TextEditingController(text: p['name'] ?? p['full_name'] ?? authMeta['name'] ?? authMeta['full_name'] ?? '');
     _userCtrl = TextEditingController(text: p['username'] ?? '');
+    _originalUsername = p['username'] ?? '';
+    _isUsernameAvailable = _originalUsername.isNotEmpty;
     _bioCtrl = TextEditingController(text: p['bio'] ?? '');
     _cityCtrl = TextEditingController(text: p['city'] ?? '');
     _stateCtrl = TextEditingController(text: p['state'] ?? '');
@@ -126,6 +135,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _dobCtrl.dispose();
     _locSearchCtrl.dispose();
     _searchDebounce?.cancel();
+    _usernameDebounce?.cancel();
     _jobTitleCtrl.dispose();
     super.dispose();
   }
@@ -152,6 +162,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
     if (_userCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Username cannot be empty')));
+      return;
+    }
+    if (!_isUsernameAvailable && _userCtrl.text.trim() != _originalUsername) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please choose a valid, unique username.')));
       return;
     }
 
@@ -412,6 +426,61 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     });
   }
 
+  void _checkUsernameAvailability(String val) {
+    if (_usernameDebounce?.isActive ?? false) _usernameDebounce!.cancel();
+    final username = val.trim().toLowerCase();
+
+    // If unchanged, it's the user's own username — always valid
+    if (username == _originalUsername.toLowerCase()) {
+      setState(() {
+        _usernameError = null;
+        _isUsernameAvailable = true;
+        _isUsernameChecking = false;
+      });
+      return;
+    }
+
+    if (username.isEmpty) {
+      setState(() { _usernameError = null; _isUsernameAvailable = false; _isUsernameChecking = false; });
+      return;
+    }
+
+    if (!RegExp(r'^[a-z0-9_]{3,20}$').hasMatch(username)) {
+      setState(() {
+        _usernameError = 'Use 3-20 lowercase letters, numbers, or _';
+        _isUsernameAvailable = false;
+        _isUsernameChecking = false;
+      });
+      return;
+    }
+
+    setState(() { _usernameError = null; _isUsernameChecking = true; _isUsernameAvailable = false; });
+
+    _usernameDebounce = Timer(const Duration(milliseconds: 600), () async {
+      try {
+        final res = await Supabase.instance.client
+            .from('profiles')
+            .select('id')
+            .eq('username', username)
+            .maybeSingle();
+        if (mounted) {
+          setState(() {
+            _isUsernameChecking = false;
+            if (res != null) {
+              _usernameError = 'Username is already taken';
+              _isUsernameAvailable = false;
+            } else {
+              _usernameError = null;
+              _isUsernameAvailable = true;
+            }
+          });
+        }
+      } catch (e) {
+        if (mounted) setState(() { _isUsernameChecking = false; _usernameError = 'Error checking username'; });
+      }
+    });
+  }
+
   void _selectSearchResult(Map<String, dynamic> result) {
     final lat = (result['lat'] as num).toDouble();
     final lng = (result['lng'] as num).toDouble();
@@ -558,7 +627,41 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             const SizedBox(height: 16),
 
             _buildLabel('Username'),
-            _buildField(_userCtrl, 'Username'),
+            Container(
+              decoration: BoxDecoration(
+                color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _isUsernameAvailable
+                      ? const Color(0xFF22C55E).withValues(alpha: 0.6)
+                      : (_usernameError != null
+                          ? const Color(0xFFEF4444).withValues(alpha: 0.6)
+                          : (isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05)))),
+              ),
+              child: TextField(
+                controller: _userCtrl,
+                onChanged: _checkUsernameAvailability,
+                style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Choose a unique username',
+                  hintStyle: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white24),
+                  prefixText: '@',
+                  prefixStyle: GoogleFonts.inter(color: const Color(0xFFFF6B00), fontWeight: FontWeight.bold),
+                  suffixIcon: _isUsernameChecking
+                      ? const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF6B00))))
+                      : _isUsernameAvailable
+                          ? const Icon(Icons.check_circle, color: Color(0xFF22C55E), size: 20)
+                          : (_usernameError != null ? const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 20) : null),
+                  contentPadding: const EdgeInsets.all(16),
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
+            if (_usernameError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 4),
+                child: Text(_usernameError!, style: GoogleFonts.inter(color: const Color(0xFFEF4444), fontSize: 12)),
+              ),
             const SizedBox(height: 16),
 
             _buildLabel('Bio'),
