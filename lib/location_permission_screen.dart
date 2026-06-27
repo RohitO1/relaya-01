@@ -174,7 +174,7 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                     _state == _GateState.success
                         ? 'Your feed, people, events & rooms are all set for $_detectedCity'
                         : _state == _GateState.detecting
-                            ? 'Detecting your location…'
+                            ? 'Detecting your location...'
                             : 'Relaya uses your location to show you people, events, rooms, and communities nearby.',
                     textAlign: TextAlign.center,
                     style: doodle
@@ -466,7 +466,7 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                           Text(
                             _state == _GateState.error
                                 ? 'Try Again'
-                                : 'Use My Location',
+                                : 'Allow Location',
                             style: GoogleFonts.outfit(
                               color: Colors.white,
                               fontSize: 17,

@@ -55,6 +55,9 @@ class BolRoomManager {
       required String hostName}) {
     if (_overlayEntry != null) {
       _hostKey?.currentState?.maximize();
+      // Re-sync host state in case something changed while the room was
+      // in the background (e.g. host was transferred while minimized).
+      _hostKey?.currentState?._roomStateKey.currentState?.syncHostState();
       return;
     }
 
@@ -500,14 +503,18 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         AnimationController(vsync: this, duration: const Duration(seconds: 30))
           ..repeat();
     _myId = _sb.auth.currentUser?.id ?? '';
-    _currentHostId = widget.hostId;
+    // IMPORTANT: Always initialize host state as false.
+    // Do NOT use widget.hostId here — it may be stale (original host from
+    // room creation, not the currently assigned host). The authoritative
+    // host_id is fetched from the DB inside _joinRoom() below.
+    _currentHostId = widget.hostId; // temporary placeholder only
     _currentHostName = widget.hostName;
-    _isHost = _myId == _currentHostId;
-    _hasMicPermission = _isHost;
-    _isMuted = !_isHost;
+    _isHost = false;          // always start as non-host
+    _hasMicPermission = false; // mic off until DB confirms host role
+    _isMuted = true;           // muted until DB confirms host role
 
     _subscribeRealtime();
-    _joinRoom();
+    _joinRoom(); // <-- this is where _isHost is authoritatively set from DB
     _loadRoomMeta();
   }
 
@@ -573,6 +580,67 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   }
 
   bool get isHost => _isHost;
+
+  /// Re-sync host state from DB. Called when room is maximized/restored
+  /// to catch any host changes that happened while room was minimized.
+  Future<void> syncHostState() async {
+    try {
+      final row = await _sb
+          .from('chatrooms')
+          .select('host_id, host_name')
+          .eq('id', widget.roomId)
+          .maybeSingle();
+      if (row == null || !mounted) return;
+      String dbHostId = row['host_id']?.toString() ?? '';
+      String dbHostName = row['host_name']?.toString() ?? _currentHostName;
+
+      // EMERGENCY FIX: Due to RLS policies potentially silently failing the chatrooms update
+      // when a host transfers ownership, we must also check the chatroom_messages for the
+      // latest NEW_HOST system command, which acts as the ultimate source of truth if it exists.
+      try {
+        final latestCmdRes = await _sb
+            .from('chatroom_messages')
+            .select('text')
+            .eq('room_id', widget.roomId)
+            .eq('is_system', true)
+            .like('text', 'SYSTEM_CMD:NEW_HOST:%')
+            .order('created_at', ascending: false)
+            .limit(1);
+        final latestList = (latestCmdRes as List).cast<Map<String, dynamic>>();
+        if (latestList.isNotEmpty) {
+          final text = latestList.first['text']?.toString() ?? '';
+          final parts = text.split(':');
+          if (parts.length >= 3) {
+            final subparts = parts[2].split('|');
+            if (subparts.isNotEmpty) {
+              dbHostId = subparts[0];
+              dbHostName = subparts.length > 1 ? subparts[1] : 'Host';
+            }
+          }
+        }
+      } catch (_) {}
+
+      if (dbHostId == _currentHostId && _isHost == (_myId == dbHostId)) return; // no change
+      final wasHost = _isHost;
+      setState(() {
+        _currentHostId = dbHostId;
+        _currentHostName = dbHostName;
+        _isHost = _myId == dbHostId;
+        if (_isHost) {
+          _hasMicPermission = true;
+          _isMuted = false;
+        } else {
+          // Not host — strip all host powers regardless of previous state
+          _hasMicPermission = false;
+          _isMuted = true;
+        }
+      });
+      if (!_isHost && wasHost) {
+        // Physically disable mic
+        _livekitRoom?.localParticipant?.setMicrophoneEnabled(false);
+      }
+    } catch (_) {}
+  }
   
   void showExitSheet({VoidCallback? onExitComplete}) {
     _showExitSheet(onExitComplete: onExitComplete);
@@ -584,6 +652,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         _isMinimized = val;
       });
     }
+    // When restoring from minimized, re-sync host state from DB
+    // to catch any host changes that happened while minimized.
+    if (!val) syncHostState();
   }
 
   bool handleBack() {
@@ -1173,8 +1244,34 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         // FIX Bugs 1 & 2: Always use the DB's current host_id/host_name —
         // not the widget prop — so that an ex-host who rejoins is NOT
         // incorrectly treated as host and the correct host name is shown.
-        final dbHostId = roomMeta['host_id']?.toString() ?? _currentHostId;
-        final dbHostName = roomMeta['host_name']?.toString() ?? _currentHostName;
+        String dbHostId = roomMeta['host_id']?.toString() ?? _currentHostId;
+        String dbHostName = roomMeta['host_name']?.toString() ?? _currentHostName;
+
+        // EMERGENCY FIX: Due to RLS policies potentially silently failing the chatrooms update
+        // when a host transfers ownership, we must also check the chatroom_messages for the
+        // latest NEW_HOST system command, which acts as the ultimate source of truth if it exists.
+        try {
+          final latestCmdRes = await _sb
+              .from('chatroom_messages')
+              .select('text')
+              .eq('room_id', widget.roomId)
+              .eq('is_system', true)
+              .like('text', 'SYSTEM_CMD:NEW_HOST:%')
+              .order('created_at', ascending: false)
+              .limit(1);
+          final latestList = (latestCmdRes as List).cast<Map<String, dynamic>>();
+          if (latestList.isNotEmpty) {
+            final text = latestList.first['text']?.toString() ?? '';
+            final parts = text.split(':');
+            if (parts.length >= 3) {
+              final subparts = parts[2].split('|');
+              if (subparts.isNotEmpty) {
+                dbHostId = subparts[0];
+                dbHostName = subparts.length > 1 ? subparts[1] : 'Host';
+              }
+            }
+          }
+        } catch (_) {}
         if (mounted) {
           setState(() {
             _currentHostId = dbHostId;
@@ -1562,14 +1659,26 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         _membersNotify.value = newList;
         _micRequestsNotify.value = Set.from(_micRequests);
 
-        // Sync local state for current user
+        // Sync local state for current user — but NEVER override host status.
+        // _isHost is set authoritatively from chatrooms.host_id in _joinRoom().
+        // chatroom_members.is_speaker is only meaningful for non-host participants.
         final me =
             newList.firstWhere((m) => m['user_id'] == _myId, orElse: () => {});
         if (me.isNotEmpty) {
-          _hasMicPermission = me['is_speaker'] == true;
-          _micRequestSent = me['mic_requested'] == true;
-          if (_hasMicPermission) {
-            _isMuted = me['is_muted'] == true;
+          if (_isHost) {
+            // Host always has mic — chatroom_members.is_speaker is irrelevant for host
+            _hasMicPermission = true;
+            _isMuted = false;
+          } else {
+            // Non-host: derive mic permission from is_speaker column only
+            final nowSpeaker = me['is_speaker'] == true;
+            _hasMicPermission = nowSpeaker;
+            _micRequestSent = me['mic_requested'] == true;
+            if (nowSpeaker) {
+              _isMuted = me['is_muted'] == true;
+            } else {
+              _isMuted = true; // no speaker permission → always muted
+            }
           }
         }
       });
@@ -1750,37 +1859,44 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                   final nowSpeaker = mergedRecord['is_speaker'] == true;
                   final nowMuted = mergedRecord['is_muted'] == true;
 
-                  if (nowSpeaker && !_hasMicPermission) {
-                    _hasMicPermission = true;
-                    _micRequestSent = false;
-                    _isMuted = false;
-                    _livekitRoom?.localParticipant?.setMicrophoneEnabled(true);
-                    _showToast('You can speak now! 🎙️');
-                  } else if (!nowSpeaker && _hasMicPermission) {
-                    _hasMicPermission = false;
-                    _micRequestSent = false;
-                    _isMuted = true;
-                    _livekitRoom?.localParticipant?.setMicrophoneEnabled(false);
-                    _showToast('Your mic was revoked by the host');
-                  } else if (_hasMicPermission) {
-                    if (nowMuted && !_isMuted) {
-                      _isMuted = true;
-                      _livekitRoom?.localParticipant
-                          ?.setMicrophoneEnabled(false);
-                      if (DateTime.now().difference(_lastMuteTap).inSeconds >
-                          2) {
-                        _showToast('Mic Muted 🔇');
-                      }
-                    } else if (!nowMuted && _isMuted) {
+                  // CRITICAL: If I am the host, never change my mic permission
+                  // from chatroom_members.is_speaker. Host mic is controlled
+                  // only by chatrooms.host_id — not by the members table.
+                  if (!_isHost) {
+                    if (nowSpeaker && !_hasMicPermission) {
+                      _hasMicPermission = true;
+                      _micRequestSent = false;
                       _isMuted = false;
-                      _livekitRoom?.localParticipant
-                          ?.setMicrophoneEnabled(true);
-                      if (DateTime.now().difference(_lastMuteTap).inSeconds >
-                          2) {
-                        _showToast('Mic Unmuted 🎙️');
+                      _livekitRoom?.localParticipant?.setMicrophoneEnabled(true);
+                      _showToast('You can speak now! 🎙️');
+                    } else if (!nowSpeaker && _hasMicPermission) {
+                      _hasMicPermission = false;
+                      _micRequestSent = false;
+                      _isMuted = true;
+                      _livekitRoom?.localParticipant?.setMicrophoneEnabled(false);
+                      _showToast('Your mic was revoked by the host');
+                    } else if (_hasMicPermission) {
+                      if (nowMuted && !_isMuted) {
+                        _isMuted = true;
+                        _livekitRoom?.localParticipant
+                            ?.setMicrophoneEnabled(false);
+                        if (DateTime.now().difference(_lastMuteTap).inSeconds >
+                            2) {
+                          _showToast('Mic Muted 🔇');
+                        }
+                      } else if (!nowMuted && _isMuted) {
+                        _isMuted = false;
+                        _livekitRoom?.localParticipant
+                            ?.setMicrophoneEnabled(true);
+                        if (DateTime.now().difference(_lastMuteTap).inSeconds >
+                            2) {
+                          _showToast('Mic Unmuted 🎙️');
+                        }
                       }
                     }
                   }
+                  // Host mute/unmute via host_muted field is always respected
+                  // (host_muted is set by admin/co-host explicitly)
                 }
                 // Sync mic request state & show popup to host
                 if (p.newRecord['mic_requested'] == true) {
