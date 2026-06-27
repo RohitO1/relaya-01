@@ -153,6 +153,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
       }
       final res = await query
           .or('visibility.neq.invite,host_id.eq.$myId')
+          .neq('room_status', 'deleted') // FIX 1: Don't show destructed rooms
           .order('created_at', ascending: false)
           .limit(50);
       if (mounted) setState(() { _rooms = List<Map<String, dynamic>>.from(res); _loading = false; });
@@ -179,10 +180,12 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
 
   void _joinRoom(Map<String, dynamic> room) {
     HapticFeedback.lightImpact();
-    BolRoomManager.openRoom(context,
-      roomId: room['id'].toString(), roomName: room['name'] ?? 'Untitled', topic: room['topic'] ?? 'General',
-      hostId: room['host_id']?.toString() ?? '', hostName: room['host_name'] ?? 'Host',
-    );
+    BolRoomManager.requestSwitchRoom(context, onProceed: () {
+      BolRoomManager.openRoom(context,
+        roomId: room['id'].toString(), roomName: room['name'] ?? 'Untitled', topic: room['topic'] ?? 'General',
+        hostId: room['host_id']?.toString() ?? '', hostName: room['host_name'] ?? 'Host',
+      );
+    });
   }
 
   Color _getAuraColor(String hostId) {
@@ -784,6 +787,12 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   }
 
   void _showCreateRoomSheet(BuildContext context) {
+    BolRoomManager.requestSwitchRoom(context, isCreate: true, onProceed: () {
+      _showCreateRoomSheetInternal(context);
+    });
+  }
+
+  void _showCreateRoomSheetInternal(BuildContext context) {
     final doodle = isDoodleMode(context);
     final titleCtrl = TextEditingController();
     final topicCtrl = TextEditingController();

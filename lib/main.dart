@@ -43,6 +43,7 @@ import 'package:app_links/app_links.dart';
 import 'chatroom_live_screen.dart';
 import 'explore_screen.dart';
 import 'services/doodle_theme.dart';
+import 'location_permission_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -230,14 +231,27 @@ class _MeetraAppState extends State<MeetraApp> {
                       );
                     }
 
-                    return Scaffold(
-                      backgroundColor: Colors.black,
-                      body: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 500),
-                          child: const MainDashboard(),
-                        ),
-                      ),
+                    return ValueListenableBuilder<bool>(
+                      valueListenable: locationService.isLocationGrantedNotifier,
+                      builder: (context, isGranted, _) {
+                        if (!isGranted) {
+                          return LocationPermissionScreen(
+                            onPermissionGranted: () {
+                              // We just trigger a rebuild. fetchLiveLocation sets the notifier to true.
+                            },
+                          );
+                        }
+
+                        return Scaffold(
+                          backgroundColor: Colors.black,
+                          body: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 500),
+                              child: const MainDashboard(),
+                            ),
+                          ),
+                        );
+                      }
                     );
                   },
                 );

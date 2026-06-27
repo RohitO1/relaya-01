@@ -356,7 +356,7 @@ class TwoTruthsGameState extends State<TwoTruthsGame> with TickerProviderStateMi
   Widget _buildHeader() => Padding(
     padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
     child: Row(children: [
-      _pill('🎭 TWO TRUTHS, ONE LIE', _GC.neon),
+      Flexible(child: _pill('🎭 TWO TRUTHS, ONE LIE', _GC.neon)),
       const SizedBox(width: 8),
       _pill('${widget.participants.length} players', _GC.txt),
       const Spacer(),

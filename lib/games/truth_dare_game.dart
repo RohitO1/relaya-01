@@ -241,7 +241,7 @@ class TruthOrDareGameState extends State<TruthOrDareGame>
   Widget _buildHeader() => Padding(
     padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
     child: Row(children: [
-      _pill('🍾  TRUTH OR DARE', _GC.neon),
+      Flexible(child: _pill('🍾  TRUTH OR DARE', _GC.neon)),
       const SizedBox(width: 8),
       _pill('${widget.participants.length} players', _GC.txt),
       const Spacer(),

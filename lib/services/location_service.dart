@@ -82,9 +82,14 @@ class LocationService {
     if (serviceEnabled) {
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
+        isLocationGrantedNotifier.value = true;
         // Run in background without blocking init
         fetchLiveLocation(forceReverseGeocode: false).catchError((e) { debugPrint('Auto-fetch error: $e'); return false; });
+      } else {
+        isLocationGrantedNotifier.value = false;
       }
+    } else {
+      isLocationGrantedNotifier.value = false;
     }
     
     coordinatesUpdateNotifier.value++;
