@@ -8,11 +8,9 @@ import '../services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../chatroom_live_screen.dart';
 import '../services/location_service.dart';
-import '../widgets/app_header_actions.dart';
 
 import '../services/doodle_theme.dart';
 
@@ -27,55 +25,14 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   List<Map<String, dynamic>> _rooms = [];
   bool _loading = true;
 
-  final Map<String, List<String>> _indiaLocations = {
-    // 28 States
-    'Andhra Pradesh': ['Visakhapatnam', 'Vijayawada', 'Guntur', 'Nellore', 'Kurnool', 'Tirupati', 'Kakinada', 'Kadapa', 'Anantapur', 'Rajahmundry', 'Eluru', 'Ongole', 'Machilipatnam', 'Chittoor'],
-    'Arunachal Pradesh': ['Itanagar', 'Tawang', 'Naharlagun', 'Pasighat', 'Ziro', 'Tezu', 'Bomdila', 'Aalo', 'Roing'],
-    'Assam': ['Guwahati', 'Silchar', 'Dibrugarh', 'Jorhat', 'Nagaon', 'Tinsukia', 'Tezpur', 'Bongaigaon', 'Karimganj', 'Diphu', 'Sivasagar', 'Goalpara', 'Barpeta', 'Dhubri'],
-    'Bihar': ['Patna', 'Gaya', 'Bhagalpur', 'Muzaffarpur', 'Purnia', 'Darbhanga', 'Ara', 'Begusarai', 'Katihar', 'Munger', 'Chhapra', 'Saharsa', 'Hajipur', 'Sasaram', 'Bettiah', 'Motihari'],
-    'Chhattisgarh': ['Raipur', 'Bhilai', 'Bilaspur', 'Korba', 'Rajnandgaon', 'Raigarh', 'Jagdalpur', 'Ambikapur', 'Dhamtari', 'Mahasamund', 'Durg', 'Chirmiri'],
-    'Goa': ['Panaji', 'Vasco da Gama', 'Margao', 'Mapusa', 'Ponda', 'Bicholim', 'Curchorem', 'Sanquelim', 'Cuncolim'],
-    'Gujarat': ['Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Bhavnagar', 'Jamnagar', 'Junagadh', 'Gandhinagar', 'Anand', 'Navsari', 'Morbi', 'Nadiad', 'Bharuch', 'Porbandar', 'Mehsana', 'Bhuj'],
-    'Haryana': ['Gurugram', 'Faridabad', 'Panipat', 'Ambala', 'Rohtak', 'Hisar', 'Karnal', 'Sonipat', 'Panchkula', 'Yamunanagar', 'Bhiwani', 'Sirsa', 'Bahadurgarh', 'Kurukshetra', 'Jind', 'Kaithal'],
-    'Himachal Pradesh': ['Shimla', 'Dharamshala', 'Mandi', 'Solan', 'Kullu', 'Palampur', 'Chamba', 'Nahan', 'Una', 'Bilaspur', 'Hamirpur', 'Manali'],
-    'Jharkhand': ['Ranchi', 'Jamshedpur', 'Dhanbad', 'Bokaro', 'Deoghar', 'Hazaribagh', 'Phusro', 'Giridih', 'Ramgarh', 'Medininagar', 'Chirkunda', 'Dumka'],
-    'Karnataka': ['Bengaluru', 'Mysuru', 'Mangaluru', 'Hubballi', 'Belagavi', 'Davangere', 'Ballari', 'Kalaburagi', 'Shivamogga', 'Tumakuru', 'Raichur', 'Bidar', 'Hospet', 'Gadag', 'Hassan', 'Udupi', 'Kolar'],
-    'Kerala': ['Thiruvananthapuram', 'Kochi', 'Kozhikode', 'Thrissur', 'Kollam', 'Alappuzha', 'Palakkad', 'Kannur', 'Kottayam', 'Manjeri', 'Thalassery', 'Ponnani', 'Kasaragod', 'Pathanamthitta'],
-    'Madhya Pradesh': ['Bhopal', 'Indore', 'Gwalior', 'Jabalpur', 'Ujjain', 'Sagar', 'Dewas', 'Satna', 'Ratlam', 'Rewa', 'Murwara', 'Singrauli', 'Burhanpur', 'Khandwa', 'Morena', 'Bhind', 'Chhindwara', 'Guna'],
-    'Maharashtra': ['Mumbai', 'Pune', 'Nagpur', 'Nashik', 'Aurangabad', 'Solapur', 'Amravati', 'Nanded', 'Kolhapur', 'Akola', 'Jalgaon', 'Latur', 'Dhule', 'Ahmednagar', 'Chandrapur', 'Parbhani', 'Thane', 'Kalyan-Dombivli', 'Navi Mumbai', 'Vasai-Virar'],
-    'Manipur': ['Imphal', 'Thoubal', 'Kakching', 'Churachandpur', 'Bishnupur', 'Ukhrul', 'Jiribam', 'Senapati'],
-    'Meghalaya': ['Shillong', 'Tura', 'Nongstoin', 'Jowai', 'Williamnagar', 'Baghmara', 'Resubelpara'],
-    'Mizoram': ['Aizawl', 'Lunglei', 'Saiha', 'Champhai', 'Kolasib', 'Serchhip', 'Lawngtlai'],
-    'Nagaland': ['Kohima', 'Dimapur', 'Mokokchung', 'Tuensang', 'Wokha', 'Zunheboto', 'Kiphire', 'Phek'],
-    'Odisha': ['Bhubaneswar', 'Cuttack', 'Rourkela', 'Brahmapur', 'Sambalpur', 'Puri', 'Balasore', 'Bhadrak', 'Baripada', 'Jharsuguda', 'Bargarh', 'Rayagada', 'Koraput', 'Angul'],
-    'Punjab': ['Ludhiana', 'Amritsar', 'Jalandhar', 'Patiala', 'Bathinda', 'Hoshiarpur', 'Mohali', 'Batala', 'Pathankot', 'Moga', 'Abohar', 'Malerkotla', 'Khanna', 'Phagwara', 'Muktsar', 'Faridkot'],
-    'Rajasthan': ['Jaipur', 'Jodhpur', 'Udaipur', 'Kota', 'Bikaner', 'Ajmer', 'Bhilwara', 'Alwar', 'Bharatpur', 'Sikar', 'Pali', 'Sri Ganganagar', 'Kishangarh', 'Baran', 'Tonk', 'Hanumangarh', 'Beawar'],
-    'Sikkim': ['Gangtok', 'Namchi', 'Gyalshing', 'Mangan', 'Singtam', 'Rangpo', 'Jorethang'],
-    'Tamil Nadu': ['Chennai', 'Coimbatore', 'Madurai', 'Tiruchirappalli', 'Salem', 'Tirunelveli', 'Tiruppur', 'Erode', 'Vellore', 'Thoothukudi', 'Dindigul', 'Thanjavur', 'Ranipet', 'Sivakasi', 'Karur', 'Ooty', 'Hosur', 'Nagercoil', 'Kanchipuram'],
-    'Telangana': ['Hyderabad', 'Warangal', 'Nizamabad', 'Karimnagar', 'Khammam', 'Ramagundam', 'Mahbubnagar', 'Nalgonda', 'Adilabad', 'Suryapet', 'Miryalaguda', 'Jagtial'],
-    'Tripura': ['Agartala', 'Udaipur', 'Dharmanagar', 'Kailashahar', 'Belonia', 'Khowai', 'Bishalgarh', 'Ambassa'],
-    'Uttar Pradesh': ['Lucknow', 'Kanpur', 'Ghaziabad', 'Agra', 'Varanasi', 'Meerut', 'Prayagraj', 'Bareilly', 'Aligarh', 'Moradabad', 'Saharanpur', 'Gorakhpur', 'Noida', 'Firozabad', 'Jhansi', 'Muzaffarnagar', 'Mathura', 'Ayodhya', 'Rampur', 'Shahjahanpur'],
-    'Uttarakhand': ['Dehradun', 'Haridwar', 'Roorkee', 'Haldwani', 'Rudrapur', 'Kashipur', 'Rishikesh', 'Mussoorie', 'Nainital', 'Almora', 'Pithoragarh'],
-    'West Bengal': ['Kolkata', 'Howrah', 'Darjeeling', 'Siliguri', 'Asansol', 'Durgapur', 'Bardhaman', 'English Bazar', 'Baharampur', 'Habra', 'Kharagpur', 'Shantipur', 'Dankuni', 'Haldia', 'Jalpaiguri', 'Kalyani', 'Raiganj'],
-    
-    // 8 Union Territories
-    'Andaman and Nicobar Islands': ['Port Blair', 'Garacharma', 'Bambooflat', 'Prothrapur'],
-    'Chandigarh': ['Chandigarh'],
-    'Dadra and Nagar Haveli and Daman and Diu': ['Daman', 'Diu', 'Silvassa', 'Amli'],
-    'Delhi': ['New Delhi', 'North Delhi', 'South Delhi', 'East Delhi', 'West Delhi', 'Central Delhi', 'Shahdara', 'Rohini', 'Dwarka', 'Chanakyapuri', 'Connaught Place'],
-    'Jammu and Kashmir': ['Srinagar', 'Jammu', 'Anantnag', 'Baramulla', 'Kathua', 'Sopore', 'Bandipora', 'Poonch', 'Kupwara', 'Udhampur', 'Pulwama'],
-    'Ladakh': ['Leh', 'Kargil'],
-    'Lakshadweep': ['Kavaratti', 'Minicoy', 'Andrott', 'Amini', 'Agatti'],
-    'Puducherry': ['Puducherry', 'Ozhukarai', 'Karaikal', 'Yanam', 'Mahe']
-  };
-  
   int _selectedFilter = 0;
-  final List<String> _filters = ["All", "Trending", "Music", "Gaming", "Talk", "Study"];
+  final List<String> _filters = ["All", "Nearby", "Trending", "Music", "Gaming", "Talk", "Study"];
   String _searchQuery = '';
   final TextEditingController _searchCtrl = TextEditingController();
   String _myLocation = 'Fetching location...';
-  String? _customFilterLocation;
   Timer? _lobbySweepTimer;
+  Timer? _refreshTimer;
+  RealtimeChannel? _roomsSub;
 
   static const Color bgColor = Color(0xFF090710);
   static const Color cardColor = Color(0xFF13101E);
@@ -91,10 +48,17 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
     _fetchLocation();
     _loadRooms();
     _startLobbySweepTimer();
-    _sb.channel('bolroom_voice_rooms').onPostgresChanges(
+    // Realtime: INSERT/DELETE/UPDATE on chatrooms
+    _roomsSub = _sb.channel('bolroom_voice_rooms_v2').onPostgresChanges(
       event: PostgresChangeEvent.all, schema: 'public', table: 'chatrooms',
       callback: (_) => _loadRooms(),
     ).subscribe();
+    // Immediate patch when host transfer happens (in-process direct signal)
+    BolRoomManager.hostChangedNotifier.addListener(_onHostChanged);
+    // 10s safety-net refresh
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) _loadRooms();
+    });
     locationService.activeDistrictNotifier.addListener(_onLocationChanged);
   }
 
@@ -107,10 +71,33 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   @override
   void dispose() {
     _lobbySweepTimer?.cancel();
-    try { _sb.removeChannel(_sb.channel('bolroom_voice_rooms')); } catch (_) {}
+    _refreshTimer?.cancel();
+    BolRoomManager.hostChangedNotifier.removeListener(_onHostChanged);
+    if (_roomsSub != null) _sb.removeChannel(_roomsSub!);
     _searchCtrl.dispose();
     locationService.activeDistrictNotifier.removeListener(_onLocationChanged);
     super.dispose();
+  }
+
+  /// Called instantly when any host transfer fires BolRoomManager.hostChangedNotifier.
+  /// Patches _rooms in-memory first (zero latency), then does a full DB refresh.
+  void _onHostChanged() {
+    if (!mounted) return;
+    // Apply all pending host name changes directly to _rooms without a DB round-trip
+    final pending = BolRoomManager.pendingHostNames;
+    if (pending.isNotEmpty) {
+      setState(() {
+        for (int i = 0; i < _rooms.length; i++) {
+          final rId = _rooms[i]['id']?.toString();
+          if (rId != null && pending.containsKey(rId)) {
+            _rooms[i] = Map<String, dynamic>.from(_rooms[i])
+              ..['host_name'] = pending[rId];
+          }
+        }
+      });
+    }
+    // Also do a full refresh so DB state stays in sync
+    _loadRooms();
   }
 
   void _startLobbySweepTimer() {
@@ -146,17 +133,58 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   Future<void> _loadRooms() async {
     try {
       final myId = _sb.auth.currentUser?.id;
-      final locSvc = LocationService();
       var query = _sb.from('chatrooms').select('*');
-      if (locSvc.activeDistrict.isNotEmpty && locSvc.activeDistrict != 'Unknown') {
-        query = query.ilike('topic', '%${locSvc.activeDistrict}%');
-      }
       final res = await query
           .or('visibility.neq.invite,host_id.eq.$myId')
-          .neq('room_status', 'deleted') // FIX 1: Don't show destructed rooms
+          .neq('room_status', 'deleted')
           .order('created_at', ascending: false)
           .limit(50);
-      if (mounted) setState(() { _rooms = List<Map<String, dynamic>>.from(res); _loading = false; });
+
+      final rooms = List<Map<String, dynamic>>.from(res);
+
+      // ── Live host-name lookup ─────────────────────────────────────────────
+      // chatrooms.host_name and chatroom_members.user_name can be stale if the 
+      // user updated their profile. Always fetch the absolute latest name from profiles.
+      if (rooms.isNotEmpty) {
+        try {
+          final hostIds = rooms
+              .map((r) => r['host_id']?.toString())
+              .whereType<String>()
+              .toSet() // Use a Set to avoid duplicate profile queries
+              .toList();
+
+          if (hostIds.isNotEmpty) {
+            final profilesRes = await _sb
+                .from('profiles')
+                .select('id, name')
+                .inFilter('id', hostIds);
+
+            // Build: user_id → name
+            final profileMap = <String, String>{};
+            for (final p in profilesRes) {
+              final pId = p['id']?.toString();
+              final pName = p['name']?.toString();
+              if (pId != null && pName != null && pName.isNotEmpty) {
+                profileMap[pId] = pName;
+              }
+            }
+
+            // For each room, replace host_name with the latest profile name
+            for (final room in rooms) {
+              final hId = room['host_id']?.toString();
+              if (hId != null && profileMap.containsKey(hId)) {
+                room['host_name'] = profileMap[hId];
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Host-name live lookup error: $e');
+          // Falls back to whatever host_name is stored in chatrooms
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
+      if (mounted) setState(() { _rooms = rooms; _loading = false; });
     } catch (e) {
       debugPrint('Load rooms: $e');
       if (mounted) setState(() => _loading = false);
@@ -239,8 +267,17 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
       }).toList();
     }
 
-    // Tag filter
-    if (_selectedFilter > 0) {
+    // Tag / Region filter
+    if (_selectedFilter == 1) {
+      final activeLoc = LocationService().activeDistrict.toLowerCase().trim();
+      if (activeLoc.isNotEmpty && activeLoc != 'unknown') {
+        filteredRooms = filteredRooms.where((r) {
+          final topic = (r['topic'] ?? '').toString().toLowerCase();
+          final tags = (r['tags'] ?? '').toString().toLowerCase();
+          return topic.contains(activeLoc) || tags.contains(activeLoc);
+        }).toList();
+      }
+    } else if (_selectedFilter > 1) {
       final tag = _filters[_selectedFilter].toLowerCase();
       filteredRooms = filteredRooms.where((r) {
         final topic = (r['topic'] ?? '').toString().toLowerCase();
@@ -349,7 +386,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                         child: Row(
                           children: [
                             if (index == 1) ...[
-                              Icon(Icons.radar, size: 14, color: doodle ? DoodleColors.blue : (isSelected ? cyanBright : textMuted)),
+                              Icon(Icons.location_on, size: 14, color: doodle ? DoodleColors.blue : (isSelected ? cyanBright : textMuted)),
                               const SizedBox(width: 6),
                             ],
                             Text(
@@ -543,9 +580,8 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text("Host: $host", style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14) : const TextStyle(color: textMuted, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 2),
                       Row(
                         children: [
                           Icon(Icons.location_on, color: doodle ? DoodleColors.blue : cyanBright, size: 12),
@@ -679,113 +715,6 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
     );
   }
 
-  void _showLocationSelector() {
-    final doodle = isDoodleMode(context);
-    String searchQuery = '';
-    String? selectedState;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: doodle ? DoodleColors.paper : cardColor,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) {
-          List<String> displayItems = [];
-          
-          if (searchQuery.isNotEmpty) {
-            final query = searchQuery.toLowerCase();
-            _indiaLocations.forEach((state, cities) {
-              if (state.toLowerCase().contains(query) && !displayItems.contains(state)) displayItems.add(state);
-              for (var city in cities) {
-                if (city.toLowerCase().contains(query) && !displayItems.contains(city)) displayItems.add(city);
-              }
-            });
-          } else if (selectedState != null) {
-            displayItems = ['All of $selectedState', ...(_indiaLocations[selectedState] ?? [])];
-          } else {
-            displayItems = _indiaLocations.keys.toList();
-          }
-
-          return Container(
-            height: MediaQuery.of(ctx).size.height * 0.7,
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    if (selectedState != null && searchQuery.isEmpty)
-                      GestureDetector(
-                        onTap: () => setSheetState(() => selectedState = null),
-                        child: Icon(Icons.arrow_back, color: doodle ? DoodleColors.brown : Colors.white),
-                      )
-                    else
-                      const Icon(Icons.location_on, color: cyanBright),
-                    Text(
-                      selectedState != null && searchQuery.isEmpty ? selectedState! : 'Select Location',
-                      style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() => _customFilterLocation = null);
-                        Navigator.pop(ctx);
-                      },
-                      child: Text('Global', style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: cyanBright, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  decoration: doodle ? DoodleDecorations.input() : null,
-                  child: TextField(
-                    onChanged: (v) => setSheetState(() => searchQuery = v),
-                    style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14) : const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Search State or City...',
-                      hintStyle: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.6), fontSize: 14) : const TextStyle(color: textMuted),
-                      filled: true,
-                      fillColor: doodle ? Colors.transparent : bgColor,
-                      prefixIcon: Icon(Icons.search, color: doodle ? DoodleColors.brown.withValues(alpha: 0.6) : textMuted),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      contentPadding: doodle ? const EdgeInsets.symmetric(horizontal: 16, vertical: 14) : null,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: displayItems.length,
-                    itemBuilder: (ctx, i) {
-                      final item = displayItems[i];
-                      final isState = _indiaLocations.containsKey(item);
-                      final isAll = item.startsWith('All of ');
-                      return ListTile(
-                        title: Text(item, style: doodle ? DoodleFonts.body(color: isAll ? DoodleColors.blue : DoodleColors.brown, fontSize: 14).copyWith(fontWeight: isAll ? FontWeight.bold : FontWeight.normal) : TextStyle(color: isAll ? cyanBright : Colors.white, fontWeight: isAll ? FontWeight.bold : FontWeight.normal)),
-                        trailing: (isState && searchQuery.isEmpty) ? Icon(Icons.chevron_right, color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : textMuted) : null,
-                        onTap: () {
-                          if (isAll) {
-                            setState(() => _customFilterLocation = selectedState);
-                            Navigator.pop(ctx);
-                          } else if (isState && searchQuery.isEmpty) {
-                            setSheetState(() => selectedState = item);
-                          } else {
-                            setState(() => _customFilterLocation = item);
-                            Navigator.pop(ctx);
-                          }
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   void _showCreateRoomSheet(BuildContext context) {
     BolRoomManager.requestSwitchRoom(context, isCreate: true, onProceed: () {
       _showCreateRoomSheetInternal(context);
@@ -795,19 +724,12 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   void _showCreateRoomSheetInternal(BuildContext context) {
     final doodle = isDoodleMode(context);
     final titleCtrl = TextEditingController();
-    final topicCtrl = TextEditingController();
-    bool hostAsGhost = true;
-    bool encryptRadar = true;
     bool isRecording = false;
-    bool isScheduled = false;
     String? gameMode;
-    DateTime? scheduledTime;
     String visibility = 'public'; // 'public', 'friends', 'invite'
     int maxParticipants = 0; // 0 = unlimited
     final List<String> tagOptions = ['Music', 'Gaming', 'Talk', 'Chill', 'Study', 'Debate', 'Language', 'News'];
     final Set<String> selectedTags = {};
-    final List<int> participantOptions = [10, 50, 100, 500, 0];
-    String participantLabel(int v) => v == 0 ? 'Unlimited' : '$v';
 
     showModalBottomSheet(
       context: context,
@@ -817,9 +739,9 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
           return DraggableScrollableSheet(
-            initialChildSize: 0.85,
-            minChildSize: 0.5,
-            maxChildSize: 0.95,
+            initialChildSize: 0.65,
+            minChildSize: 0.4,
+            maxChildSize: 0.85,
             expand: false,
             builder: (_, scroll) => SingleChildScrollView(
               controller: scroll,
@@ -857,24 +779,6 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Topic / Description (optional)
-                  const Text('Topic / Description', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: topicCtrl,
-                    maxLength: 120,
-                    maxLines: 2,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Brief description (optional)',
-                      hintStyle: const TextStyle(color: textMuted),
-                      filled: true, fillColor: bgColor,
-                      counterStyle: const TextStyle(color: textMuted, fontSize: 10),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
                   // Tags (multi-select chips)
                   const Text('Tags', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
@@ -900,46 +804,6 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                     }).toList(),
                   ),
                   const SizedBox(height: 20),
-
-                  // Visibility
-                  const Text('Visibility', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _visibilityChip('Public', Icons.public, visibility == 'public', () => setSheetState(() => visibility = 'public')),
-                      const SizedBox(width: 8),
-                      _visibilityChip('Friends', Icons.people, visibility == 'friends', () => setSheetState(() => visibility = 'friends')),
-                      const SizedBox(width: 8),
-                      _visibilityChip('Invite', Icons.lock_outline, visibility == 'invite', () => setSheetState(() => visibility = 'invite')),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Max Participants
-                  const Text('Max Participants', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: participantOptions.map((opt) {
-                        final selected = maxParticipants == opt;
-                        return GestureDetector(
-                          onTap: () => setSheetState(() => maxParticipants = opt),
-                          child: Container(
-                            margin: const EdgeInsets.only(right: 8),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: selected ? cyanBright.withValues(alpha: 0.2) : bgColor,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: selected ? cyanBright : borderColor),
-                            ),
-                            child: Text(participantLabel(opt), style: TextStyle(color: selected ? cyanBright : textMuted, fontSize: 13, fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
 
                   // Game Mode
                   const Text('Game Mode', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
@@ -1009,75 +873,15 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // Toggle switches
-                  SwitchListTile(
-                    title: const Text('Host as Ghost (Anonymity)', style: TextStyle(color: Colors.white, fontSize: 14)),
-                    subtitle: const Text('Hides your real identity', style: TextStyle(color: textMuted, fontSize: 12)),
-                    value: hostAsGhost,
-                    onChanged: (v) => setSheetState(() => hostAsGhost = v),
-                    activeThumbColor: purplePrimary,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SwitchListTile(
-                    title: const Text('Share Local Region', style: TextStyle(color: Colors.white, fontSize: 14)),
-                    subtitle: const Text('Nearby users can find you', style: TextStyle(color: textMuted, fontSize: 12)),
-                    value: encryptRadar,
-                    onChanged: (v) => setSheetState(() => encryptRadar = v),
-                    activeThumbColor: cyanBright,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SwitchListTile(
-                    title: const Text('Enable Recording', style: TextStyle(color: Colors.white, fontSize: 14)),
-                    subtitle: const Text('All participants see a consent banner', style: TextStyle(color: textMuted, fontSize: 12)),
-                    value: isRecording,
-                    onChanged: (v) => setSheetState(() => isRecording = v),
-                    activeThumbColor: Colors.redAccent,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SwitchListTile(
-                    title: const Text('Schedule for Later', style: TextStyle(color: Colors.white, fontSize: 14)),
-                    subtitle: Text(
-                      isScheduled && scheduledTime != null
-                          ? 'Scheduled: ${scheduledTime!.day}/${scheduledTime!.month} at ${scheduledTime!.hour}:${scheduledTime!.minute.toString().padLeft(2, '0')}'
-                          : 'Go live immediately',
-                      style: const TextStyle(color: textMuted, fontSize: 12),
-                    ),
-                    value: isScheduled,
-                    onChanged: (v) async {
-                      if (v) {
-                        final date = await showDatePicker(
-                          context: ctx,
-                          initialDate: DateTime.now().add(const Duration(hours: 1)),
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime.now().add(const Duration(days: 30)),
-                        );
-                        if (date != null) {
-                          final time = await showTimePicker(context: ctx, initialTime: TimeOfDay.now());
-                          if (time != null) {
-                            setSheetState(() {
-                              isScheduled = true;
-                              scheduledTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-                            });
-                          }
-                        }
-                      } else {
-                        setSheetState(() { isScheduled = false; scheduledTime = null; });
-                      }
-                    },
-                    activeThumbColor: purplePrimary,
-                    contentPadding: EdgeInsets.zero,
-                  ),
                   const SizedBox(height: 24),
 
-                  // Go Live / Schedule button
+                  // Go Live button
                   SizedBox(
                     width: double.infinity,
                     height: 54,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: isScheduled ? purpleDark : const Color(0xFF10B981),
+                        backgroundColor: const Color(0xFF10B981),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         elevation: 0,
                       ),
@@ -1098,18 +902,13 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
 
                         String hostName = 'Host';
                         String? hostAvatar;
-                        if (hostAsGhost) {
-                          hostName = 'Ghost_${myId.length > 4 ? myId.substring(0, 4) : "Anon"}';
-                        } else {
-                          final profile = await _sb.from('profiles').select('full_name, avatar_url').eq('id', myId).maybeSingle();
-                          if (profile != null) {
-                            if (profile['full_name'] != null) hostName = profile['full_name'];
-                            hostAvatar = profile['avatar_url']?.toString();
-                          }
+                        final profile = await _sb.from('profiles').select('full_name, avatar_url').eq('id', myId).maybeSingle();
+                        if (profile != null) {
+                          if (profile['full_name'] != null) hostName = profile['full_name'];
+                          hostAvatar = profile['avatar_url']?.toString();
                         }
 
-                        String topic = topicCtrl.text.trim();
-                        if (topic.isEmpty) topic = selectedTags.isNotEmpty ? selectedTags.join(' | ') : 'General';
+                        String topic = selectedTags.isNotEmpty ? selectedTags.join(' | ') : 'General';
                         topic += ' | $_myLocation';
 
                         try {
@@ -1124,8 +923,8 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                             'game_mode': gameMode,
                             'visibility': visibility,
                             'max_participants': maxParticipants,
-                            'room_status': isScheduled ? 'scheduled' : 'active',
-                            'scheduled_at': scheduledTime?.toUtc().toIso8601String(),
+                            'room_status': 'active',
+                            'scheduled_at': null,
                             'created_at': DateTime.now().toUtc().toIso8601String(),
                           }).select().single();
 
@@ -1140,33 +939,31 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                           } catch (_) {}
                           
                           // Notify followers/followings
-                          if (!isScheduled) {
-                            try {
-                              final reqs = await _sb.from('requests').select('sender_id, target_id').eq('target_type', 'follow').eq('status', 'approved').or('sender_id.eq.$myId,target_id.eq.$myId');
-                              
-                              final Set<String> usersToNotify = {};
-                              for (var r in (reqs as List)) {
-                                final sId = r['sender_id']?.toString();
-                                final tId = r['target_id']?.toString();
-                                if (sId != null && sId != myId) usersToNotify.add(sId);
-                                if (tId != null && tId != myId) usersToNotify.add(tId);
-                              }
-                              
-                              for (var uId in usersToNotify) {
-                                NotificationService.sendNotification(
-                                  userId: uId,
-                                  type: NotificationType.system,
-                                  title: '$hostName is Live! 🎙️',
-                                  body: 'Hop in to BolRoom: $name',
-                                  payload: {'bolroom_live': true, 'room_id': res['id'].toString()},
-                                );
-                              }
-                            } catch (_) {}
-                          }
+                          try {
+                            final reqs = await _sb.from('requests').select('sender_id, target_id').eq('target_type', 'follow').eq('status', 'approved').or('sender_id.eq.$myId,target_id.eq.$myId');
+                            
+                            final Set<String> usersToNotify = {};
+                            for (var r in (reqs as List)) {
+                              final sId = r['sender_id']?.toString();
+                              final tId = r['target_id']?.toString();
+                              if (sId != null && sId != myId) usersToNotify.add(sId);
+                              if (tId != null && tId != myId) usersToNotify.add(tId);
+                            }
+                            
+                            for (var uId in usersToNotify) {
+                              NotificationService.sendNotification(
+                                userId: uId,
+                                type: NotificationType.system,
+                                title: '$hostName is Live! 🎙️',
+                                body: 'Hop in to BolRoom: $name',
+                                payload: {'bolroom_live': true, 'room_id': res['id'].toString()},
+                              );
+                            }
+                          } catch (_) {}
 
                           _loadRooms();
                           Navigator.pop(ctx);
-                          if (!isScheduled) _joinRoom(res);
+                          _joinRoom(res);
                         } catch (e) {
                           debugPrint('Create room error: $e');
                           if (context.mounted) {
@@ -1177,10 +974,10 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(isScheduled ? Icons.schedule : Icons.cell_tower, color: Colors.white, size: 20),
+                          Icon(Icons.cell_tower, color: Colors.white, size: 20),
                           const SizedBox(width: 10),
                           Text(
-                            isScheduled ? 'Schedule Room' : 'Go Live 🔴',
+                            'Go Live 🔴',
                             style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -1192,29 +989,6 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _visibilityChip(String label, IconData icon, bool selected, VoidCallback onTap) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: selected ? purpleDark.withValues(alpha: 0.3) : bgColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: selected ? purplePrimary : borderColor),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: selected ? purplePrimary : textMuted, size: 20),
-              const SizedBox(height: 4),
-              Text(label, style: TextStyle(color: selected ? Colors.white : textMuted, fontSize: 11, fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
-            ],
-          ),
-        ),
       ),
     );
   }

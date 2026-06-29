@@ -93,7 +93,9 @@ class TwoTruthsGameState extends State<TwoTruthsGame> with TickerProviderStateMi
   void handleGameEvent(Map<String, dynamic> data) {
     final ev = data['event'] as String? ?? '';
     if (ev == 'spin_started') {
-      final targetIdx = data['targetIdx'] as int? ?? 0;
+      final uid = data['targetUserId'] as String?;
+      var targetIdx = widget.participants.indexWhere((p) => p.userId == uid);
+      if (targetIdx == -1) targetIdx = data['targetIdx'] as int? ?? 0;
       final n = widget.participants.length;
       if (n < 2 || !mounted) return;
       _animateSpinTo(targetIdx);
@@ -259,6 +261,7 @@ class TwoTruthsGameState extends State<TwoTruthsGame> with TickerProviderStateMi
     widget.onBroadcast('spin_started', {
       'event': 'spin_started',
       'targetIdx': idx,
+      'targetUserId': target.userId,
     });
 
     _animateSpinTo(idx);
@@ -729,6 +732,7 @@ class TwoTruthsGameState extends State<TwoTruthsGame> with TickerProviderStateMi
     final bool isActive = _selectedUserId == p.userId;
     showDialog(
       context: context,
+      useRootNavigator: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: _GC.surface,
         title: Text('Remove ${p.name}?', style: const TextStyle(color: Colors.white)),

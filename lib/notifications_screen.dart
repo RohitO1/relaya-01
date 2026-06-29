@@ -9,11 +9,22 @@ import 'messages_screen.dart';
 import 'knock_review_screen.dart';
 import 'services/notification_service.dart';
 import 'services/doodle_theme.dart';
+import 'profile_screen.dart';
 
 enum AppNotificationType {
-  match, nearbyActivity, approval, rejection, message, system,
-  bolroomMessage, bolroomSystem, bolroomFollower, bolroomChatroom,
-  knock, knockAccepted,
+  match,
+  nearbyActivity,
+  approval,
+  rejection,
+  message,
+  system,
+  bolroomMessage,
+  bolroomSystem,
+  bolroomFollower,
+  bolroomChatroom,
+  knock,
+  knockAccepted,
+  follow,
 }
 
 class NotificationModel {
@@ -52,7 +63,8 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   String _activeFilter = 'All';
   late final List<String> _filters;
-  final String _currentUserId = Supabase.instance.client.auth.currentUser?.id ?? '';
+  final String _currentUserId =
+      Supabase.instance.client.auth.currentUser?.id ?? '';
 
   @override
   void initState() {
@@ -60,9 +72,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (widget.isBolroomMode) {
       _filters = ['All', 'Rooms', 'Followers', 'Messages'];
     } else {
-      _filters = ['All', 'Knocks', 'Matches', 'Nearby', 'Updates', 'Chats'];
+      _filters = [
+        'All',
+        'Knocks',
+        'Follows',
+        'Matches',
+        'Nearby',
+        'Updates',
+        'Chats'
+      ];
     }
-    
+
     // Automatically mark all unseen notifications as seen when opening the screen
     Future.microtask(() async {
       if (_currentUserId.isNotEmpty) {
@@ -73,18 +93,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   AppNotificationType _mapType(String type) {
     switch (type) {
-      case 'match': return AppNotificationType.match;
-      case 'nearby_activity': return AppNotificationType.nearbyActivity;
-      case 'approval': return AppNotificationType.approval;
-      case 'rejection': return AppNotificationType.rejection;
-      case 'message': return AppNotificationType.message;
-      case 'bolroom_message': return AppNotificationType.bolroomMessage;
-      case 'bolroom_system': return AppNotificationType.bolroomSystem;
-      case 'bolroom_follower': return AppNotificationType.bolroomFollower;
-      case 'bolroom_chatroom': return AppNotificationType.bolroomChatroom;
-      case 'knock': return AppNotificationType.knock;
-      case 'knock_accepted': return AppNotificationType.knockAccepted;
-      default: return AppNotificationType.system;
+      case 'match':
+        return AppNotificationType.match;
+      case 'nearby_activity':
+        return AppNotificationType.nearbyActivity;
+      case 'approval':
+        return AppNotificationType.approval;
+      case 'rejection':
+        return AppNotificationType.rejection;
+      case 'message':
+        return AppNotificationType.message;
+      case 'bolroom_message':
+        return AppNotificationType.bolroomMessage;
+      case 'bolroom_system':
+        return AppNotificationType.bolroomSystem;
+      case 'bolroom_follower':
+        return AppNotificationType.bolroomFollower;
+      case 'bolroom_chatroom':
+        return AppNotificationType.bolroomChatroom;
+      case 'knock':
+        return AppNotificationType.knock;
+      case 'knock_accepted':
+        return AppNotificationType.knockAccepted;
+      case 'follow':
+        return AppNotificationType.follow;
+      default:
+        return AppNotificationType.system;
     }
   }
 
@@ -94,7 +128,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       final type = _mapType(typeStr);
       final isUnread = n['is_read'] == false;
       final payload = n['payload'] as Map<String, dynamic>? ?? {};
-      
+
       String timeText = 'Just now';
       if (n['created_at'] != null) {
         try {
@@ -111,10 +145,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
 
       String? avatarUrl;
-      if (payload['sender_avatar_url'] != null && (payload['sender_avatar_url'] as String).isNotEmpty) {
+      if (payload['sender_avatar_url'] != null &&
+          (payload['sender_avatar_url'] as String).isNotEmpty) {
         avatarUrl = payload['sender_avatar_url'] as String;
       } else if (payload['sender_id'] != null) {
-        avatarUrl = 'https://picsum.photos/seed/${payload['sender_id']}/300/300';
+        avatarUrl =
+            'https://picsum.photos/seed/${payload['sender_id']}/300/300';
       }
 
       return NotificationModel(
@@ -146,19 +182,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return items.where((n) {
       if (widget.isBolroomMode) {
         switch (_activeFilter) {
-          case 'Rooms': return n.type == AppNotificationType.bolroomChatroom;
-          case 'Followers': return n.type == AppNotificationType.bolroomFollower;
-          case 'Messages': return n.type == AppNotificationType.bolroomMessage;
-          default: return true;
+          case 'Rooms':
+            return n.type == AppNotificationType.bolroomChatroom;
+          case 'Followers':
+            return n.type == AppNotificationType.bolroomFollower;
+          case 'Messages':
+            return n.type == AppNotificationType.bolroomMessage;
+          default:
+            return true;
         }
       } else {
         switch (_activeFilter) {
-          case 'Knocks': return n.type == AppNotificationType.knock || n.type == AppNotificationType.knockAccepted;
-          case 'Matches': return n.type == AppNotificationType.match;
-          case 'Nearby': return n.type == AppNotificationType.nearbyActivity;
-          case 'Updates': return n.type == AppNotificationType.approval || n.type == AppNotificationType.rejection;
-          case 'Chats': return n.type == AppNotificationType.message;
-          default: return true;
+          case 'Knocks':
+            return n.type == AppNotificationType.knock ||
+                n.type == AppNotificationType.knockAccepted;
+          case 'Follows':
+            return n.type == AppNotificationType.follow;
+          case 'Matches':
+            return n.type == AppNotificationType.match;
+          case 'Nearby':
+            return n.type == AppNotificationType.nearbyActivity;
+          case 'Updates':
+            return n.type == AppNotificationType.approval ||
+                n.type == AppNotificationType.rejection;
+          case 'Chats':
+            return n.type == AppNotificationType.message;
+          default:
+            return true;
         }
       }
     }).toList();
@@ -168,10 +218,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textP = isDark ? Colors.white : Colors.black87;
-    final textM = isDark ? Colors.white54 : Colors.black54;
 
     return Scaffold(
-      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : (isDark ? const Color(0xFF0A0A0F) : const Color(0xFFF9FAFB)),
+      backgroundColor: isDoodleMode(context)
+          ? DoodleColors.cream
+          : (isDark ? const Color(0xFF0A0A0F) : const Color(0xFFF9FAFB)),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -180,15 +231,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           icon: Icon(Icons.arrow_back_ios, color: textP, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Notifications', style: TextStyle(color: textP, fontWeight: FontWeight.w800, fontSize: 18)),
+        title: Text('Notifications',
+            style: TextStyle(
+                color: textP, fontWeight: FontWeight.w800, fontSize: 18)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.done_all, color: Color(0xFFFF6B00), size: 22),
+            icon:
+                const Icon(Icons.done_all, color: Color(0xFFFF6B00), size: 22),
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
               await NotificationService.markAllAsRead(_currentUserId);
               messenger.showSnackBar(
-                const SnackBar(content: Text('All marked as read'), backgroundColor: Color(0xFF10B981)),
+                const SnackBar(
+                    content: Text('All marked as read'),
+                    backgroundColor: Color(0xFF10B981)),
               );
             },
           ),
@@ -209,11 +265,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return _buildShimmerLoading();
                 }
-                
+
                 final raw = snapshot.data ?? [];
                 final parsed = _parseNotifications(raw);
                 final items = _filterItems(parsed);
-                
+
                 return _buildList(items);
               },
             ),
@@ -241,22 +297,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             padding: const EdgeInsets.only(right: 8),
             child: TouchScale(
               onTap: () => setState(() {
-                  _activeFilter = filter;
-                  HapticFeedback.lightImpact();
+                _activeFilter = filter;
+                HapticFeedback.lightImpact();
               }),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFFF6B00) : const Color(0xFF16161D),
+                  color: isSelected
+                      ? const Color(0xFFFF6B00)
+                      : const Color(0xFF16161D),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: isSelected ? const Color(0xFFFF6B00) : const Color(0xFF27272A)),
+                  border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFFFF6B00)
+                          : const Color(0xFF27272A)),
                 ),
                 child: Center(
                   child: Text(
                     filter,
                     style: TextStyle(
                       color: isSelected ? Colors.white : textM,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
                       fontSize: 14,
                     ),
                   ),
@@ -301,11 +364,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.notifications_off_outlined, color: textM.withValues(alpha: 0.5), size: 60),
+            Icon(Icons.notifications_off_outlined,
+                color: textM.withValues(alpha: 0.5), size: 60),
             const SizedBox(height: 16),
-            Text("You're all caught up!", style: TextStyle(color: textM, fontSize: 16, fontWeight: FontWeight.w500)),
+            Text("You're all caught up!",
+                style: TextStyle(
+                    color: textM, fontSize: 16, fontWeight: FontWeight.w500)),
             const SizedBox(height: 4),
-            Text("New updates will appear here", style: TextStyle(color: textM.withValues(alpha: 0.5), fontSize: 12)),
+            Text("New updates will appear here",
+                style: TextStyle(
+                    color: textM.withValues(alpha: 0.5), fontSize: 12)),
           ],
         ),
       );
@@ -374,6 +442,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         icon = Icons.celebration_rounded;
         iconColor = const Color(0xFF22C55E);
         break;
+      case AppNotificationType.follow:
+        icon = Icons.person_add_rounded;
+        iconColor = const Color(0xFF3B82F6);
+        break;
     }
 
     return Dismissible(
@@ -424,9 +496,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     .eq('status', 'pending')
                     .maybeSingle();
                 if (req != null && mounted) {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => KnockReviewScreen(knockRequest: req),
-                  ));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => KnockReviewScreen(knockRequest: req),
+                      ));
                 } else if (mounted) {
                   // Already acted on — open DMs
                   final profile = await Supabase.instance.client
@@ -434,13 +508,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       .select('name, full_name, avatar_url')
                       .eq('id', senderId)
                       .maybeSingle();
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => ChatDetailScreen(
-                      targetUserId: senderId,
-                      name: profile?['name']?.toString() ?? profile?['full_name']?.toString() ?? 'User',
-                      avatarUrl: profile?['avatar_url']?.toString() ?? '',
-                    ),
-                  ));
+                  if (mounted) {
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatDetailScreen(
+                            targetUserId: senderId,
+                            name: profile?['name']?.toString() ??
+                                profile?['full_name']?.toString() ??
+                                'User',
+                            avatarUrl: profile?['avatar_url']?.toString() ?? '',
+                          ),
+                        ));
+                  }
                 }
               } catch (_) {}
             }
@@ -455,41 +535,73 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     .eq('id', senderId)
                     .maybeSingle();
                 if (mounted) {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => ChatDetailScreen(
-                      targetUserId: senderId,
-                      name: profile?['name']?.toString() ?? profile?['full_name']?.toString() ?? 'User',
-                      avatarUrl: profile?['avatar_url']?.toString() ?? '',
-                      isUnlocked: true,
-                    ),
-                  ));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatDetailScreen(
+                          targetUserId: senderId,
+                          name: profile?['name']?.toString() ??
+                              profile?['full_name']?.toString() ??
+                              'User',
+                          avatarUrl: profile?['avatar_url']?.toString() ?? '',
+                          isUnlocked: true,
+                        ),
+                      ));
                 }
               } catch (_) {}
             }
-          } else if (notif.type == AppNotificationType.message || notif.type == AppNotificationType.match) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen()));
+          } else if (notif.type == AppNotificationType.follow) {
+            // Navigate to the follower's profile
+            final senderId = notif.senderId;
+            if (senderId != null && mounted) {
+              Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProfileScreen(userId: senderId),
+                  ));
+            }
+          } else if (notif.type == AppNotificationType.message ||
+              notif.type == AppNotificationType.match) {
+            Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const ChatScreen()));
           }
         },
         child: Container(
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: notif.isUnread ? const Color(0xFF16161D) : const Color(0xFF0F0F14),
+            color: notif.isUnread
+                ? const Color(0xFF16161D)
+                : const Color(0xFF0F0F14),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: notif.type == AppNotificationType.knock
-                  ? const Color(0xFFFF6B00).withValues(alpha: notif.isUnread ? 0.6 : 0.25)
+                  ? const Color(0xFFFF6B00)
+                      .withValues(alpha: notif.isUnread ? 0.6 : 0.25)
                   : notif.type == AppNotificationType.knockAccepted
                       ? const Color(0xFF22C55E).withValues(alpha: 0.4)
                       : notif.isUnread
                           ? const Color(0xFF27272A)
                           : const Color(0xFF1C1C22),
-              width: (notif.type == AppNotificationType.knock || notif.type == AppNotificationType.knockAccepted) ? 1.5 : 1,
+              width: (notif.type == AppNotificationType.knock ||
+                      notif.type == AppNotificationType.knockAccepted)
+                  ? 1.5
+                  : 1,
             ),
             boxShadow: notif.type == AppNotificationType.knock && notif.isUnread
-                ? [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.1), blurRadius: 12, spreadRadius: 1)]
+                ? [
+                    BoxShadow(
+                        color: const Color(0xFFFF6B00).withValues(alpha: 0.1),
+                        blurRadius: 12,
+                        spreadRadius: 1)
+                  ]
                 : notif.type == AppNotificationType.knockAccepted
-                    ? [BoxShadow(color: const Color(0xFF22C55E).withValues(alpha: 0.08), blurRadius: 10)]
+                    ? [
+                        BoxShadow(
+                            color:
+                                const Color(0xFF22C55E).withValues(alpha: 0.08),
+                            blurRadius: 10)
+                      ]
                     : null,
           ),
           child: Column(
@@ -509,24 +621,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         )
                       else
                         Container(
-                          width: 44, height: 44,
+                          width: 44,
+                          height: 44,
                           decoration: BoxDecoration(
                             color: iconColor.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
-                            border: Border.all(color: iconColor.withValues(alpha: 0.25)),
+                            border: Border.all(
+                                color: iconColor.withValues(alpha: 0.25)),
                           ),
                           child: Icon(icon, color: iconColor, size: 20),
                         ),
                       // Type badge in corner
                       if (notif.avatarUrl != null)
                         Positioned(
-                          bottom: 0, right: 0,
+                          bottom: 0,
+                          right: 0,
                           child: Container(
-                            width: 18, height: 18,
+                            width: 18,
+                            height: 18,
                             decoration: BoxDecoration(
                               color: iconColor,
                               shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFF0F0F14), width: 1.5),
+                              border: Border.all(
+                                  color: const Color(0xFF0F0F14), width: 1.5),
                             ),
                             child: Icon(icon, color: Colors.white, size: 10),
                           ),
@@ -546,8 +663,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 children: [
                                   if (notif.isUnread) ...[
                                     Container(
-                                      width: 6, height: 6,
-                                      decoration: BoxDecoration(color: iconColor, shape: BoxShape.circle),
+                                      width: 6,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                          color: iconColor,
+                                          shape: BoxShape.circle),
                                     ),
                                     const SizedBox(width: 6),
                                   ],
@@ -556,7 +676,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                       notif.title,
                                       style: GoogleFonts.outfit(
                                         color: Colors.white,
-                                        fontWeight: notif.isUnread ? FontWeight.w700 : FontWeight.w500,
+                                        fontWeight: notif.isUnread
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
                                         fontSize: 14,
                                         letterSpacing: -0.2,
                                       ),
@@ -566,15 +688,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               ),
                             ),
                             Text(notif.timeText,
-                                style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+                                style: const TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold)),
                           ],
                         ),
                         const SizedBox(height: 4),
                         Text(
                           notif.body,
                           style: GoogleFonts.outfit(
-                            color: notif.isUnread ? Colors.white.withValues(alpha: 0.8) : Colors.white54,
-                            fontSize: 13, height: 1.4,
+                            color: notif.isUnread
+                                ? Colors.white.withValues(alpha: 0.8)
+                                : Colors.white54,
+                            fontSize: 13,
+                            height: 1.4,
                           ),
                         ),
                       ],
@@ -592,15 +720,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
                           colors: [Color(0xFFFF6B00), Color(0xFFFF0055)],
-                          begin: Alignment.centerLeft, end: Alignment.centerRight,
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
                         ),
                         borderRadius: BorderRadius.circular(12),
-                        boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))],
+                        boxShadow: [
+                          BoxShadow(
+                              color: const Color(0xFFFF6B00)
+                                  .withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3))
+                        ],
                       ),
                       child: Center(
                         child: Text('Review Knock 🚪',
                             style: GoogleFonts.outfit(
-                              color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700)),
                       ),
                     ),
                   ),
@@ -615,15 +752,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
                           colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
-                          begin: Alignment.centerLeft, end: Alignment.centerRight,
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
                         ),
                         borderRadius: BorderRadius.circular(12),
-                        boxShadow: [BoxShadow(color: const Color(0xFF22C55E).withValues(alpha: 0.25), blurRadius: 8, offset: const Offset(0, 3))],
+                        boxShadow: [
+                          BoxShadow(
+                              color: const Color(0xFF22C55E)
+                                  .withValues(alpha: 0.25),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3))
+                        ],
                       ),
                       child: Center(
                         child: Text('Open Chat 💬',
                             style: GoogleFonts.outfit(
-                              color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700)),
                       ),
                     ),
                   ),
@@ -636,4 +782,3 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 }
-

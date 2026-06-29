@@ -74,7 +74,9 @@ class TruthOrDareGameState extends State<TruthOrDareGame>
     final ev = data['event'] as String? ?? '';
     if (ev == 'spin_started') {
       // All clients animate the spin to the same target
-      final targetIdx = data['targetIdx'] as int? ?? 0;
+      final uid = data['targetUserId'] as String?;
+      var targetIdx = widget.participants.indexWhere((p) => p.userId == uid);
+      if (targetIdx == -1) targetIdx = data['targetIdx'] as int? ?? 0;
       final n = widget.participants.length;
       if (n < 2 || !mounted) return;
       _animateSpinTo(targetIdx);
@@ -445,6 +447,7 @@ class TruthOrDareGameState extends State<TruthOrDareGame>
     final bool isActive = _selectedIdx != null && widget.participants[_selectedIdx!].userId == p.userId;
     showDialog(
       context: context,
+      useRootNavigator: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: _GC.surface,
         title: Text('Remove ${p.name}?', style: const TextStyle(color: Colors.white)),

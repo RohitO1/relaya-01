@@ -12,7 +12,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'profile_screen.dart';
 import 'services/notification_service.dart';
 import 'services/doodle_theme.dart';
-
 ImageProvider _safeImageProvider(String url) {
   if (url.startsWith('data:image')) {
     final b64 = url.split(',').last;
@@ -1048,30 +1047,38 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: (iAmApproved || isHost) ? () {
-                        final lat = act['lat']?.toString() ?? act['latitude']?.toString();
-                        final lng = act['lng']?.toString() ?? act['longitude']?.toString();
-                        if (lat != null && lng != null) {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => _ApprovedLocationMapScreen(
-                            lat: double.parse(lat), lng: double.parse(lng), title: act['title'] ?? 'Event',
-                          )));
-                        }
-                      } : null,
-                      child: Row(
-                        children: [
-                          Icon(Icons.location_on_outlined, color: (iAmApproved || isHost) ? const Color(0xFFFF7A00) : Colors.white38, size: 18),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              isRushIn && !iAmApproved && !isHost ? 'Revealed on approval' : (act['location_name'] ?? 'Somewhere'),
-                              style: GoogleFonts.plusJakartaSans(color: (iAmApproved || isHost) ? Colors.white : Colors.white38, fontSize: 15, fontWeight: FontWeight.w500),
+                    Builder(builder: (context) {
+                      final isGhostMode = act['is_ghost'] == true || act['is_ghost_mode'] == true;
+                      final bool shouldHideLocation = isGhostMode && !iAmApproved && !isHost;
+                      
+                      return GestureDetector(
+                        onTap: (!shouldHideLocation) ? () async {
+                          final lat = act['lat']?.toString() ?? act['latitude']?.toString();
+                          final lng = act['lng']?.toString() ?? act['longitude']?.toString();
+                          if (lat != null && lng != null) {
+                            final uri = Uri.parse(
+                              'https://www.google.com/maps/dir/?api=1'
+                              '&destination=$lat,$lng'
+                              '&travelmode=driving',
+                            );
+                            if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
+                          }
+                        } : null,
+                        child: Row(
+                          children: [
+                            Icon(Icons.location_on_outlined, color: (!shouldHideLocation) ? const Color(0xFFFF7A00) : Colors.white38, size: 18),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                shouldHideLocation ? 'Location Hidden (Join to reveal)' : (act['location_name'] ?? 'Somewhere'),
+                                style: GoogleFonts.plusJakartaSans(color: (!shouldHideLocation) ? Colors.white : Colors.white38, fontSize: 15, fontWeight: FontWeight.w500),
+                              ),
                             ),
-                          ),
-                          if (iAmApproved || isHost) const Icon(Icons.chevron_right, color: Colors.white24, size: 16),
-                        ],
-                      ),
-                    ),
+                            if (!shouldHideLocation) const Icon(Icons.chevron_right, color: Colors.white24, size: 16),
+                          ],
+                        ),
+                      );
+                    }),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -1336,15 +1343,16 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                     iAmApproved: iAmApproved,
                     iAmPending: iAmPending,
                     onJoin: _showJoinConfirmSheet,
-                    onViewMap: () {
+                    onViewMap: () async {
                       final lat = act['lat']?.toString() ?? act['latitude']?.toString();
                       final lng = act['lng']?.toString() ?? act['longitude']?.toString();
                       if (lat != null && lng != null) {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => _ApprovedLocationMapScreen(
-                          lat: double.parse(lat),
-                          lng: double.parse(lng),
-                          title: title,
-                        )));
+                        final uri = Uri.parse(
+                          'https://www.google.com/maps/dir/?api=1'
+                          '&destination=$lat,$lng'
+                          '&travelmode=driving',
+                        );
+                        if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
                       }
                     },
                     onManage: () => _showAttendeesModal(approvedList, waitlist, isHost),
@@ -1462,282 +1470,6 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
     );
   }
 
-}
-
-
-
-
-// ════════════════════════════════════════════════════════════════════
-// APPROVED LOCATION MAP SCREEN
-// Shown to participants once they are approved. Reveals the exact pin.
-// ════════════════════════════════════════════════════════════════════
-class _ApprovedLocationMapScreen extends StatefulWidget {
-  final double lat;
-  final double lng;
-  final String title;
-  const _ApprovedLocationMapScreen({required this.lat, required this.lng, required this.title});
-
-  @override
-  State<_ApprovedLocationMapScreen> createState() => _ApprovedLocationMapScreenState();
-}
-
-class _ApprovedLocationMapScreenState extends State<_ApprovedLocationMapScreen> {
-  bool _isMapDark = true;
-  bool _autoFollow = true;
-  final MapController _mapController = MapController();
-
-  LatLng? _myLocation;
-  double _speedKmh = 0.0;
-  double _distanceMeters = 0.0;
-  StreamSubscription<Position>? _positionSub;
-
-  @override
-  void initState() {
-    super.initState();
-    _startTracking();
-  }
-
-  Future<void> _startTracking() async {
-    bool svcOn = await Geolocator.isLocationServiceEnabled();
-    if (!svcOn) return;
-    LocationPermission perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
-    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
-
-    _positionSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.bestForNavigation, distanceFilter: 2),
-    ).listen((pos) {
-      if (!mounted) return;
-      final loc = LatLng(pos.latitude, pos.longitude);
-      final dist = Geolocator.distanceBetween(pos.latitude, pos.longitude, widget.lat, widget.lng);
-      setState(() {
-        _myLocation = loc;
-        _speedKmh = (pos.speed * 3.6).clamp(0, 300);
-        _distanceMeters = dist;
-      });
-      if (_autoFollow) {
-        _mapController.move(loc, _mapController.camera.zoom);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _positionSub?.cancel();
-    _mapController.dispose();
-    super.dispose();
-  }
-
-  String _formatDist(double m) {
-    if (m < 1000) return '${m.round()} m';
-    return '${(m / 1000).toStringAsFixed(1)} km';
-  }
-
-  Future<void> _openDirections() async {
-    final uri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${widget.lat},${widget.lng}&travelmode=driving');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final eventPoint = LatLng(widget.lat, widget.lng);
-    return Scaffold(
-      backgroundColor: const Color(0xFF050508),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF050508),
-        elevation: 0,
-        title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white), onPressed: () => Navigator.pop(context)),
-        actions: [
-          // Theme toggle
-          IconButton(
-            icon: Icon(_isMapDark ? Icons.wb_sunny : Icons.nightlight_round, color: _isMapDark ? Colors.yellow : Colors.blueGrey),
-            onPressed: () => setState(() => _isMapDark = !_isMapDark),
-          ),
-          // Auto-follow toggle
-          IconButton(
-            icon: Icon(_autoFollow ? Icons.gps_fixed : Icons.gps_not_fixed, color: _autoFollow ? const Color(0xFFFF6B00) : Colors.white54),
-            onPressed: () => setState(() => _autoFollow = !_autoFollow),
-          ),
-        ],
-      ),
-      body: Column(children: [
-        // Status bar
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          color: const Color(0xFFFF6B00).withValues(alpha: 0.08),
-          child: const Row(children: [
-            Icon(Icons.verified, color: Color(0xFFFF6B00), size: 16),
-            SizedBox(width: 8),
-            Text('You are approved — live location active', style: TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.bold, fontSize: 12)),
-          ]),
-        ),
-
-        // Map
-        Expanded(
-          child: GestureDetector(
-            onPanDown: (_) => setState(() => _autoFollow = false),
-            child: Stack(children: [
-              ColorFiltered(
-                colorFilter: ColorFilter.matrix(_isMapDark ? [
-                  -1, 0, 0, 0, 255, 0, -1, 0, 0, 255, 0, 0, -1, 0, 255, 0, 0, 0, 1, 0,
-                ] : [
-                  1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0,
-                ]),
-                child: FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _myLocation ?? eventPoint,
-                    initialZoom: 15,
-                    interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
-                  ),
-                  children: [
-                    TileLayer(userAgentPackageName: 'com.meetra.app', urlTemplate: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'),
-                    MarkerLayer(markers: [
-                      // Event pin
-                      Marker(
-                        point: eventPoint, width: 80, height: 80,
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFF6B00), borderRadius: BorderRadius.circular(12),
-                              boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.6), blurRadius: 20, spreadRadius: 4)],
-                            ),
-                            child: const Icon(Icons.flash_on, color: Colors.black, size: 22),
-                          ),
-                          const CustomPaint(size: Size(12, 8), painter: _TrianglePainter(Color(0xFFFF6B00))),
-                        ]),
-                      ),
-                      // Live user dot
-                      if (_myLocation != null)
-                        Marker(
-                          point: _myLocation!, width: 56, height: 56,
-                          child: Stack(alignment: Alignment.center, children: [
-                            Container(
-                              width: 56, height: 56,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(0xFF3B82F6).withValues(alpha: 0.18),
-                              ),
-                            ),
-                            Container(
-                              width: 20, height: 20,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle, color: const Color(0xFF3B82F6),
-                                border: Border.all(color: Colors.white, width: 2.5),
-                                boxShadow: [BoxShadow(color: const Color(0xFF3B82F6).withValues(alpha: 0.6), blurRadius: 10, spreadRadius: 2)],
-                              ),
-                            ),
-                          ]),
-                        ),
-                    ]),
-                  ],
-                ),
-              ),
-              if (_isMapDark) Container(color: const Color(0xFFFF5C00).withValues(alpha: 0.08)),
-
-              // Auto-follow badge
-              if (!_autoFollow)
-                Positioned(
-                  top: 12, left: 0, right: 0,
-                  child: Center(child: GestureDetector(
-                    onTap: () {
-                      setState(() => _autoFollow = true);
-                      if (_myLocation != null) _mapController.move(_myLocation!, 15);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.4))),
-                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.gps_fixed, color: Color(0xFFFF6B00), size: 14),
-                        SizedBox(width: 6),
-                        Text('Tap to re-center', style: TextStyle(color: Color(0xFFFF6B00), fontSize: 12, fontWeight: FontWeight.bold)),
-                      ]),
-                    ),
-                  )),
-                ),
-            ]),
-          ),
-        ),
-
-        // ── Live HUD ──
-        Container(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-          color: const Color(0xFF0A0A0F),
-          child: Column(children: [
-            // Distance + Speed row
-            Row(children: [
-              Expanded(child: _hudTile(
-                icon: Icons.directions_walk, color: const Color(0xFF10B981),
-                label: 'Distance', value: _myLocation == null ? '—' : _formatDist(_distanceMeters),
-              )),
-              const SizedBox(width: 12),
-              Expanded(child: _hudTile(
-                icon: Icons.speed, color: const Color(0xFF3B82F6),
-                label: 'Speed', value: _myLocation == null ? '—' : '${_speedKmh.toStringAsFixed(0)} km/h',
-              )),
-              const SizedBox(width: 12),
-              // Center on event
-              GestureDetector(
-                onTap: () { setState(() => _autoFollow = false); _mapController.move(eventPoint, 17); },
-                child: Container(
-                  width: 56, height: 56,
-                  decoration: BoxDecoration(color: const Color(0xFFFF6B00).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3))),
-                  child: const Icon(Icons.flash_on, color: Color(0xFFFF6B00), size: 22),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 12),
-            // Directions button
-            SizedBox(
-              width: double.infinity, height: 48,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3B82F6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  elevation: 0,
-                ),
-                icon: const Icon(Icons.directions, color: Colors.white, size: 20),
-                label: const Text('Get Directions', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                onPressed: _openDirections,
-              ),
-            ),
-          ]),
-        ),
-      ]),
-    );
-  }
-
-  Widget _hudTile({required IconData icon, required Color color, required String label, required String value}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: color.withValues(alpha: 0.2))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-        Row(children: [Icon(icon, color: color, size: 14), const SizedBox(width: 4), Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600))]),
-        const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold)),
-      ]),
-    );
-  }
-}
-
-
-class _TrianglePainter extends CustomPainter {
-  final Color color;
-  const _TrianglePainter(this.color);
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color..style = PaintingStyle.fill;
-    final path = Path()
-      ..moveTo(0, 0)..lineTo(size.width, 0)..lineTo(size.width / 2, size.height)..close();
-    canvas.drawPath(path, paint);
-  }
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ════════════════════════════════════════════════════════════════════

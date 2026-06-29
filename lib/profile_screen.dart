@@ -26,6 +26,7 @@ import 'admin_dashboard_screen.dart';
 import 'widgets/skeleton_loaders.dart';
 import 'hosted_joined_screens.dart';
 import 'services/doodle_theme.dart';
+import 'communities_screen.dart';
 
 // ----------------------------------------------------
 // UI Constants — Unified App Design System
@@ -89,6 +90,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   late AnimationController _orbController;
   final String _myUid = Supabase.instance.client.auth.currentUser?.id ?? '';
   int _activeTabIndex = 0; // 0=Grid, 1=Reels, 2=Experiences, 3=Tagged
+  int _contributionScore = 100;
+  List<Map<String, dynamic>> _joinedCommunities = [];
 
   // Settings State Variables
   bool _pushNotifications = true;
@@ -156,6 +159,33 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         isFollowing = check != null;
       }
       
+      final rushInsRes = await Supabase.instance.client.from('activities').select('id').eq('user_id', uid).eq('is_rush_in', true);
+      final knocksRes = await Supabase.instance.client.from('requests').select('id').eq('sender_id', uid).eq('target_type', 'knock');
+      final knocksAcceptedRes = await Supabase.instance.client.from('requests').select('id').eq('target_id', uid).eq('target_type', 'knock').eq('status', 'approved');
+      final joinedRushInsRes = await Supabase.instance.client.from('requests').select('id').eq('sender_id', uid).inFilter('target_type', ['rush_in', 'activity']).eq('status', 'approved');
+      final likesRes = await Supabase.instance.client.from('post_likes').select('post_id').eq('user_id', uid);
+      final commentsRes = await Supabase.instance.client.from('post_comments').select('id').eq('user_id', uid);
+      final messagesRes = await Supabase.instance.client.from('messages').select('id').eq('sender_id', uid).limit(500);
+      
+      final membersRes = await Supabase.instance.client.from('text_camp_members').select('camp_id').eq('user_id', uid);
+      final campIds = (membersRes as List).map((m) => m['camp_id'].toString()).toList();
+      List<Map<String, dynamic>> joinedCamps = [];
+      if (campIds.isNotEmpty) {
+        final campsRes = await Supabase.instance.client.from('text_camps').select().inFilter('id', campIds);
+        joinedCamps = List<Map<String, dynamic>>.from(campsRes);
+      }
+      
+      final int score = 100 +
+          (postsRes.length * 10) +
+          (rushInsRes.length * 15) +
+          (knocksRes.length * 5) +
+          (knocksAcceptedRes.length * 10) +
+          (joinedRushInsRes.length * 15) +
+          (joinedCamps.length * 20) +
+          (likesRes.length * 2) +
+          (commentsRes.length * 5) +
+          (messagesRes.length * 1);
+      
       final prefs = await SharedPreferences.getInstance();
 
       if (mounted) {
@@ -166,6 +196,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           _userPosts = List<Map<String, dynamic>>.from(postsRes);
           _isFollowing = isFollowing;
           _isPublic = _profile?['is_public'] ?? true;
+          _contributionScore = score;
+          _joinedCommunities = joinedCamps;
           
           _pushNotifications = prefs.getBool('push_notifications') ?? true;
           _emailNotifications = prefs.getBool('email_notifications') ?? true;
@@ -648,7 +680,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       ),
                     ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _buildNewStatColumn(
                       icon: Icons.flash_on,
@@ -657,22 +689,17 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       iconColor: const Color(0xFFFF6B00),
                     ),
                     _buildNewStatColumn(
-                      icon: Icons.calendar_today_outlined,
-                      val: '18',
-                      label: 'ACTIVITIES',
-                      iconColor: const Color(0xFF4E8BFF),
-                    ),
-                    _buildNewStatColumn(
-                      icon: Icons.people_outline,
-                      val: '156',
-                      label: 'CONNECTIONS',
+                      icon: Icons.auto_awesome,
+                      val: '$_contributionScore',
+                      label: 'CONTRIBUTIONS',
                       iconColor: const Color(0xFFFFD54F),
                     ),
                     _buildNewStatColumn(
-                      icon: Icons.emoji_events_outlined,
-                      val: '98%',
-                      label: 'RELIABILITY',
-                      iconColor: const Color(0xFFFF8A00),
+                      icon: Icons.groups_rounded,
+                      val: '${_joinedCommunities.length}',
+                      label: 'ACTIVE-IN',
+                      iconColor: const Color(0xFF4E8BFF),
+                      onTap: _showActiveInCommunitiesSheet,
                     ),
                   ],
                 ),
@@ -689,34 +716,218 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     required String val,
     required String label,
     required Color iconColor,
+    VoidCallback? onTap,
   }) {
     final doodle = isDoodleMode(context);
     return Expanded(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: doodle ? DoodleColors.brown : iconColor, size: 18),
-          const SizedBox(height: 6),
-          Text(
-            val,
-            style: doodle ? DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.inter(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: doodle ? DoodleColors.brown : iconColor, size: 18),
+            const SizedBox(height: 6),
+            Text(
+              val,
+              style: doodle ? DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.inter(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: doodle ? DoodleFonts.body(fontSize: 10, color: DoodleColors.brown) : GoogleFonts.inter(
-              fontSize: 8,
-              fontWeight: FontWeight.w800,
-              color: Colors.white38,
-              letterSpacing: 0.5,
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: doodle ? DoodleFonts.body(fontSize: 10, color: DoodleColors.brown) : GoogleFonts.inter(
+                fontSize: 8,
+                fontWeight: FontWeight.w800,
+                color: Colors.white38,
+                letterSpacing: 0.5,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  void _showActiveInCommunitiesSheet() {
+    final doodle = isDoodleMode(context);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.65),
+          decoration: doodle
+              ? DoodleDecorations.card(color: DoodleColors.cream, borderColor: DoodleColors.brown)
+              : const BoxDecoration(
+                  color: Color(0xFF0F0F0F),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  border: Border(top: BorderSide(color: Colors.white12)),
+                ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: doodle ? DoodleColors.brown.withValues(alpha: 0.3) : Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Active In Communities',
+                    style: doodle ? DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.inter(
+                      fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4E8BFF).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_joinedCommunities.length}',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFF4E8BFF)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Real-world social loops joined across Meetra',
+                style: doodle ? DoodleFonts.body(fontSize: 12, color: DoodleColors.brown.withValues(alpha: 0.7)) : GoogleFonts.inter(
+                  fontSize: 12, color: Colors.white54,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (_joinedCommunities.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(Icons.groups_outlined, size: 48, color: doodle ? DoodleColors.brown.withValues(alpha: 0.4) : Colors.white24),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Not active in any communities yet',
+                          style: doodle ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown) : GoogleFonts.inter(fontSize: 14, color: Colors.white60),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.separated(
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: _joinedCommunities.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (ctx, i) {
+                      final row = _joinedCommunities[i];
+                      final name = row['name']?.toString() ?? 'Community';
+                      final cat = row['category']?.toString() ?? 'General';
+                      final avatar = row['avatar_url']?.toString() ?? 'https://images.unsplash.com/photo-1516862523118-a3724eb136d7?auto=format&fit=crop&w=150&q=80';
+                      final members = row['member_count'] ?? 1;
+                      
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          final comm = Community(
+                            id: row['id']?.toString() ?? '',
+                            name: name,
+                            category: cat,
+                            creatorId: row['creator_id']?.toString() ?? '',
+                            memberCount: members is int ? members : int.tryParse(members.toString()) ?? 1,
+                            avatar: avatar,
+                            lastMessage: 'Welcome to $name!',
+                            lastMessageTime: 'Active',
+                            unreadCount: 0,
+                            locationDistrict: row['location_district']?.toString() ?? 'Unknown',
+                            channels: [CommunityChannel(name: 'general', messages: [])],
+                            isPrivate: row['is_private'] ?? false,
+                          );
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => CommunityChatRoomScreen(community: comm)));
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: doodle
+                              ? DoodleDecorations.card(color: DoodleColors.paper, borderColor: DoodleColors.cardBorder, radius: 14)
+                              : BoxDecoration(
+                                  color: const Color(0xFF16161D),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                                ),
+                          child: Row(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(
+                                  avatar,
+                                  width: 48, height: 48, fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    width: 48, height: 48, color: const Color(0xFF27272A),
+                                    child: const Icon(Icons.groups, color: Colors.white54),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: doodle ? DoodleFonts.heading(fontSize: 16, color: DoodleColors.brown) : GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            cat,
+                                            style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: const Color(0xFFFF6B00)),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '$members members',
+                                          style: GoogleFonts.inter(fontSize: 11, color: Colors.white54),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.white38),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 

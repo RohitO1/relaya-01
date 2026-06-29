@@ -21,6 +21,7 @@ import 'communities_screen.dart';
 import 'main.dart';
 import 'notifications_screen.dart';
 import 'services/doodle_theme.dart';
+import 'search_users_screen.dart';
 
 // ==========================================
 // COLORS & CONSTANTS
@@ -618,47 +619,62 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   letterSpacing: 1.0,
                 ),
               ),
-          // Notification Icon
-          StreamBuilder<List<Map<String, dynamic>>>(
-            stream: Supabase.instance.client
-                .from('notifications')
-                .stream(primaryKey: ['id'])
-                .eq('user_id', Supabase.instance.client.auth.currentUser?.id ?? '')
-                .map((items) => items.where((item) => item['is_read'] == false).toList()),
-            builder: (context, snapshot) {
-              final unreadCount = snapshot.data?.length ?? 0;
-              final hasUnread = unreadCount > 0;
-              
-              return GestureDetector(
+          // Search & Notification Icons
+          Row(
+            children: [
+              GestureDetector(
                 onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchUsersScreen()));
                 },
                 child: SizedBox(
                   width: 38,
                   height: 38,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Icon(Icons.notifications_none, color: doodle ? DoodleColors.textSecondary : Colors.white, size: 28),
-                      if (hasUnread)
-                        Positioned(
-                          top: 4,
-                          right: 6,
-                          child: Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: doodle ? DoodleColors.coral : const Color(0xFFFF3B30),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: doodle ? DoodleColors.cream : Colors.black, width: 2),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                  child: Icon(Icons.search, color: doodle ? DoodleColors.textSecondary : Colors.white, size: 28),
                 ),
-              );
-            },
+              ),
+              const SizedBox(width: 8),
+              StreamBuilder<List<Map<String, dynamic>>>(
+                stream: Supabase.instance.client
+                    .from('notifications')
+                    .stream(primaryKey: ['id'])
+                    .eq('user_id', Supabase.instance.client.auth.currentUser?.id ?? '')
+                    .map((items) => items.where((item) => item['is_read'] == false).toList()),
+                builder: (context, snapshot) {
+                  final unreadCount = snapshot.data?.length ?? 0;
+                  final hasUnread = unreadCount > 0;
+                  
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+                    },
+                    child: SizedBox(
+                      width: 38,
+                      height: 38,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(Icons.notifications_none, color: doodle ? DoodleColors.textSecondary : Colors.white, size: 28),
+                          if (hasUnread)
+                            Positioned(
+                              top: 4,
+                              right: 6,
+                              child: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: doodle ? DoodleColors.coral : const Color(0xFFFF3B30),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: doodle ? DoodleColors.cream : Colors.black, width: 2),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),

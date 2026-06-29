@@ -47,6 +47,14 @@ class BolRoomManager {
   static GlobalKey<NavigatorState>? get internalNavKey => _internalNavKey;
   static GlobalKey<_BolRoomOverlayHostState>? _hostKey;
 
+  /// Fires whenever the host of any room changes.
+  /// Listeners (e.g. the room list screen) can subscribe to refresh immediately.
+  static final hostChangedNotifier = ValueNotifier<int>(0);
+
+  /// Maps roomId -> newHostName for the latest host transfer.
+  /// Read by the voice list screen to immediately patch the displayed name.
+  static final Map<String, String> pendingHostNames = {};
+
   static void openRoom(BuildContext context,
       {required String roomId,
       required String roomName,
@@ -3023,6 +3031,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   void _showGameInvitePopup(String hostName) {
     showDialog(
       context: context,
+      useRootNavigator: false,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF13101E),
@@ -3318,6 +3327,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                   Navigator.pop(context);
                   final confirm = await showDialog<bool>(
                     context: context,
+                    useRootNavigator: false,
                     builder: (ctx) => AlertDialog(
                       backgroundColor: const Color(0xFF111827),
                       shape: RoundedRectangleBorder(
@@ -3378,6 +3388,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     late final Timer dialogTimer;
     showDialog(
         context: context,
+        useRootNavigator: false,
         barrierDismissible: true,
         builder: (ctx) {
           dialogTimer = Timer(const Duration(seconds: 4), () {
@@ -4436,6 +4447,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     Navigator.pop(context);
                     showDialog(
                         context: context,
+                        useRootNavigator: false,
                         builder: (ctx) {
                           return AlertDialog(
                             backgroundColor: BolRoomColors.card,
@@ -5283,33 +5295,64 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     borderRadius: BorderRadius.circular(12))),
             onPressed: () async {
               Navigator.pop(ctx);
+
+              // 1. Fetch the absolute latest username from the profiles table
+              // to ensure we don't propagate a stale name from chatroom_members.
+              String finalHostName = newHostName;
+              try {
+                final profileData = await _sb
+                    .from('profiles')
+                    .select('name')
+                    .eq('id', newHostId)
+                    .maybeSingle();
+                if (profileData != null && profileData['name'] != null && profileData['name'].toString().isNotEmpty) {
+                  finalHostName = profileData['name'].toString();
+                }
+              } catch (e) {
+                debugPrint('Error fetching latest host profile name: $e');
+              }
+
               setState(() {
-                _isHost = false; // Prevent auto-promotion
+                _isHost = false;
                 _currentHostId = newHostId;
-                _currentHostName = newHostName;
+                _currentHostName = finalHostName;
               });
-              // Demote old host: remove co-host + speaker privileges
-              await _sb
-                  .from('chatroom_members')
-                  .update({'is_cohost': false, 'is_speaker': false, 'is_muted': true})
-                  .eq('room_id', widget.roomId)
-                  .eq('user_id', _myId);
+              // Demote old host
+              try {
+                await _sb
+                    .from('chatroom_members')
+                    .update({'is_cohost': false, 'is_speaker': false, 'is_muted': true})
+                    .eq('room_id', widget.roomId)
+                    .eq('user_id', _myId);
+              } catch (e) {
+                debugPrint('[HostTransfer] demote old host error: $e');
+              }
               // Update chatrooms table with new host
-              await _sb
-                  .from('chatrooms')
-                  .update({'host_id': newHostId, 'host_name': newHostName}).eq('id', widget.roomId);
-              // Promote new host: grant speaker + unmute
-              await _sb
-                  .from('chatroom_members')
-                  .update({
-                    'is_speaker': true,
-                    'is_muted': false,
-                    'host_muted': false
-                  })
-                  .eq('room_id', widget.roomId)
-                  .eq('user_id', newHostId);
-              await _sendSystemCommand('NEW_HOST', "$newHostId|$newHostName");
-              _showToast('$newHostName is now the host');
+              try {
+                await _sb
+                    .from('chatrooms')
+                    .update({'host_id': newHostId, 'host_name': finalHostName})
+                    .eq('id', widget.roomId);
+                debugPrint('[HostTransfer] DB updated: room=${widget.roomId} newHost=$finalHostName ($newHostId)');
+              } catch (e) {
+                debugPrint('[HostTransfer] chatrooms update FAILED: $e');
+              }
+              // Store new host name in-memory so list screen can patch immediately
+              BolRoomManager.pendingHostNames[widget.roomId] = finalHostName;
+              // Signal list screens to refresh
+              BolRoomManager.hostChangedNotifier.value++;
+              // Promote new host
+              try {
+                await _sb
+                    .from('chatroom_members')
+                    .update({'is_speaker': true, 'is_muted': false, 'host_muted': false})
+                    .eq('room_id', widget.roomId)
+                    .eq('user_id', newHostId);
+              } catch (e) {
+                debugPrint('[HostTransfer] promote new host error: $e');
+              }
+              await _sendSystemCommand('NEW_HOST', "$newHostId|$finalHostName");
+              _showToast('$finalHostName is now the host');
             },
             child: const Text('Transfer',
                 style: TextStyle(
@@ -5459,8 +5502,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   // ── GAME PANEL ──
   Widget _buildGamePanel() {
     final screenH = MediaQuery.of(context).size.height;
-    final participants = _gameParticipants ??
-        _members
+    final participants = (_gameParticipants != null && _gameParticipants!.isNotEmpty)
+        ? List<TodParticipant>.from(_gameParticipants!)
+        : _members
             .take(8)
             .map((m) => TodParticipant(
                   userId: m['user_id']?.toString() ?? '',
@@ -5468,6 +5512,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                 ))
             .where((p) => p.userId.isNotEmpty)
             .toList();
+    participants.sort((a, b) => a.userId.compareTo(b.userId));
 
     return Positioned.fill(
       child: Stack(
@@ -6133,6 +6178,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   void _showEndRoomDialog() {
     showDialog(
       context: context,
+      useRootNavigator: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF13101E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),

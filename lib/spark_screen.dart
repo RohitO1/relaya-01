@@ -324,8 +324,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         bool withinRadius = true;
         // Host defined visibility limit natively computed via Haversine 
         if (isRushIn && locationService.activeLat != null && locationService.activeLng != null) {
-          final hostRadius = double.tryParse(row['radius_km']?.toString() ?? '') 
-              ?? double.tryParse(_extractTag('radius_km') ?? '') 
+          final hostRadius = double.tryParse(_extractTag('radius_km') ?? '') 
+              ?? double.tryParse(row['radius_km']?.toString() ?? '') 
               ?? 5.0;
           final currentDist = locationService.calculateDistanceInKm(
             locationService.activeLat!, 
@@ -418,7 +418,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         }
 
         // Parse radius from DB or description
-        final radiusKm = row['radius_km']?.toString() ?? _extractTag('radius_km') ?? '5';
+        final rawRadius = _extractTag('radius_km') ?? row['radius_km']?.toString();
+        final radiusKm = rawRadius ?? '5';
 
         final item = SparkItem(
           id: id,

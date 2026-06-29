@@ -47,6 +47,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   int _unreadCount = 0;
   RealtimeChannel? _notifSub;
+  RealtimeChannel? _roomsSub;
   Timer? _lobbySweepTimer;
 
   String _getRoomUid(dynamic id) {
@@ -85,7 +86,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
     _loadUnreadCount();
     _setupNotifListener();
     _startLobbySweepTimer();
-    _sb.channel('public:chatrooms').onPostgresChanges(
+    _roomsSub = _sb.channel('public:chatrooms:list').onPostgresChanges(
       event: PostgresChangeEvent.all, schema: 'public', table: 'chatrooms',
       callback: (_) => _loadRooms(),
     ).subscribe();
@@ -96,7 +97,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
     _lobbySweepTimer?.cancel();
     _searchCtrl.dispose();
     if (_notifSub != null) _sb.removeChannel(_notifSub!);
-    _sb.removeChannel(_sb.channel('public:chatrooms'));
+    if (_roomsSub != null) _sb.removeChannel(_roomsSub!);
     super.dispose();
   }
 

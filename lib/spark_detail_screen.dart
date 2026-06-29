@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'spark_screen.dart';
 import 'services/doodle_theme.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'widgets/profile_detail_sheet.dart';
 
 
 class SparkDetailScreen extends StatefulWidget {
@@ -475,10 +478,10 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
     // ANONYMOUS LOGIC: Hide identity if anonymous AND not yet approved
     final bool shouldHideIdentity = item.isAnonymous && !_isApproved;
     final String displayHostName = shouldHideIdentity ? 'Anonymous Host' : item.host;
-    final bool isUserHost = currentUserId != null && item.host == currentUserId;
+    final bool isUserHost = currentUserId != null && item.hostId == currentUserId;
 
-    // LOCATION LOGIC: Hidden for rush-ins & anonymous until approved
-    final bool isLocationHidden = (item.isAnonymous || isRush) && !_isApproved && !isUserHost;
+    // LOCATION LOGIC: Hidden for anonymous/ghost-mode until approved
+    final bool isLocationHidden = item.isAnonymous && !_isApproved && !isUserHost;
     final String displayLocation = isLocationHidden
         ? 'Location Hidden (Join to reveal)'
         : (item.location ?? 'TBD');
@@ -584,8 +587,18 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                         const SizedBox(height: 20),
 
                         // Meta rows
-                        _buildMetaRow(Icons.calendar_today_outlined, isRush ? 'Ends in ${item.timer ?? "2h left"}' : '${item.date ?? "Today"} at ${item.time ?? "18:00"}'),
-                        _buildMetaRow(Icons.location_on_outlined, displayLocation, isAccent: isLocationHidden),
+                        _buildMetaRow(Icons.calendar_today_outlined, isRush ? (item.timer ?? "Ends in 2h left") : '${item.date ?? "Today"} at ${item.time ?? "18:00"}'),
+                        GestureDetector(
+                          onTap: (!isLocationHidden && item.lat != 0 && item.lng != 0) ? () async {
+                            final uri = Uri.parse(
+                              'https://www.google.com/maps/dir/?api=1'
+                              '&destination=${item.lat},${item.lng}'
+                              '&travelmode=driving',
+                            );
+                            if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
+                          } : null,
+                          child: _buildMetaRow(Icons.location_on_outlined, displayLocation, isAccent: isLocationHidden),
+                        ),
                         _buildMetaRow(Icons.people_outline, '${item.slots} people going'),
 
                         // Radius for rush-ins
@@ -612,8 +625,19 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
 
                         // Host Card
                         GestureDetector(
-                          onTap: shouldHideIdentity ? null : () {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Viewing ${item.host}\'s profile'), backgroundColor: accentColor));
+                          onTap: shouldHideIdentity ? null : () async {
+                            if (item.hostId != null) {
+                              try {
+                                final p = await Supabase.instance.client.from('profiles').select().eq('id', item.hostId!).single();
+                                if (context.mounted) {
+                                  showFullProfileSheet(context, p, () {}, () {});
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to load profile', style: TextStyle(color: Colors.white))));
+                                }
+                              }
+                            }
                           },
                           child: Container(
                             padding: const EdgeInsets.all(16),
