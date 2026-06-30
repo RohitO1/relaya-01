@@ -22,7 +22,7 @@ import 'profile_screen.dart';
 import 'messages_screen.dart';
 // import 'experience_screen.dart'; // Disabled as per user instruction
 import 'chat_screen.dart';
-import 'auth/phone_auth_screen.dart';
+import 'auth_screen.dart';
 import 'onboarding_screen.dart';
 
 import 'host_activity_screen.dart';
@@ -261,7 +261,7 @@ class _MeetraAppState extends State<MeetraApp> {
                 body: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 500),
-                    child: const PhoneAuthScreen(),
+                    child: const AuthScreen(),
                   ),
                 ),
               );
