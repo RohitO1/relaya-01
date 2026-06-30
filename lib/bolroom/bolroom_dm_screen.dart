@@ -50,12 +50,30 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
     super.dispose();
   }
 
+  Map<String, int> _unreadCounts = {};
+
   Future<void> _loadConvos() async {
     try {
       final res = await _sb.from('bolroom_dm_conversations').select('*')
         .or('user1_id.eq.$_myId,user2_id.eq.$_myId')
         .order('last_message_at', ascending: false);
-      if (mounted) setState(() { _convos = List<Map<String, dynamic>>.from(res); _loading = false; });
+        
+      final unreadRes = await _sb.from('bolroom_dm_messages')
+        .select('conversation_id')
+        .neq('sender_id', _myId)
+        .eq('is_read', false);
+        
+      final counts = <String, int>{};
+      for (var u in unreadRes) {
+        final cid = u['conversation_id'].toString();
+        counts[cid] = (counts[cid] ?? 0) + 1;
+      }
+
+      if (mounted) setState(() { 
+        _convos = List<Map<String, dynamic>>.from(res); 
+        _unreadCounts = counts;
+        _loading = false; 
+      });
     } catch (e) {
       debugPrint('Load convos: $e');
       if (mounted) setState(() => _loading = false);
@@ -376,10 +394,9 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
         final lastMsg = chat['last_message'] ?? 'Started a chat';
         final timeStr = _timeAgo(chat['last_message_at']?.toString());
         
-        // For visual effect, let's pretend some are unread or online
-        bool hasUnread = idx == 0; // Fake unread for top chat to show the beautiful UI
+        int unreadCount = _unreadCounts[chat['id'].toString()] ?? 0;
+        bool hasUnread = unreadCount > 0;
         bool isOnline = idx < 2;
-
         return Dismissible(
           key: Key(chat['id'].toString()),
           background: Container(
@@ -525,7 +542,7 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                                 ],
                               ),
                           child: Text(
-                            "1",
+                            unreadCount > 99 ? "99+" : unreadCount.toString(),
                             style: doodle ? DoodleFonts.body(color: DoodleColors.cream, fontSize: 10).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                           ),
                         )

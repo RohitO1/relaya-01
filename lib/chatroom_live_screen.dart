@@ -1517,32 +1517,22 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
       // Check remaining members
       final remaining = await _sb
           .from('chatroom_members')
-          .select('user_id, user_name')
+          .select('user_id, user_name, is_speaker, joined_at')
           .eq('room_id', widget.roomId)
           .order('joined_at');
       if (remaining.isEmpty) {
-        // Auto-dissolve: no one left (with 30-second grace period)
-        final rId = widget.roomId;
-        Future.delayed(const Duration(seconds: 30), () async {
-          try {
-            final checkRemaining = await _sb
-                .from('chatroom_members')
-                .select('user_id')
-                .eq('room_id', rId);
-            if (checkRemaining.isEmpty) {
-              await _sb.from('chatrooms').delete().eq('id', rId);
-              debugPrint('Grace period expired: Empty room $rId deleted.');
-            } else {
-              debugPrint('Grace period cancelled: Room $rId has participants.');
-            }
-          } catch (e) {
-            debugPrint('Error in delayed empty room deletion: $e');
-          }
-        });
+        // Auto-dissolve immediately: no one left
+        await _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', widget.roomId);
+        await _sb.from('chatrooms').delete().eq('id', widget.roomId);
+        debugPrint('Empty room ${widget.roomId} deleted immediately.');
       } else if (_isHost) {
-        // Transfer host to next person
-        final nextHostId = remaining[0]['user_id'];
-        final nextHostName = remaining[0]['user_name'] ?? 'Someone';
+        // Transfer host to next person (priority to oldest speaker, then oldest listener)
+        var nextHost = remaining.firstWhere(
+          (m) => m['is_speaker'] == true,
+          orElse: () => remaining[0],
+        );
+        final nextHostId = nextHost['user_id'];
+        final nextHostName = nextHost['user_name'] ?? 'Someone';
         await _sb
             .from('chatrooms')
             .update({'host_id': nextHostId, 'host_name': nextHostName}).eq(
@@ -3890,9 +3880,16 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   // TOP BAR
   // ==========================================
   Widget _buildTopBar() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         GestureDetector(
             onTap: () {
               BolRoomManager.minimizeRoom(context);
@@ -4007,7 +4004,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           ),
         ]),
       ]),
-    ).animate().fadeIn(duration: 400.ms);
+    ))).animate().fadeIn(duration: 400.ms);
   }
 
   void _showThemePickerSheet() {
@@ -4419,95 +4416,129 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   void _showHostSettings() {
     showModalBottomSheet(
         context: context,
-        backgroundColor: BolRoomColors.card,
+        backgroundColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-        builder: (_) => SafeArea(
-            child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text('Space Settings',
-                      style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 24),
-                  // Recording toggle
-                  _actionItem(
-                      _isRecording ? 'Stop Recording' : 'Start Recording',
-                      Icons.radio_button_checked,
-                      _isRecording ? Colors.redAccent : const Color(0xFF7856FF),
-                      () {
-                    Navigator.pop(context);
-                    _toggleRecording();
-                  }),
-                  // Pin a post
-                  _actionItem('Pin a Message', Icons.push_pin_outlined,
-                      BolRoomColors.gold, () {
-                    Navigator.pop(context);
-                    showDialog(
-                        context: context,
-                        useRootNavigator: false,
-                        builder: (ctx) {
-                          return AlertDialog(
-                            backgroundColor: BolRoomColors.card,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20)),
-                            title: Text('Pin a Message',
-                                style: GoogleFonts.poppins(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold)),
-                            content: TextField(
-                                controller: _pinnedCtrl,
-                                style: const TextStyle(color: Colors.white),
-                                maxLines: 3,
-                                decoration: InputDecoration(
-                                    hintText: 'Enter message to pin...',
-                                    hintStyle:
-                                        const TextStyle(color: Colors.white38),
-                                    filled: true,
-                                    fillColor: BolRoomColors.bg,
-                                    border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide.none))),
-                            actions: [
-                              TextButton(
-                                  onPressed: () => Navigator.pop(ctx),
-                                  child: Text('Cancel',
-                                      style: GoogleFonts.inter(
-                                          color: Colors.white38))),
-                              ElevatedButton(
-                                  onPressed: () {
-                                    Navigator.pop(ctx);
-                                    _setPinnedPost(_pinnedCtrl.text);
-                                    _pinnedCtrl.clear();
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                      backgroundColor: BolRoomColors.gold,
-                                      foregroundColor: Colors.black,
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12))),
-                                  child: Text('Pin',
-                                      style: GoogleFonts.inter(
-                                          fontWeight: FontWeight.bold))),
+        builder: (_) => BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF13101E).withValues(alpha: 0.85),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.15))),
+            ),
+            child: SafeArea(
+                child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                      Text('Host Dashboard',
+                          style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 24),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _actionItem(
+                                  _isRecording ? 'Stop Recording' : 'Start Recording',
+                                  Icons.radio_button_checked,
+                                  _isRecording ? Colors.redAccent : const Color(0xFF7856FF),
+                                  () {
+                                Navigator.pop(context);
+                                _toggleRecording();
+                              }),
+                              _actionItem('Pin a Message', Icons.push_pin_outlined,
+                                  BolRoomColors.gold, () {
+                                Navigator.pop(context);
+                                showDialog(
+                                    context: context,
+                                    useRootNavigator: false,
+                                    builder: (ctx) {
+                                      return AlertDialog(
+                                        backgroundColor: BolRoomColors.card,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(20)),
+                                        title: Text('Pin a Message',
+                                            style: GoogleFonts.poppins(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold)),
+                                        content: TextField(
+                                            controller: _pinnedCtrl,
+                                            style: const TextStyle(color: Colors.white),
+                                            maxLines: 3,
+                                            decoration: InputDecoration(
+                                                hintText: 'Enter message to pin...',
+                                                hintStyle:
+                                                    const TextStyle(color: Colors.white38),
+                                                filled: true,
+                                                fillColor: BolRoomColors.bg,
+                                                border: OutlineInputBorder(
+                                                    borderRadius: BorderRadius.circular(12),
+                                                    borderSide: BorderSide.none))),
+                                        actions: [
+                                          TextButton(
+                                              onPressed: () => Navigator.pop(ctx),
+                                              child: Text('Cancel',
+                                                  style: GoogleFonts.inter(
+                                                      color: Colors.white38))),
+                                          ElevatedButton(
+                                              onPressed: () {
+                                                Navigator.pop(ctx);
+                                                _setPinnedPost(_pinnedCtrl.text);
+                                                _pinnedCtrl.clear();
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                  backgroundColor: BolRoomColors.gold,
+                                                  foregroundColor: Colors.black,
+                                                  shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(12))),
+                                              child: Text('Pin',
+                                                  style: GoogleFonts.inter(
+                                                      fontWeight: FontWeight.bold))),
+                                        ],
+                                      );
+                                    });
+                              }),
+                              _actionItem(_speakPermission == 'everyone' ? 'Lock Room (No new mics)' : 'Unlock Room', Icons.lock_outline, Colors.orange, () {
+                                Navigator.pop(context);
+                                final newPerm = _speakPermission == 'everyone' ? 'locked' : 'everyone';
+                                _sb.from('chatrooms').update({'speak_permission': newPerm}).eq('id', widget.roomId);
+                                setState(() { _speakPermission = newPerm; });
+                                _showToast(newPerm == 'locked' ? 'Room Locked' : 'Room Unlocked');
+                              }),
+                              _actionItem('Mute All Speakers', Icons.mic_off_outlined, Colors.amber, () {
+                                Navigator.pop(context);
+                                _sendSystemCommand('MUTE_ALL', 'all');
+                                _showToast('All speakers muted');
+                              }),
+                              _actionItem('Clear Chat', Icons.cleaning_services_outlined, Colors.blueGrey, () {
+                                Navigator.pop(context);
+                                _sb.from('chatroom_messages').delete().eq('room_id', widget.roomId);
+                                setState(() { _messages.clear(); });
+                                _showToast('Chat cleared');
+                              }),
+                              _actionItem('Show Captions', Icons.closed_caption_outlined,
+                                  Colors.white70, () {
+                                Navigator.pop(context);
+                                _showToast('Captions enabled (Beta)');
+                              }),
+                              _actionItem('End Space for All', Icons.stop_circle_outlined,
+                                  Colors.redAccent, () {
+                                Navigator.pop(context);
+                                _showExitSheet();
+                              }),
                             ],
-                          );
-                        });
-                  }),
-                  // Captions Placeholder
-                  _actionItem('Show Captions', Icons.closed_caption_outlined,
-                      Colors.white70, () {
-                    Navigator.pop(context);
-                    _showToast('Captions enabled (Beta)');
-                  }),
-                  // End space
-                  _actionItem('End Space for All', Icons.stop_circle_outlined,
-                      Colors.redAccent, () {
-                    Navigator.pop(context);
-                    _showExitSheet();
-                  }),
-                ]))));
+                          ),
+                        ),
+                      ),
+                    ]))),
+          ),
+        ));
   }
 
   // ── X-STYLE GRID STAGE ──
@@ -4871,8 +4902,12 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     final label =
         userName != null && userName.isNotEmpty ? _initials(userName) : '?';
     final hasValidUrl = avatarUrl != null && avatarUrl.startsWith('http');
-    return Container(
-      width: radius * 2,
+    return AnimatedScale(
+      scale: isPulsing ? 1.08 : 1.0,
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeInOut,
+      child: Container(
+        width: radius * 2,
       height: radius * 2,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
@@ -4916,7 +4951,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           ),
         ),
       ),
-    );
+    ));
   }
 
   // ── MEMBER LIST & MANAGEMENT ──
@@ -6000,19 +6035,26 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               // Main toolbar
               Container(
                 margin: const EdgeInsets.only(bottom: 24, left: 16, right: 16),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF13101E).withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(40),
-                  border: Border.all(color: const Color(0xFF231D38)),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        blurRadius: 20)
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 20,
+                        spreadRadius: 2)
                   ],
                 ),
-                child: Row(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(40),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF13101E).withValues(alpha: 0.6),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                      ),
+                      child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     // 1. Mask (Voice Disguise)
@@ -6167,7 +6209,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     // Game icon moved to top bar
                   ],
                 ),
-              ),
+              )))),
             ],
           ),
         ),

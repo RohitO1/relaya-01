@@ -197,7 +197,7 @@ class _BolroomCommunitiesScreenState extends State<BolroomCommunitiesScreen> {
       backgroundColor: doodle ? DoodleColors.paper : bgColor,
       body: SafeArea(
         child: _loading
-            ? Center(child: CircularProgressIndicator(color: doodle ? DoodleColors.brown : purplePrimary, strokeWidth: 2))
+            ? _buildSkeletonLoader(doodle)
             : Stack(
                 children: [
                   Column(
@@ -843,6 +843,68 @@ class _BolroomCommunitiesScreenState extends State<BolroomCommunitiesScreen> {
     } catch (_) {
       return "";
     }
+  }
+  Widget _buildSkeletonLoader(bool doodle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader("Communities", Icons.add_circle_outline, doodle),
+        _buildSearchBar("Discover communities...", doodle, (val) {}),
+        const SizedBox(height: 10),
+        // Categories Skeleton
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Row(
+            children: List.generate(4, (index) => 
+              Container(
+                margin: const EdgeInsets.only(right: 12),
+                width: 70, height: 35,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              )
+            ),
+          ),
+        ),
+        // List Skeleton
+        Expanded(
+          child: ListView.builder(
+            itemCount: 5,
+            padding: const EdgeInsets.only(top: 10),
+            itemBuilder: (ctx, i) {
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.02),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Container(width: 56, height: 56, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), shape: BoxShape.circle)),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(width: 120, height: 16, color: Colors.white.withValues(alpha: 0.05)),
+                          const SizedBox(height: 8),
+                          Container(width: 200, height: 12, color: Colors.white.withValues(alpha: 0.05)),
+                          const SizedBox(height: 8),
+                          Container(width: 80, height: 10, color: Colors.white.withValues(alpha: 0.05)),
+                        ],
+                      ),
+                    ),
+                    Container(width: 60, height: 30, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12))),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 

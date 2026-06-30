@@ -903,14 +903,16 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  Text(
-                                    isRushIn ? 'Rush-in • $remainingStr' : 'Social • $dateStr',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: const Color(0xFFFF1E46),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                                  isRushIn && targetTime != null
+                                    ? _LiveCountdown(targetTime: targetTime, isTitle: true)
+                                    : Text(
+                                        isRushIn ? 'Rush-in • $remainingStr' : 'Social • $dateStr',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          color: const Color(0xFFFF1E46),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                                 ],
                               ),
                             ),
@@ -1035,15 +1037,16 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                     
                     const SizedBox(height: 20),
 
-                    // Detail list
                     Row(
                       children: [
                         const Icon(Icons.calendar_today_outlined, color: Color(0xFFFF7A00), size: 18),
                         const SizedBox(width: 12),
-                        Text(
-                          isRushIn ? 'Ends in $remainingStr' : '$dateStr at $timeStr',
-                          style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w500),
-                        ),
+                        isRushIn && targetTime != null
+                          ? _LiveCountdown(targetTime: targetTime, isTitle: false)
+                          : Text(
+                              isRushIn ? 'Ends in $remainingStr' : '$dateStr at $timeStr',
+                              style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w500),
+                            ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -1629,6 +1632,75 @@ class _HostProfileSheetState extends State<_HostProfileSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _LiveCountdown extends StatefulWidget {
+  final DateTime targetTime;
+  final bool isTitle;
+
+  const _LiveCountdown({required this.targetTime, this.isTitle = false});
+
+  @override
+  State<_LiveCountdown> createState() => _LiveCountdownState();
+}
+
+class _LiveCountdownState extends State<_LiveCountdown> {
+  late Timer _timer;
+  String _timeLeft = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _updateTime();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateTime());
+  }
+
+  void _updateTime() {
+    final diff = widget.targetTime.difference(DateTime.now());
+    String newStr;
+    if (diff.isNegative) {
+      newStr = 'Ended';
+    } else {
+      if (diff.inHours > 0) {
+        newStr = '${diff.inHours}h ${diff.inMinutes.remainder(60)}m left';
+      } else if (diff.inMinutes > 0) {
+        newStr = '${diff.inMinutes}m ${diff.inSeconds.remainder(60)}s left';
+      } else {
+        newStr = '${diff.inSeconds}s left';
+      }
+    }
+    if (newStr != _timeLeft && mounted) {
+      setState(() => _timeLeft = newStr);
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.isTitle) {
+      return Text(
+        'Rush-in • $_timeLeft',
+        style: GoogleFonts.plusJakartaSans(
+          color: const Color(0xFFFF1E46),
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      );
+    }
+    return Text(
+      'Ends in $_timeLeft',
+      style: GoogleFonts.plusJakartaSans(
+        color: Colors.white70,
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
       ),
     );
   }

@@ -525,40 +525,45 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Positioned.fill(child: _AmbientBackground()),
 
           // Main content
-          CustomScrollView(
-            controller: _scrollCtrl,
-            slivers: [
-              // Header
-              SliverToBoxAdapter(child: _buildHeader()),
-              // Chatrooms Section
-              SliverToBoxAdapter(child: _buildChatroomsSection()),
-              // Filter bar
-              SliverPersistentHeader(pinned: true, delegate: _FilterBarDelegate(
-                activeFilter: _activeFilter,
-                onFilterChanged: (f) {
-                  setState(() {
-                    _activeFilter = (f == 'Trending') ? f : null;
-                  });
-                  _loadFeed();
-                },
-                onLocationTap: () => _showLocationFilter(),
-              )),
-              // Feed
-              if (_loadingPosts)
-                SliverToBoxAdapter(child: _buildLoadingSkeleton())
-              else if (_filteredPosts.isEmpty)
-                SliverToBoxAdapter(child: _buildEmptyFeed())
-              else
-                SliverList(delegate: SliverChildBuilderDelegate(
-                  (ctx, i) {
-                    if (i >= _filteredPosts.length) return _buildLoadingSkeleton();
-                    return _buildPostCard(_filteredPosts[i]);
+          RefreshIndicator(
+            onRefresh: _loadFeed,
+            color: doodle ? DoodleColors.brown : HomeColors.cyan,
+            backgroundColor: doodle ? DoodleColors.cream : HomeColors.card,
+            child: CustomScrollView(
+              controller: _scrollCtrl,
+              slivers: [
+                // Header
+                SliverToBoxAdapter(child: _buildHeader()),
+                // Chatrooms Section
+                SliverToBoxAdapter(child: _buildChatroomsSection()),
+                // Filter bar
+                SliverPersistentHeader(pinned: true, delegate: _FilterBarDelegate(
+                  activeFilter: _activeFilter,
+                  onFilterChanged: (f) {
+                    setState(() {
+                      _activeFilter = (f == 'Trending') ? f : null;
+                    });
+                    _loadFeed();
                   },
-                  childCount: _filteredPosts.length,
+                  onLocationTap: () => _showLocationFilter(),
                 )),
-              // Bottom padding
-              const SliverToBoxAdapter(child: SizedBox(height: 100)),
-            ],
+                // Feed
+                if (_loadingPosts)
+                  SliverToBoxAdapter(child: _buildLoadingSkeleton())
+                else if (_filteredPosts.isEmpty)
+                  SliverToBoxAdapter(child: _buildEmptyFeed())
+                else
+                  SliverList(delegate: SliverChildBuilderDelegate(
+                    (ctx, i) {
+                      if (i >= _filteredPosts.length) return _buildLoadingSkeleton();
+                      return _buildPostCard(_filteredPosts[i]);
+                    },
+                    childCount: _filteredPosts.length,
+                  )),
+                // Bottom padding
+                const SliverToBoxAdapter(child: SizedBox(height: 100)),
+              ],
+            ),
           ),
 
           // FAB with pulsing neon ring

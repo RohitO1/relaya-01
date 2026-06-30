@@ -46,6 +46,7 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
   RealtimeChannel? _membersChannel;
   late Map<String, dynamic> _localCommunity;
   late AnimationController _bgAnimCtrl;
+  double _parallaxOffset = 0.0;
 
   @override
   void initState() {
@@ -358,11 +359,21 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                       ? _buildLockedOverlay(doodle)
                       : _messages.isEmpty
                         ? _buildEmptyChat(doodle)
-                        : ListView.builder(
-                            controller: _scrollCtrl,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            itemCount: _messages.length,
-                            itemBuilder: (ctx, i) => _buildMessageBubble(_messages[i], doodle),
+                        : NotificationListener<ScrollNotification>(
+                            onNotification: (info) {
+                              if (info is ScrollUpdateNotification) {
+                                setState(() {
+                                  _parallaxOffset = info.metrics.pixels * 0.5;
+                                });
+                              }
+                              return false;
+                            },
+                            child: ListView.builder(
+                              controller: _scrollCtrl,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              itemCount: _messages.length,
+                              itemBuilder: (ctx, i) => _buildMessageBubble(_messages[i], doodle),
+                            ),
                           ),
                 ),
                 // Input
@@ -405,9 +416,10 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
     return AnimatedBuilder(
       animation: _bgAnimCtrl,
       builder: (context, child) {
+        Widget bgWidget;
         switch (theme) {
           case 'funky':
-            return Container(
+            bgWidget = Container(
               decoration: BoxDecoration(
                 gradient: SweepGradient(
                   center: FractionalOffset(0.5 + (_bgAnimCtrl.value * 0.1), 0.5),
@@ -419,8 +431,9 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                 child: CustomPaint(painter: GridPainter(), size: Size.infinite),
               ),
             );
+            break;
           case 'premium_mesh':
-            return Container(
+            bgWidget = Container(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
                   center: Alignment(0, -0.5 + (_bgAnimCtrl.value * 0.2)),
@@ -429,13 +442,15 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                 ),
               ),
             );
+            break;
           case 'doodle_canvas':
-            return Container(
+            bgWidget = Container(
               color: const Color(0xFFFFF9E6),
               child: CustomPaint(painter: GridPainter(color: Colors.brown.withValues(alpha: 0.1)), size: Size.infinite),
             );
+            break;
           case 'gamified_pixel':
-            return Container(
+            bgWidget = Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -445,8 +460,9 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                 ),
               ),
             );
+            break;
           case 'neon_cyberpunk':
-            return Container(
+            bgWidget = Container(
               decoration: const BoxDecoration(color: Color(0xFF09090E)),
               child: Stack(
                 children: [
@@ -475,8 +491,9 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                 ],
               ),
             );
+            break;
           case 'soft_glass':
-            return Container(
+            bgWidget = Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -485,10 +502,15 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                 ),
               ),
             );
+            break;
           case 'default':
           default:
-            return Container(color: BolroomTheme.bg);
+            bgWidget = Container(color: BolroomTheme.bg);
         }
+        return Transform.translate(
+          offset: Offset(0, -_parallaxOffset),
+          child: bgWidget,
+        );
       },
     );
   }

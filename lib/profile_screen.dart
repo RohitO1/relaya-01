@@ -24,6 +24,7 @@ import 'edit_profile_screen.dart';
 import 'package:share_plus/share_plus.dart';
 import 'admin_dashboard_screen.dart';
 import 'widgets/skeleton_loaders.dart';
+import 'widgets/tiltable_hero_section.dart';
 import 'hosted_joined_screens.dart';
 import 'services/doodle_theme.dart';
 import 'communities_screen.dart';
@@ -338,7 +339,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     physics: const BouncingScrollPhysics(),
                     child: Column(
                       children: [
-                        _buildHeroSection(name, username, bio, location, avatarUrl, isMe),
+                        TiltableHeroSection(child: _buildHeroSection(name, username, bio, location, avatarUrl, isMe)),
                         _buildPostsTabs(),
                         _buildPostsContent(canViewContent, isMe),
                         const SizedBox(height: 100),

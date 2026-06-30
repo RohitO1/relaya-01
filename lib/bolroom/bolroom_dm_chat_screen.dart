@@ -10,8 +10,10 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:ui';
 import '../chatroom_live_screen.dart';
 import '../services/doodle_theme.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../services/notification_service.dart';
 
@@ -539,7 +541,7 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
           if (isMe) const SizedBox(width: 28), // Spacer to balance the avatar on the left
         ],
       ),
-    );
+    ).animate().fadeIn(duration: 300.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0, duration: 300.ms, curve: Curves.easeOut);
   }
 
   String _formatTime(dynamic ts) {
@@ -720,18 +722,23 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 20),
-          decoration: doodle
-            ? BoxDecoration(
-                color: DoodleColors.paper,
-                border: Border(top: BorderSide(color: DoodleColors.brown.withValues(alpha: 0.1), width: 1)),
-              )
-            : const BoxDecoration(
-                color: Color(0xFF0E0B16), // Darker nav background
-                border: Border(top: BorderSide(color: borderColor, width: 1)),
-              ),
-          child: _isAudioPreview ? _buildAudioPreviewBar(doodle) : _buildNormalInputBar(doodle),
+        ClipRRect(
+          child: BackdropFilter(
+            filter: doodle ? ImageFilter.blur(sigmaX: 0, sigmaY: 0) : ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 20),
+              decoration: doodle
+                ? BoxDecoration(
+                    color: DoodleColors.paper,
+                    border: Border(top: BorderSide(color: DoodleColors.brown.withValues(alpha: 0.1), width: 1)),
+                  )
+                : BoxDecoration(
+                    color: const Color(0xFF0E0B16).withValues(alpha: 0.7), // Semi-transparent
+                    border: const Border(top: BorderSide(color: borderColor, width: 1)),
+                  ),
+              child: _isAudioPreview ? _buildAudioPreviewBar(doodle) : _buildNormalInputBar(doodle),
+            ),
+          ),
         ),
         if (_showEmojiPicker)
           Container(

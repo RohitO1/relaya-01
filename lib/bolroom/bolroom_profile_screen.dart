@@ -22,6 +22,7 @@ import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:meetra_app/services/voice_mask_service.dart';
+import 'package:meetra_app/widgets/tiltable_hero_section.dart';
 
 class BolroomProfileScreen extends StatefulWidget {
   final String? targetUserId;
@@ -370,11 +371,17 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
             children: [
               _buildTopBar(doodle),
               const SizedBox(height: 10),
-              _buildProfileAvatar(doodle),
-              const SizedBox(height: 16),
-              _buildProfileInfo(doodle),
-              const SizedBox(height: 24),
-              _buildStatsRow(doodle),
+              TiltableHeroSection(
+                child: Column(
+                  children: [
+                    _buildProfileAvatar(doodle),
+                    const SizedBox(height: 16),
+                    _buildProfileInfo(doodle),
+                    const SizedBox(height: 24),
+                    _buildStatsRow(doodle),
+                  ],
+                ),
+              ),
               const SizedBox(height: 20),
               if (_isMe) _buildEditProfileButton(doodle) else _buildPublicActionButtons(),
               const SizedBox(height: 30),
@@ -957,14 +964,16 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
       return;
     }
     if (_isFollowLoading) return;
-    setState(() => _isFollowLoading = true);
+    setState(() {
+      _isFollowLoading = true;
+      _isFollowing = !_isFollowing;
+      _followerCount += _isFollowing ? 1 : -1;
+    });
     try {
-      if (_isFollowing) {
+      if (!_isFollowing) { // Previously it was following, now we deleted it
         await _sb.from('bolroom_follows').delete().eq('follower_id', _myId).eq('following_id', _targetId);
-        if (mounted) setState(() { _isFollowing = false; _followerCount--; });
       } else {
         await _sb.from('bolroom_follows').insert({'follower_id': _myId, 'following_id': _targetId});
-        if (mounted) setState(() { _isFollowing = true; _followerCount++; });
         
         // Notify both users
         try {
@@ -991,7 +1000,13 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
       }
     } catch (e) {
       debugPrint('Follow error: $e');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+      if (mounted) {
+        setState(() {
+          _isFollowing = !_isFollowing;
+          _followerCount += _isFollowing ? 1 : -1;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+      }
     } finally {
       if (mounted) setState(() => _isFollowLoading = false);
     }
