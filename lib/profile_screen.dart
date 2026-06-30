@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+// removed invalid import
+import 'rush_in_consumer_detail_view.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -88,6 +90,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   int _followersCount = 0;
   int _followingCount = 0;
   bool _isFollowing = false;
+  int _totalRushInsCount = 0;
   late AnimationController _orbController;
   final String _myUid = Supabase.instance.client.auth.currentUser?.id ?? '';
   int _activeTabIndex = 0; // 0=Grid, 1=Reels, 2=Experiences, 3=Tagged
@@ -194,6 +197,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           _profile = pRes;
           _followersCount = followersReq.length;
           _followingCount = followingReq.length;
+          _totalRushInsCount = rushInsRes.length + joinedRushInsRes.length;
           _userPosts = List<Map<String, dynamic>>.from(postsRes);
           _isFollowing = isFollowing;
           _isPublic = _profile?['is_public'] ?? true;
@@ -685,9 +689,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   children: [
                     _buildNewStatColumn(
                       icon: Icons.flash_on,
-                      val: '24',
+                      val: '$_totalRushInsCount',
                       label: 'RUSH-INS',
                       iconColor: const Color(0xFFFF6B00),
+                      onTap: _showAllRushInsSheet,
                     ),
                     _buildNewStatColumn(
                       icon: Icons.auto_awesome,
@@ -925,6 +930,271 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     },
                   ),
                 ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAllRushInsSheet() {
+    final doodle = isDoodleMode(context);
+    final uid = widget.userId ?? _myUid;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.75),
+          decoration: doodle
+              ? DoodleDecorations.card(color: DoodleColors.cream, borderColor: DoodleColors.brown)
+              : const BoxDecoration(
+                  color: Color(0xFF0F0F0F),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  border: Border(top: BorderSide(color: Colors.white12)),
+                ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: doodle ? DoodleColors.brown.withValues(alpha: 0.3) : Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Rush-In History',
+                    style: doodle ? DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.inter(
+                      fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$_totalRushInsCount',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFFFF6B00)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'All rush-ins hosted and joined',
+                style: doodle ? DoodleFonts.body(fontSize: 12, color: DoodleColors.brown.withValues(alpha: 0.7)) : GoogleFonts.inter(
+                  fontSize: 12, color: Colors.white54,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: () async {
+                    // Fetch Hosted Rush-ins
+                    final hostedRes = await Supabase.instance.client
+                        .from('activities')
+                        .select('*, profiles!activities_user_id_fkey(name, avatar_url)')
+                        .eq('user_id', uid)
+                        .eq('is_rush_in', true);
+                    
+                    // Fetch Joined Rush-ins
+                    final reqsRes = await Supabase.instance.client
+                        .from('requests')
+                        .select('target_id')
+                        .eq('sender_id', uid)
+                        .eq('status', 'approved')
+                        .inFilter('target_type', ['rush_in', 'activity']);
+                        
+                    final targetIds = (reqsRes as List).map((r) => r['target_id'].toString()).toList();
+                    List<dynamic> joinedRes = [];
+                    if (targetIds.isNotEmpty) {
+                      final acts = await Supabase.instance.client
+                          .from('activities')
+                          .select('*, profiles!activities_user_id_fkey(name, avatar_url)')
+                          .inFilter('id', targetIds)
+                          .eq('is_rush_in', true);
+                      joinedRes = acts as List;
+                    }
+
+                    List<Map<String, dynamic>> combined = [];
+                    for (final r in (hostedRes as List)) {
+                      final m = Map<String, dynamic>.from(r);
+                      m['relation'] = 'hosted';
+                      combined.add(m);
+                    }
+                    for (final r in joinedRes) {
+                      final m = Map<String, dynamic>.from(r);
+                      // prevent duplicates if they somehow requested their own
+                      if (!combined.any((x) => x['id'] == m['id'])) {
+                        m['relation'] = 'joined';
+                        combined.add(m);
+                      }
+                    }
+                    
+                    combined.sort((a, b) {
+                      final dtA = DateTime.tryParse(a['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+                      final dtB = DateTime.tryParse(b['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+                      return dtB.compareTo(dtA);
+                    });
+                    
+                    return combined;
+                  }(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return Center(child: CircularProgressIndicator(color: const Color(0xFFFF6B00)));
+                    }
+                    final list = snapshot.data ?? [];
+                    if (list.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 40),
+                        child: Center(
+                          child: Column(
+                            children: [
+                              Icon(Icons.flash_off, size: 48, color: doodle ? DoodleColors.brown.withValues(alpha: 0.4) : Colors.white24),
+                              const SizedBox(height: 12),
+                              Text(
+                                'No rush-ins found',
+                                style: doodle ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown) : GoogleFonts.inter(fontSize: 14, color: Colors.white60),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    
+                    final now = DateTime.now().toUtc();
+                    return ListView.separated(
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: list.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (ctx, i) {
+                        final act = list[i];
+                        final isHosted = act['relation'] == 'hosted';
+                        
+                        // Status logic
+                        final actStr = act['activity_time'] as String? ?? act['created_at'] as String?;
+                        final expStr = act['expires_at'] as String?;
+                        final start = actStr != null ? DateTime.tryParse(actStr) : null;
+                        final end = expStr != null ? DateTime.tryParse(expStr) : start?.add(Duration(hours: act['duration_hours'] as int? ?? 6));
+                        
+                        String statusLabel = 'UNKNOWN';
+                        Color sColor = Colors.white38;
+                        if (start != null && end != null) {
+                          if (now.isBefore(start)) {
+                            statusLabel = 'UPCOMING';
+                            sColor = const Color(0xFF22C55E); // green
+                          } else if (now.isBefore(end)) {
+                            statusLabel = 'LIVE NOW';
+                            sColor = const Color(0xFFEF4444); // red
+                          } else {
+                            statusLabel = 'EXPIRED';
+                            sColor = Colors.white38;
+                          }
+                        }
+
+                        final title = act['title']?.toString() ?? 'Untitled';
+                        final loc = act['location_name']?.toString() ?? '';
+                        final hostMap = act['profiles'] as Map<String, dynamic>?;
+                        final hostName = hostMap?['name']?.toString() ?? 'Host';
+                        
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            Future.delayed(const Duration(milliseconds: 150), () {
+                              if (mounted) {
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => RushInConsumerDetailView(activity: act, onInteraction: () {})));
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: doodle
+                                ? DoodleDecorations.card(color: DoodleColors.paper, borderColor: DoodleColors.cardBorder, radius: 14)
+                                : BoxDecoration(
+                                    color: const Color(0xFF16161D),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                                  ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: (isHosted ? const Color(0xFFFF6B00) : const Color(0xFF4E8BFF)).withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        isHosted ? 'HOSTED' : 'JOINED',
+                                        style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: isHosted ? const Color(0xFFFF6B00) : const Color(0xFF4E8BFF)),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: sColor.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          if (statusLabel == 'LIVE NOW') ...[
+                                            Container(width: 6, height: 6, decoration: BoxDecoration(color: sColor, shape: BoxShape.circle)),
+                                            const SizedBox(width: 4),
+                                          ],
+                                          Text(statusLabel, style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: sColor)),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  title,
+                                  style: doodle ? DoodleFonts.heading(fontSize: 16, color: DoodleColors.brown) : GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                                ),
+                                const SizedBox(height: 4),
+                                if (loc.isNotEmpty)
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.location_on, size: 12, color: Colors.white38),
+                                      const SizedBox(width: 4),
+                                      Text(loc, style: GoogleFonts.inter(fontSize: 12, color: Colors.white54)),
+                                    ],
+                                  ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.person, size: 12, color: Colors.white38),
+                                    const SizedBox(width: 4),
+                                    Text('by $hostName', style: GoogleFonts.inter(fontSize: 12, color: Colors.white54)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         );

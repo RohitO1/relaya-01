@@ -26,7 +26,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   bool _loading = true;
 
   int _selectedFilter = 0;
-  final List<String> _filters = ["All", "Nearby", "Trending", "Music", "Gaming", "Talk", "Study"];
+  final List<String> _filters = ["Global", "Nearby", "Trending", "Music", "Gaming", "Talk", "Study"];
   String _searchQuery = '';
   final TextEditingController _searchCtrl = TextEditingController();
   String _myLocation = 'Fetching location...';
@@ -64,6 +64,10 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
 
   void _onLocationChanged() {
     if (mounted) {
+      final loc = locationService.activeDistrict;
+      setState(() {
+        _myLocation = (loc.isNotEmpty && loc != 'Unknown') ? loc : 'Global';
+      });
       _loadRooms();
     }
   }
@@ -268,15 +272,18 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
     }
 
     // Tag / Region filter
+    // Index 0 = Global → show ALL rooms (no filter)
+    // Index 1 = Nearby → filter by activeDistrict
     if (_selectedFilter == 1) {
       final activeLoc = LocationService().activeDistrict.toLowerCase().trim();
-      if (activeLoc.isNotEmpty && activeLoc != 'unknown') {
+      if (activeLoc.isNotEmpty && activeLoc != 'unknown' && activeLoc != 'global') {
         filteredRooms = filteredRooms.where((r) {
           final topic = (r['topic'] ?? '').toString().toLowerCase();
           final tags = (r['tags'] ?? '').toString().toLowerCase();
           return topic.contains(activeLoc) || tags.contains(activeLoc);
         }).toList();
       }
+      // If activeLoc is empty/unknown, Nearby shows all (graceful fallback)
     } else if (_selectedFilter > 1) {
       final tag = _filters[_selectedFilter].toLowerCase();
       filteredRooms = filteredRooms.where((r) {
@@ -385,12 +392,18 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                             ),
                         child: Row(
                           children: [
+                            if (index == 0) ...[
+                              Icon(Icons.public, size: 14, color: doodle ? DoodleColors.blue : (isSelected ? cyanBright : textMuted)),
+                              const SizedBox(width: 6),
+                            ],
                             if (index == 1) ...[
                               Icon(Icons.location_on, size: 14, color: doodle ? DoodleColors.blue : (isSelected ? cyanBright : textMuted)),
                               const SizedBox(width: 6),
                             ],
                             Text(
-                              _filters[index],
+                              index == 1 && _myLocation != 'Global' && _myLocation != 'Fetching location...' 
+                                  ? _myLocation 
+                                  : _filters[index],
                               style: doodle
                                 ? DoodleFonts.body(
                                     color: DoodleColors.brown,
@@ -497,6 +510,22 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
           ),
           Row(
             children: [
+              GestureDetector(
+                onTap: () => _showLocationFilterSheet(context),
+                child: Container(
+                  width: 44, height: 44,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: doodle
+                    ? DoodleDecorations.card()
+                    : BoxDecoration(
+                        color: cardColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                        boxShadow: [BoxShadow(color: cyanBright.withValues(alpha: 0.2), blurRadius: 8)],
+                      ),
+                  child: Icon(Icons.location_on, color: doodle ? DoodleColors.blue : cyanBright, size: 20),
+                ),
+              ),
               GestureDetector(
                 onTap: onAction,
                 child: Container(
@@ -1036,6 +1065,170 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
           ),
         );
       }),
+    );
+  }
+
+
+  void _showLocationFilterSheet(BuildContext context) {
+    final doodle = isDoodleMode(context);
+    String query = '';
+    bool isSearching = false;
+    List<Map<String, dynamic>> searchResults = [];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          return Container(
+            height: MediaQuery.of(ctx).size.height * 0.75,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("Location Filter", style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 24) : const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                    GestureDetector(
+                      onTap: () {
+                        locationService.setLocation('Global', district: 'Global', state: '');
+                        setState(() {
+                          _myLocation = 'Global';
+                          _selectedFilter = 0; // Switch to Global filter
+                        });
+                        Navigator.pop(ctx);
+                        _loadRooms();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: doodle ? DoodleColors.blue.withValues(alpha: 0.15) : cyanBright.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: doodle ? DoodleColors.blue.withValues(alpha: 0.4) : cyanBright.withValues(alpha: 0.4)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.public, size: 14, color: doodle ? DoodleColors.blue : cyanBright),
+                            const SizedBox(width: 4),
+                            Text("Global", style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: cyanBright, fontWeight: FontWeight.bold, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    )
+                  ],
+                ),
+                const SizedBox(height: 16),
+                
+                // Search bar
+                TextField(
+                  style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14) : const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: doodle
+                    ? InputDecoration(
+                        hintText: 'Search city or region...',
+                        hintStyle: DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5), fontSize: 13),
+                        filled: true, fillColor: DoodleColors.cream,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: DoodleColors.sketchLine)),
+                        prefixIcon: Icon(Icons.search, color: DoodleColors.brown.withValues(alpha: 0.5), size: 20),
+                      )
+                    : InputDecoration(
+                        hintText: 'Search city or region...',
+                        hintStyle: const TextStyle(color: textMuted, fontSize: 13),
+                        filled: true, fillColor: bgColor,
+                        prefixIcon: const Icon(Icons.search, color: textMuted, size: 20),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      ),
+                  onChanged: (val) async {
+                    query = val;
+                    if (query.trim().length >= 3) {
+                      setSheetState(() => isSearching = true);
+                      final res = await locationService.searchLocations(query);
+                      if (query == val && mounted) {
+                        setSheetState(() {
+                          searchResults = res;
+                          isSearching = false;
+                        });
+                      }
+                    } else {
+                      setSheetState(() {
+                        searchResults = [];
+                        isSearching = false;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Auto Fetch
+                GestureDetector(
+                  onTap: () async {
+                    setSheetState(() => isSearching = true);
+                    await locationService.fetchLiveLocation(forceReverseGeocode: true);
+                    if (mounted) {
+                      final loc = locationService.activeDistrict;
+                      setState(() {
+                        _myLocation = (loc.isNotEmpty && loc != 'Unknown') ? loc : 'Global';
+                        _selectedFilter = 1; // Auto-switch to Nearby filter
+                      });
+                      Navigator.pop(ctx);
+                      _loadRooms();
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: doodle ? DoodleColors.blue.withValues(alpha: 0.1) : cyanBright.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: doodle ? DoodleColors.blue.withValues(alpha: 0.3) : cyanBright.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.my_location, color: doodle ? DoodleColors.blue : cyanBright, size: 18),
+                        const SizedBox(width: 8),
+                        Text("Use My Current Location", style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: cyanBright, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Expanded(
+                  child: isSearching
+                    ? Center(child: CircularProgressIndicator(color: doodle ? DoodleColors.brown : cyanBright))
+                    : ListView(
+                        children: (query.trim().length >= 3 ? searchResults : LocationService.popularCities).map((loc) {
+                          final name = loc['name']?.toString() ?? '';
+                          final dist = loc['district']?.toString();
+                          final st = loc['state']?.toString();
+                          final lat = (loc['lat'] as num?)?.toDouble();
+                          final lng = (loc['lng'] as num?)?.toDouble();
+                          
+                          return ListTile(
+                            leading: Icon(Icons.location_city, color: doodle ? DoodleColors.brown : textMuted),
+                            title: Text(name, style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16) : const TextStyle(color: Colors.white, fontSize: 15)),
+                            subtitle: (st != null && st.isNotEmpty) ? Text(st, style: TextStyle(color: doodle ? DoodleColors.brown.withValues(alpha: 0.6) : textMuted, fontSize: 12)) : null,
+                            onTap: () {
+                              locationService.setLocation(name, lat: lat, lng: lng, district: dist, state: st);
+                              setState(() {
+                                _myLocation = dist ?? name;
+                                _selectedFilter = 1; // Auto-switch to Nearby filter
+                              });
+                              Navigator.pop(ctx);
+                              _loadRooms();
+                            },
+                          );
+                        }).toList(),
+                      ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }

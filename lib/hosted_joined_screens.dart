@@ -1,5 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
 import 'dart:ui';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -110,12 +111,30 @@ class _HCSState extends State<_HostedCategoryScreen> {
   Future<void> _fetchCreations() async {
     try {
       final all = await _sb.from('activities')
-          .select('id, title, description, location_name, activity_time, category, created_at')
+          .select('id, title, description, location_name, activity_time, category, created_at, is_rush_in, expires_at, duration_hours, participant_limit')
           .eq('user_id', _uid)
           .order('created_at', ascending: false);
+      final now = DateTime.now().toUtc();
       final filtered = (all as List).where((a) {
         final isRushIn = a['is_rush_in'] == true || (a['description']?.toString().contains('[is_rush_in:true]') ?? false);
-        if (widget.isRushIn) return isRushIn;
+        if (widget.isRushIn) {
+          if (!isRushIn) return false;
+          // Hide expired rush-ins from the hosted list
+          final expiresStr = a['expires_at'] as String?;
+          if (expiresStr != null) {
+            final expires = DateTime.tryParse(expiresStr);
+            if (expires != null && expires.isBefore(now)) return false;
+          } else {
+            // No expires_at — fallback: activity_time + duration_hours
+            final actStr = a['activity_time'] as String?;
+            final durHours = a['duration_hours'] as int? ?? 6;
+            if (actStr != null) {
+              final actTime = DateTime.tryParse(actStr);
+              if (actTime != null && actTime.add(Duration(hours: durHours)).isBefore(now)) return false;
+            }
+          }
+          return true;
+        }
         if (widget.isEvent) return !isRushIn && a['category'] == 'event';
         return !isRushIn && a['category'] != 'event';
       }).map<Map<String, dynamic>>((a) => Map<String, dynamic>.from(a)).toList();
@@ -197,11 +216,72 @@ class _CreationCard extends StatefulWidget {
 class _CCState extends State<_CreationCard> {
   int _pendingCount = 0;
   int _approvedCount = 0;
+  Timer? _timer;
+  String _countdownText = '';
+  bool _isLive = false;
 
   @override
   void initState() {
     super.initState();
     _loadCounts();
+    if (widget.creation['is_rush_in'] == true || widget.title == 'Rush-In') {
+      _startTimer();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _updateCountdown();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateCountdown());
+  }
+
+  void _updateCountdown() {
+    final actStr = widget.creation['activity_time'] as String? ?? widget.creation['created_at'] as String?;
+    final expStr = widget.creation['expires_at'] as String?;
+    if (actStr == null) return;
+
+    final start = DateTime.tryParse(actStr)?.toLocal();
+    final end = expStr != null ? DateTime.tryParse(expStr)?.toLocal() : start?.add(Duration(hours: widget.creation['duration_hours'] as int? ?? 6));
+    
+    if (start == null || end == null) return;
+    final now = DateTime.now();
+
+    if (now.isBefore(start)) {
+      final diff = start.difference(now);
+      if (mounted) {
+        setState(() {
+          _isLive = false;
+          _countdownText = 'Starts in ${_formatDuration(diff)}';
+        });
+      }
+    } else if (now.isBefore(end)) {
+      final diff = end.difference(now);
+      if (mounted) {
+        setState(() {
+          _isLive = true;
+          _countdownText = 'LIVE · Ends in ${_formatDuration(diff)}';
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _isLive = false;
+          _countdownText = 'Expired';
+        });
+      }
+    }
+  }
+
+  String _formatDuration(Duration d) {
+    if (d.inDays > 0) return '${d.inDays}d ${d.inHours.remainder(24)}h';
+    if (d.inHours > 0) return '${d.inHours}h ${d.inMinutes.remainder(60)}m';
+    if (d.inMinutes > 0) return '${d.inMinutes}m ${d.inSeconds.remainder(60)}s';
+    return '${d.inSeconds}s';
   }
 
   Future<void> _loadCounts() async {
@@ -282,6 +362,31 @@ class _CCState extends State<_CreationCard> {
                       style: GoogleFonts.inter(color: Colors.white30, fontSize: 11, fontStyle: FontStyle.italic),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
               ])),
+              // Countdown pill
+              if (_countdownText.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _isLive ? _red.withValues(alpha: 0.15) : _green.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isLive ? _red.withValues(alpha: 0.4) : _green.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (_isLive) ...[
+                      Container(
+                        width: 6, height: 6,
+                        decoration: const BoxDecoration(color: _red, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 4),
+                    ] else ...[
+                      const Icon(Icons.hourglass_empty, color: _green, size: 10),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(_countdownText, style: GoogleFonts.inter(color: _isLive ? _red : _green, fontSize: 9, fontWeight: FontWeight.w700)),
+                  ]),
+                ),
+              ],
               // Pending badge
               if (hasPending) ...[
                 const SizedBox(width: 8),

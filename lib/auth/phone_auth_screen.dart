@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/doodle_theme.dart';
-import 'otp_verification_screen.dart';
+// import 'otp_verification_screen.dart'; // OTP verification bypassed for dev
 import '../auth_screen.dart'; // Just for the background painter if needed
 
 class PhoneAuthScreen extends StatefulWidget {
@@ -67,18 +67,35 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> with TickerProviderSt
     });
 
     final fullNumber = '$_selectedCountryCode$phoneNum';
+    // Dev bypass: skip OTP verification, sign in/up with email+password derived from phone
+    final fakeEmail = '${fullNumber.replaceAll('+', '')}@meetra.dev';
+    const fakePassword = 'meetra_dev_2024!';
 
     try {
-      await Supabase.instance.client.auth.signInWithOtp(
-        phone: fullNumber,
+      // Try signing in first
+      await Supabase.instance.client.auth.signInWithPassword(
+        email: fakeEmail,
+        password: fakePassword,
       );
-      if (mounted) {
-        Navigator.push(context, MaterialPageRoute(
-          builder: (_) => OtpVerificationScreen(phoneNumber: fullNumber),
-        ));
+      // Auth state change in main.dart will auto-redirect to dashboard
+    } on AuthException catch (signInError) {
+      // If user doesn't exist, sign up
+      if (signInError.message.contains('Invalid login') || signInError.message.contains('invalid_credentials') || signInError.statusCode == '400') {
+        try {
+          await Supabase.instance.client.auth.signUp(
+            email: fakeEmail,
+            password: fakePassword,
+            data: {'phone': fullNumber},
+          );
+          // Auth state change in main.dart will auto-redirect to dashboard
+        } on AuthException catch (e) {
+          _showError(e.message);
+        } catch (e) {
+          _showError('Sign up failed: $e');
+        }
+      } else {
+        _showError(signInError.message);
       }
-    } on AuthException catch (e) {
-      _showError(e.message);
     } catch (e) {
       _showError('Something went wrong. Error: $e');
     } finally {
@@ -228,7 +245,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> with TickerProviderSt
                               : const Icon(Icons.message, color: Colors.black, size: 20),
                           const SizedBox(width: 10),
                           Text(
-                            _isLoading ? 'Sending code...' : 'Get OTP',
+                            _isLoading ? 'Signing in...' : 'Continue',
                             style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ],
@@ -238,7 +255,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> with TickerProviderSt
 
                   const SizedBox(height: 30),
                   Text(
-                    'We will send you a one-time password to this mobile number',
+                    'Enter your phone number to get started',
                     style: GoogleFonts.inter(fontSize: 12, color: hintColor),
                     textAlign: TextAlign.center,
                   ),

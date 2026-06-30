@@ -74,6 +74,166 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   final String _selectedCategory = 'Music';
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
+
+  // ── AI SUGGESTIONS ──
+  final List<Map<String, dynamic>> _defaultAiSuggestions = [
+    {
+      'title': 'Midnight Coffee Run',
+      'tags': ['Coffee', 'Late Night', 'Chill'],
+      'desc': 'Anyone up for a quick coffee run to the nearest 24/7 cafe? Need a caffeine boost.',
+    },
+    {
+      'title': 'Weekend Turf Cricket',
+      'tags': ['Sports', 'Cricket', 'Active'],
+      'desc': 'Looking for a few more players for a 6-a-side box cricket match this weekend.',
+    },
+    {
+      'title': 'Rooftop Pizza Party',
+      'tags': ['Food', 'Party', 'Music'],
+      'desc': 'Ordering some pizzas and playing music on the rooftop. Everyone is welcome to join.',
+    },
+    {
+      'title': 'Early Morning Cycling',
+      'tags': ['Fitness', 'Morning', 'Explore'],
+      'desc': 'Planning a 15km cycle ride around the city at dawn. Great way to start the day!',
+    },
+    {
+      'title': 'Casual Board Games',
+      'tags': ['Games', 'Indoor', 'Fun'],
+      'desc': 'Hosting a casual board game evening. I have Monopoly and Catan, bring your favorites!',
+    },
+  ];
+
+  List<Map<String, dynamic>> _filteredAiSuggestions = [];
+
+
+  static const _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
+
+  void _filterAiSuggestions(String query) {
+    if (_aiDebounce?.isActive ?? false) _aiDebounce!.cancel();
+
+    if (query.trim().isEmpty) {
+      setState(() {
+        _filteredAiSuggestions = List.from(_defaultAiSuggestions);
+        _isGeneratingSuggestions = false;
+      });
+      return;
+    }
+
+    // Immediately clear stale suggestions & show loading
+    setState(() {
+      _filteredAiSuggestions = [];
+      _isGeneratingSuggestions = true;
+    });
+
+    _aiDebounce = Timer(const Duration(milliseconds: 400), () => _callGeminiApi(query));
+  }
+
+  Future<void> _callGeminiApi(String query, {int attempt = 1}) async {
+    if (!mounted) return;
+    if (_geminiApiKey.isEmpty) {
+      debugPrint('[AI] Gemini API key not configured via --dart-define=GEMINI_API_KEY=...');
+      if (mounted) setState(() => _isGeneratingSuggestions = false);
+      return;
+    }
+    const maxAttempts = 3;
+    debugPrint('[AI] Attempt $attempt for query: "$query"');
+
+    try {
+      final url = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_geminiApiKey',
+      );
+
+      final requestBody = jsonEncode({
+        'contents': [
+          {
+            'parts': [
+              {
+                'text': 'Generate 5 fun social activity ideas for the topic "$query". '
+                    'Return a JSON object: {"suggestions":[{"title":"...","tags":["tag1","tag2"],"desc":"..."}]}'
+              }
+            ]
+          }
+        ],
+        'generationConfig': {
+          'responseMimeType': 'application/json',
+          'temperature': 0.9,
+        },
+      });
+
+      debugPrint('[AI] Sending request to Gemini...');
+      final response = await http.post(url, headers: {'Content-Type': 'application/json'}, body: requestBody);
+      debugPrint('[AI] Response status: ${response.statusCode}');
+
+      if (!mounted) return;
+
+      if (response.statusCode == 429 && attempt < maxAttempts) {
+        // Rate limited — wait and retry
+        final waitSec = attempt * 2;
+        debugPrint('[AI] Rate limited (429). Retrying in ${waitSec}s...');
+        await Future.delayed(Duration(seconds: waitSec));
+        if (mounted) await _callGeminiApi(query, attempt: attempt + 1);
+        return;
+      }
+
+      if (response.statusCode == 200) {
+        debugPrint('[AI] Success! Parsing response...');
+        final body = jsonDecode(response.body);
+
+        String? text;
+        try {
+          text = body['candidates'][0]['content']['parts'][0]['text'] as String?;
+        } catch (e) {
+          debugPrint('[AI] Failed to extract text from response: $e');
+          debugPrint('[AI] Full response body: ${response.body.substring(0, (response.body.length > 500 ? 500 : response.body.length))}');
+        }
+
+        if (text != null && text.isNotEmpty) {
+          debugPrint('[AI] Raw text (first 300 chars): ${text.substring(0, (text.length > 300 ? 300 : text.length))}');
+
+          // Strip markdown backticks if present
+          String cleaned = text.trim();
+          if (cleaned.startsWith('```')) {
+            final firstNl = cleaned.indexOf('\n');
+            final lastBt = cleaned.lastIndexOf('```');
+            if (firstNl != -1 && lastBt > firstNl) {
+              cleaned = cleaned.substring(firstNl + 1, lastBt).trim();
+            }
+          }
+
+          final parsed = jsonDecode(cleaned);
+          if (parsed is Map && parsed.containsKey('suggestions')) {
+            final list = parsed['suggestions'] as List;
+            debugPrint('[AI] Parsed ${list.length} suggestions');
+            if (mounted) {
+              setState(() {
+                _filteredAiSuggestions = list.map<Map<String, dynamic>>((e) {
+                  return {
+                    'title': e['title']?.toString() ?? '',
+                    'tags': List<String>.from((e['tags'] as List?) ?? []),
+                    'desc': e['desc']?.toString() ?? '',
+                  };
+                }).where((s) => (s['title'] as String).isNotEmpty).toList();
+                _isGeneratingSuggestions = false;
+              });
+              return;
+            }
+          } else {
+            debugPrint('[AI] Response JSON does not contain "suggestions" key. Keys: ${parsed is Map ? parsed.keys.toList() : "not a map"}');
+          }
+        }
+      } else {
+        debugPrint('[AI] API error ${response.statusCode}: ${response.body.substring(0, (response.body.length > 500 ? 500 : response.body.length))}');
+      }
+    } catch (e, stack) {
+      debugPrint('[AI] Exception: $e');
+      debugPrint('[AI] Stack: $stack');
+    }
+
+    if (mounted) {
+      setState(() => _isGeneratingSuggestions = false);
+    }
+  }
   
   // -- SELLER PACKAGE DATA --
   bool _isSeller = false;
@@ -89,6 +249,8 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   List<dynamic> _searchResults = [];
   Timer? _debounce;
   Timer? _geocodeDebounce;
+  Timer? _aiDebounce;
+  bool _isGeneratingSuggestions = false;
   bool _isSearching = false;
   bool _showDropdown = false;
 
@@ -167,6 +329,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   void initState() {
     super.initState();
     _isRushIn = true;
+    _filteredAiSuggestions = List.from(_defaultAiSuggestions);
     _pinLocation = widget.initialLocation;
     _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
@@ -364,7 +527,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   bool get _canProceed {
     if (_isRushIn) {
       switch (_currentStep) {
-        case 0: return _titleCtrl.text.trim().isNotEmpty && _hookCtrl.text.trim().isNotEmpty;
+        case 0: return _titleCtrl.text.trim().isNotEmpty && _noteCtrl.text.trim().isNotEmpty;
         case 1: return _selectedVibes.isNotEmpty;
         case 2: return true; // Rules step always valid (has defaults)
         case 3: return _locationNameCtrl.text.trim().isNotEmpty;
@@ -577,9 +740,15 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
       backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF050508),
       body: Stack(
         children: [
+          // ── MAP BACKGROUND (FULL SCREEN) ──
+          if (_currentStep == 3)
+            Positioned.fill(
+              child: _locationMap(Colors.blue),
+            ),
+
           // ── AMBIENT ORBS ──
-          Positioned(top: -120, right: -80, child: _ambientOrb(accentSecondary, 350)),
-          Positioned(bottom: -80, left: -100, child: _ambientOrb(accent, 300)),
+          if (_currentStep != 3) Positioned(top: -120, right: -80, child: _ambientOrb(accentSecondary, 350)),
+          if (_currentStep != 3) Positioned(bottom: -80, left: -100, child: _ambientOrb(accent, 300)),
 
           // ── MAIN CONTENT ──
           SafeArea(
@@ -588,28 +757,37 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                 // ── TOP BAR ──
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: _currentStep == 0 ? () => Navigator.pop(context) : _prevStep,
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(14)),
-                          child: Icon(_currentStep == 0 ? Icons.close : Icons.arrow_back_ios_new, color: Colors.white, size: 18),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(_isRushIn ? 'CREATE RUSH-IN' : 'HOST ACTIVITY', style: TextStyle(color: accent, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 2)),
-                            const SizedBox(height: 4),
-                            Text('STEP ${_currentStep + 1} OF ${_stepTitles.length} • ${_stepTitles[_currentStep]}', style: const TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                      ),
-                    ],
+                  child: Builder(
+                    builder: (context) {
+                      final bool isMapLight = _currentStep == 3 ? _isLightMode : isDoodleMode(context);
+                      final Color topIconColor = isMapLight ? DoodleColors.textPrimary : Colors.white;
+                      final Color topSubColor = isMapLight ? DoodleColors.textPrimary.withValues(alpha: 0.6) : Colors.white38;
+                      final Color topIconBg = isMapLight ? Colors.black.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.05);
+                      
+                      return Row(
+                        children: [
+                          GestureDetector(
+                            onTap: _currentStep == 0 ? () => Navigator.pop(context) : _prevStep,
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(color: topIconBg, borderRadius: BorderRadius.circular(14)),
+                              child: Icon(_currentStep == 0 ? Icons.close : Icons.arrow_back_ios_new, color: topIconColor, size: 18),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(_isRushIn ? 'CREATE RUSH-IN' : 'HOST ACTIVITY', style: TextStyle(color: accent, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 2)),
+                                const SizedBox(height: 4),
+                                Text('STEP ${_currentStep + 1} OF ${_stepTitles.length} • ${_stepTitles[_currentStep]}', style: TextStyle(color: topSubColor, fontSize: 10, letterSpacing: 1, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    }
                   ),
                 ),
 
@@ -637,10 +815,21 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
                 // ── PAGE VIEW ──
                 Expanded(
-                  child: PageView(
-                    controller: _pageCtrl,
-                    physics: const NeverScrollableScrollPhysics(),
-                    children: [_rushStep0Identity(accent, accentSecondary), _rushStep1Vibes(accent), _rushStep2Rules(accent, accentSecondary), _rushStep3Location(accent), _rushStep4Launch(accent, accentSecondary)],
+                  child: Stack(
+                    children: [
+                      IgnorePointer(
+                        ignoring: _currentStep == 3,
+                        child: PageView(
+                          controller: _pageCtrl,
+                          physics: const NeverScrollableScrollPhysics(),
+                          children: [_rushStep0Identity(accent, accentSecondary), _rushStep1Vibes(accent), _rushStep2Rules(accent, accentSecondary), const SizedBox(), _rushStep4Launch(accent, accentSecondary)],
+                        ),
+                      ),
+                      if (_currentStep == 3)
+                        Positioned.fill(
+                          child: _rushStep3Overlay(Colors.blue),
+                        ),
+                    ],
                   ),
                 ),
 
@@ -663,12 +852,136 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('WHAT\'S HAPPENING?', 'The headline that hooks everyone in.'),
+          _sectionHeader('WHAT\'S YOUR PLAN?', 'Search for ideas or write your own headline.'),
           const SizedBox(height: 16),
-          _neonTextField(_titleCtrl, 'E.g., Midnight Rooftop Jam', Icons.electric_bolt, accent),
-          const SizedBox(height: 32),
-
-          _neonTextField(_hookCtrl, 'Free drinks if you beat me at pool!', Icons.campaign, secondary, maxLines: 2),
+          _neonTextField(_titleCtrl, 'Search ideas... (e.g. cricket)', Icons.auto_awesome, accent, onChanged: _filterAiSuggestions),
+          
+          if (_isGeneratingSuggestions) ...[
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(accent)),
+                ),
+                const SizedBox(width: 10),
+                Text('AI is brainstorming...', style: TextStyle(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white54, fontSize: 13, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...List.generate(3, (index) => Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDoodleMode(context) ? Colors.white.withValues(alpha: 0.5) : const Color(0xFF16161A).withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: isDoodleMode(context) ? DoodleColors.sketchLine.withValues(alpha: 0.2) : Colors.white10),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(color: accent.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 150,
+                          height: 12,
+                          decoration: BoxDecoration(color: isDoodleMode(context) ? Colors.black12 : Colors.white10, borderRadius: BorderRadius.circular(6)),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Container(
+                              width: 50,
+                              height: 10,
+                              decoration: BoxDecoration(color: accent.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(5)),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              width: 40,
+                              height: 10,
+                              decoration: BoxDecoration(color: accent.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(5)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )),
+          ] else if (_filteredAiSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Icon(Icons.lightbulb_outline, color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white54, size: 16),
+                const SizedBox(width: 8),
+                Text('AI suggestions for you', style: TextStyle(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white54, fontSize: 13, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _filteredAiSuggestions.take(5).length,
+              separatorBuilder: (ctx, i) => const SizedBox(height: 12),
+              itemBuilder: (ctx, i) {
+                final sug = _filteredAiSuggestions[i];
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _titleCtrl.text = sug['title'];
+                      _noteCtrl.text = sug['desc'];
+                      _filterAiSuggestions(sug['title']);
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isDoodleMode(context) ? Colors.white : const Color(0xFF16161A),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: isDoodleMode(context) ? DoodleColors.sketchLine : Colors.white10),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                          child: Icon(Icons.auto_awesome, color: accent, size: 20),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(sug['title'], style: TextStyle(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: (sug['tags'] as List).map<Widget>((t) => Container(
+                                  margin: const EdgeInsets.only(right: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                                  child: Text(t, style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                )).toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: isDoodleMode(context) ? Colors.black26 : Colors.white24, size: 20),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
           const SizedBox(height: 32),
 
           if (_isSeller) ...[
@@ -685,42 +998,9 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
               const SizedBox(height: 32),
           ],
 
-
-          _sectionHeader('SET THE MOOD', 'Pick an emoji that represents the energy.'),
+          _sectionHeader('DESCRIPTION (REQUIRED)', 'Tell people what you want to do.'),
           const SizedBox(height: 16),
-          SizedBox(
-            height: 56,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              itemCount: _moods.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (_, i) {
-                final m = _moods[i];
-                final sel = _selectedMood == m;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedMood = m),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 56, height: 56,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: sel ? accent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.03),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: sel ? accent : Colors.white.withValues(alpha: 0.06), width: sel ? 2 : 1),
-                      boxShadow: sel ? [BoxShadow(color: accent.withValues(alpha: 0.3), blurRadius: 12)] : [],
-                    ),
-                    child: Text(m, style: TextStyle(fontSize: sel ? 28 : 22)),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          _sectionHeader('EXTRA NOTE (OPTIONAL)', 'Add details only participants will see.'),
-          const SizedBox(height: 16),
-          _neonTextField(_noteCtrl, 'Bring your own gear. Parking available.', Icons.sticky_note_2_outlined, Colors.white38, maxLines: 3),
+          _neonTextField(_noteCtrl, 'Pack a picnic, bring a frisbee, maybe some cricket gear? Park hang out.', Icons.sticky_note_2_outlined, Colors.white38, maxLines: 3),
           const SizedBox(height: 32),
           _buildBannerImageSection(accent),
         ],
@@ -913,33 +1193,89 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   // ===========================================================================
   // RUSH-IN STEP 3: DROP ZONE
   // ===========================================================================
-  Widget _rushStep3Location(Color accent) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _rushStep3Overlay(Color accent) {
+    return Stack(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _sectionHeader('THE DROP ZONE', 'Pin your exact location on the map.'),
-              Row(children: [
-                _mapStyleToggle(accent),
-                const SizedBox(width: 8),
-                _gpsButton(accent),
-              ]),
-            ],
-          ),
-        ),
-        Expanded(
+        // Top Header
+        Positioned(
+          top: 0, left: 0, right: 0,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: _locationMap(accent),
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+            child: _sectionHeader('THE DROP ZONE', 'Pin your exact location on the map.', forceLight: _isLightMode),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-          child: _neonTextField(_locationNameCtrl, 'Name this spot... (e.g. Rooftop, Gate 3)', Icons.edit_location_alt, accent),
+        
+        // Search Bar
+        Positioned(
+          top: 80, left: 16, right: 64,
+          child: _mapSearchField(accent),
+        ),
+        // Dropdown Overlay
+        if (_showDropdown)
+          Positioned(
+            top: 136, left: 16, right: 64,
+            child: _mapSearchResults(accent),
+          ),
+        
+        // Theme Toggle (Top-Right of search bar area)
+        Positioned(
+          top: 80, right: 16,
+          child: _mapStyleToggle(accent),
+        ),
+
+        // Action Guide
+        Positioned(
+          top: 140, left: 0, right: 0,
+          child: Center(
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10)),
+                child: const Text('Move map to pinpoint exactly', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+              ),
+            ),
+          ),
+        ),
+
+        // 🎯 Fixed Center Crosshair
+        IgnorePointer(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.center_focus_strong, color: accent, size: 32, shadows: [Shadow(color: accent, blurRadius: 15)]),
+                const SizedBox(height: 24), // Offset for visual center
+              ],
+            ),
+          ),
+        ),
+
+        // Layer Picker Popup
+        if (_showLayerPicker)
+          Positioned(
+            bottom: 140, left: 16,
+            child: _buildLayerPickerPopup(accent),
+          ),
+
+        // Layer FAB (Floating Bottom-Left)
+        Positioned(
+          bottom: 80, left: 16,
+          child: _buildLayerFab(accent),
+        ),
+
+        // GPS Pin (Floating Bottom-Right)
+        Positioned(
+          bottom: 80, right: 16,
+          child: _gpsButton(accent),
+        ),
+
+        // Bottom Text Field
+        Positioned(
+          bottom: 0, left: 0, right: 0,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+            child: _neonTextField(_locationNameCtrl, 'Name this spot... (e.g. Rooftop, Gate 3)', Icons.edit_location_alt, accent, forceLight: _isLightMode),
+          ),
         ),
       ],
     );
@@ -1141,10 +1477,11 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
   Widget _buildLaunchPreviewCard(Color accent, Color secondary) {
     final bannerUrl = _uploadedImageUrl;
+    final isLight = isDoodleMode(context);
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF101015),
+        color: isLight ? Colors.white : const Color(0xFF101015),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: accent.withValues(alpha: 0.3), width: 1.5),
         boxShadow: [
@@ -1259,10 +1596,6 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (_isRushIn) ...[
-                      Text(_selectedMood, style: const TextStyle(fontSize: 28)),
-                      const SizedBox(width: 12),
-                    ],
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1270,7 +1603,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                           Text(
                             _titleCtrl.text.isEmpty ? 'Untitled Event' : _titleCtrl.text,
                             style: GoogleFonts.inter(
-                              color: Colors.white,
+                              color: isLight ? DoodleColors.textPrimary : Colors.white,
                               fontWeight: FontWeight.w900,
                               fontSize: 20,
                               letterSpacing: 0.5,
@@ -1293,32 +1626,12 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                     ),
                   ],
                 ),
-                if (_isRushIn && _hookCtrl.text.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.02),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
-                    ),
-                    child: Text(
-                      '"${_hookCtrl.text}"',
-                      style: GoogleFonts.inter(
-                        color: Colors.white70,
-                        fontStyle: FontStyle.italic,
-                        fontSize: 13,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ] else if (!_isRushIn && _descCtrl.text.isNotEmpty) ...[
+                if (!_isRushIn && _descCtrl.text.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text(
                     _descCtrl.text,
                     style: GoogleFonts.inter(
-                      color: Colors.white60,
+                      color: isLight ? DoodleColors.textPrimary.withValues(alpha: 0.8) : Colors.white60,
                       fontSize: 13,
                       height: 1.5,
                     ),
@@ -1327,7 +1640,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                   ),
                 ],
                 const SizedBox(height: 20),
-                const Divider(color: Colors.white10, height: 1),
+                Divider(color: isLight ? DoodleColors.sketchLine : Colors.white10, height: 1),
                 const SizedBox(height: 16),
 
                 // Info Rows
@@ -1378,18 +1691,19 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   }
 
   Widget _infoRow(IconData icon, String label, String value, Color accent) {
+    final isLight = isDoodleMode(context);
     return Row(
       children: [
         Icon(icon, color: accent.withValues(alpha: 0.8), size: 16),
         const SizedBox(width: 10),
         Text(
           '$label: ',
-          style: GoogleFonts.inter(color: Colors.white30, fontSize: 12, fontWeight: FontWeight.bold),
+          style: GoogleFonts.inter(color: isLight ? DoodleColors.textPrimary.withValues(alpha: 0.5) : Colors.white30, fontSize: 12, fontWeight: FontWeight.bold),
         ),
         Expanded(
           child: Text(
             value,
-            style: GoogleFonts.inter(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+            style: GoogleFonts.inter(color: isLight ? DoodleColors.textPrimary : Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -1405,31 +1719,40 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
     return Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: 120)]));
   }
 
-  Widget _sectionHeader(String title, String sub) {
+  Widget _sectionHeader(String title, String sub, {bool? forceLight}) {
+    final isLight = forceLight ?? isDoodleMode(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 1)),
+      Text(title, style: TextStyle(color: isLight ? DoodleColors.textPrimary : Colors.white, fontWeight: FontWeight.w900, fontSize: isLight ? 20 : 18, letterSpacing: 1)),
       const SizedBox(height: 4),
-      Text(sub, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+      Text(sub, style: TextStyle(color: isLight ? DoodleColors.textPrimary.withValues(alpha: 0.6) : Colors.white38, fontSize: isLight ? 13 : 12)),
     ]);
   }
 
-  Widget _neonTextField(TextEditingController ctrl, String hint, IconData icon, Color glow, {int maxLines = 1, TextInputType? keyboardType}) {
+  Widget _neonTextField(TextEditingController ctrl, String hint, IconData icon, Color glow, {int maxLines = 1, TextInputType? keyboardType, bool? forceLight, ValueChanged<String>? onChanged}) {
+    final isLight = forceLight ?? isDoodleMode(context);
+    final bg = isLight ? Colors.white : Colors.white.withValues(alpha: 0.03);
+    final border = isLight ? DoodleColors.sketchLine : Colors.white.withValues(alpha: 0.06);
+    final txt = isLight ? DoodleColors.textPrimary : Colors.white;
+    final hintClr = isLight ? DoodleColors.textPrimary.withValues(alpha: 0.5) : Colors.white24;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: bg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(color: border),
       ),
       child: TextField(
         controller: ctrl,
         maxLines: maxLines,
         keyboardType: keyboardType,
-        style: const TextStyle(color: Colors.white, fontSize: 15),
-        onChanged: (_) => setState(() {}),
+        style: TextStyle(color: txt, fontSize: isLight ? 16 : 15, fontWeight: isLight ? FontWeight.w500 : FontWeight.normal),
+        onChanged: (v) {
+          if (onChanged != null) onChanged(v);
+          setState(() {});
+        },
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white24, fontSize: 14),
-          prefixIcon: maxLines == 1 ? Icon(icon, color: glow.withValues(alpha: 0.6), size: 20) : null,
+          hintStyle: TextStyle(color: hintClr, fontSize: isLight ? 15 : 14),
+          prefixIcon: maxLines == 1 ? Icon(icon, color: isLight ? DoodleColors.textPrimary.withValues(alpha: 0.6) : glow.withValues(alpha: 0.6), size: isLight ? 22 : 20) : null,
           border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: maxLines == 1 ? 18 : 20),
         ),
@@ -1439,29 +1762,35 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
 
   Widget _ruleToggle(IconData icon, String title, String sub, bool value, ValueChanged<bool> onChanged) {
+    final isLight = isDoodleMode(context);
+    final bg = isLight ? Colors.white : (value ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.02));
+    final border = isLight ? DoodleColors.sketchLine : (value ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.04));
+    final txt = isLight ? DoodleColors.textPrimary : (value ? Colors.white : Colors.white60);
+    final subTxt = isLight ? DoodleColors.textPrimary.withValues(alpha: 0.6) : Colors.white30;
+    final icnClr = isLight ? DoodleColors.textPrimary : (value ? Colors.white : Colors.white38);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: value ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.02),
+        color: bg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: value ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.04)),
+        border: Border.all(color: border),
       ),
       child: Row(
         children: [
-          Icon(icon, color: value ? Colors.white : Colors.white38, size: 22),
+          Icon(icon, color: icnClr, size: 22),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: TextStyle(color: value ? Colors.white : Colors.white60, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 1)),
+            Text(title, style: TextStyle(color: txt, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 1)),
             const SizedBox(height: 2),
-            Text(sub, style: const TextStyle(color: Colors.white30, fontSize: 11)),
+            Text(sub, style: TextStyle(color: subTxt, fontSize: 11)),
           ])),
           Switch(
             value: value, onChanged: onChanged,
-            activeThumbColor: Colors.white,
-            activeTrackColor: Colors.white.withValues(alpha: 0.3),
-            inactiveThumbColor: Colors.white38,
-            inactiveTrackColor: Colors.white.withValues(alpha: 0.08),
+            activeThumbColor: isLight ? Colors.white : Colors.white,
+            activeTrackColor: isLight ? DoodleColors.blue : Colors.white.withValues(alpha: 0.3),
+            inactiveThumbColor: isLight ? Colors.white : Colors.white38,
+            inactiveTrackColor: isLight ? DoodleColors.sketchLine : Colors.white.withValues(alpha: 0.08),
           ),
         ],
       ),
@@ -1470,14 +1799,17 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
 
   Widget _previewBadge(String label, IconData icon) {
+    final isLight = isDoodleMode(context);
+    final bg = isLight ? DoodleColors.cream : Colors.white.withValues(alpha: 0.05);
+    final txt = isLight ? DoodleColors.textPrimary.withValues(alpha: 0.5) : Colors.white38;
     return Container(
       margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, color: Colors.white38, size: 12),
+        Icon(icon, color: txt, size: 12),
         const SizedBox(width: 4),
-        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        Text(label, style: TextStyle(color: txt, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1)),
       ]),
     );
   }
@@ -1513,105 +1845,18 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   Widget _locationMap(Color accent) {
     final baseUrl = _mapLayer.tileUrl;
 
-    return Container(
-      height: 380, // Taller for better search experience
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: accent.withValues(alpha: 0.25), width: 2),
-        boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.1), blurRadius: 25)],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Stack(
-          children: [
-            // Dark mode/Neon inversion logic
-            if (!_isLightMode && _mapLayer.allowsDarkMode)
-              ColorFiltered(
-                colorFilter: const ColorFilter.matrix([
-                  -1.0, 0.0, 0.0, 0.0, 255.0,
-                  0.0, -1.0, 0.0, 0.0, 255.0,
-                  0.0, 0.0, -1.0, 0.0, 255.0,
-                  0.0, 0.0, 0.0, 1.0, 0.0,
-                ]),
-                child: _buildFlutterMapWidget(accent, baseUrl),
-              )
-            else
-              _buildFlutterMapWidget(accent, baseUrl),
-
-            // Neon wash overlay
-            if (!_isLightMode && _mapLayer.allowsDarkMode)
-              IgnorePointer(
-                child: Container(color: const Color(0xFFFF5C00).withValues(alpha: 0.15)),
-              ),
-
-            // Search Bar (Glassmorphic)
-            Positioned(
-              top: 16, left: 16, right: 64,
-              child: _mapSearchField(accent),
-            ),
-
-            // Dropdown Overlay
-            if (_showDropdown)
-              Positioned(
-                top: 72, left: 16, right: 64,
-                child: _mapSearchResults(accent),
-              ),
-
-            // Theme Toggle (Floating Top-Right)
-            Positioned(
-              top: 16, right: 16,
-              child: _mapStyleToggle(accent),
-            ),
-
-            // Layer Picker Popup
-            if (_showLayerPicker)
-              Positioned(
-                bottom: 72, left: 16,
-                child: _buildLayerPickerPopup(accent),
-              ),
-
-            // Layer FAB (Floating Bottom-Left)
-            Positioned(
-              bottom: 16, left: 16,
-              child: _buildLayerFab(accent),
-            ),
-
-            // GPS Pin (Floating Bottom-Right)
-            Positioned(
-              bottom: 16, right: 16,
-              child: _gpsButton(accent),
-            ),
-
-            // Action Guide
-            Positioned(
-              top: 76, left: 0, right: 0,
-              child: Center(
-                child: IgnorePointer(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10)),
-                    child: const Text('Move map to pinpoint exactly', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                  ),
-                ),
-              ),
-            ),
-
-            // 🎯 Fixed Center Crosshair
-            IgnorePointer(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.center_focus_strong, color: accent, size: 32, shadows: [Shadow(color: accent, blurRadius: 15)]),
-                    const SizedBox(height: 24), // Offset for the icon's visual center vs the tip of a pin if we had one
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    if (!_isLightMode && _mapLayer.allowsDarkMode) {
+      return ColorFiltered(
+        colorFilter: const ColorFilter.matrix([
+          -1.0, 0.0, 0.0, 0.0, 255.0,
+          0.0, -1.0, 0.0, 0.0, 255.0,
+          0.0, 0.0, -1.0, 0.0, 255.0,
+          0.0, 0.0, 0.0, 1.0, 0.0,
+        ]),
+        child: _buildFlutterMapWidget(accent, baseUrl),
+      );
+    }
+    return _buildFlutterMapWidget(accent, baseUrl);
   }
 
 
@@ -1779,6 +2024,10 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
   Widget _buildBottomNav(Color accent, Color secondary) {
     final isLast = _currentStep == _stepTitles.length - 1;
+    final isLight = _currentStep == 3 ? _isLightMode : isDoodleMode(context);
+    final disabledBg = isLight ? Colors.black.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.04);
+    final disabledText = isLight ? Colors.black38 : Colors.white30;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       child: AnimatedBuilder(
@@ -1792,7 +2041,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
             height: 64,
             decoration: BoxDecoration(
               gradient: (isLast || _canProceed) ? LinearGradient(colors: [accent, secondary]) : null,
-              color: (isLast || _canProceed) ? null : Colors.white.withValues(alpha: 0.04),
+              color: (isLast || _canProceed) ? null : disabledBg,
               borderRadius: BorderRadius.circular(32),
               boxShadow: (isLast || _canProceed)
                 ? [BoxShadow(color: accent.withValues(alpha: 0.3 * (isLast ? _pulseAnim.value : 1)), blurRadius: 25, offset: const Offset(0, 8))]
@@ -1804,11 +2053,11 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(isLast ? Icons.rocket_launch : Icons.arrow_forward, color: (isLast || _canProceed) ? Colors.white : Colors.white30, size: 20),
+                      Icon(isLast ? Icons.rocket_launch : Icons.arrow_forward, color: (isLast || _canProceed) ? Colors.white : disabledText, size: 20),
                       const SizedBox(width: 10),
                       Text(
                         isLast ? (_isRushIn ? 'LAUNCH RUSH-IN' : 'PUBLISH ACTIVITY') : 'CONTINUE',
-                        style: TextStyle(color: (isLast || _canProceed) ? Colors.white : Colors.white30, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 2),
+                        style: TextStyle(color: (isLast || _canProceed) ? Colors.white : disabledText, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 2),
                       ),
                     ],
                   ),

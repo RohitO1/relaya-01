@@ -184,7 +184,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> with Tick
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: txtColor),
-          onTap: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: Stack(
