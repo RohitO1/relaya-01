@@ -80,23 +80,26 @@ class _AvatarCard extends StatelessWidget {
           Icon(Icons.chevron_right, color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : BolroomTheme.textMuted, size: 18),
         ]),
         SizedBox(height: 14),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children:
-          BolroomTheme.avatarPresets.entries.take(5).map((e) {
+        Wrap(
+          spacing: 10,
+          runSpacing: 12,
+          alignment: WrapAlignment.center,
+          children: BolroomTheme.avatarPresets.entries.map((e) {
             final sel = avatarKey == e.key;
             return GestureDetector(
               onTap: () { onChanged(e.key); HapticFeedback.lightImpact(); },
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(
-                  width: 38, height: 38,
+                  width: 34, height: 34,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: doodle ? (sel ? DoodleColors.orange.withValues(alpha: 0.2) : DoodleColors.paper) : (e.value['color'] as Color).withValues(alpha: sel ? 0.35 : 0.12),
                     border: Border.all(color: sel ? (doodle ? DoodleColors.orange : BolroomTheme.purple) : Colors.transparent, width: 2),
                   ),
-                  child: Center(child: Text(e.value['icon'] as String, style: TextStyle(fontSize: 18))),
+                  child: Center(child: Text(e.value['icon'] as String, style: TextStyle(fontSize: 16))),
                 ),
                 SizedBox(height: 4),
-                Text(e.value['label'] as String, style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 10).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 8, fontWeight: FontWeight.w600)),
+                Text(e.value['label'] as String, style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 9).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 8, fontWeight: FontWeight.w600)),
               ]),
             );
           }).toList(),

@@ -323,7 +323,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   };
 
   // ── STEPS ──
-  List<String> get _stepTitles => ['IDENTITY', 'VIBES', 'RULES', 'DROP ZONE', 'LAUNCH'];
+  List<String> get _stepTitles => ['DETAILS', 'LOCATION', 'LAUNCH'];
 
   @override
   void initState() {
@@ -528,10 +528,8 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
     if (_isRushIn) {
       switch (_currentStep) {
         case 0: return _titleCtrl.text.trim().isNotEmpty && _noteCtrl.text.trim().isNotEmpty;
-        case 1: return _selectedVibes.isNotEmpty;
-        case 2: return true; // Rules step always valid (has defaults)
-        case 3: return _locationNameCtrl.text.trim().isNotEmpty;
-        case 4: return true; // Launch preview is always valid
+        case 1: return _locationNameCtrl.text.trim().isNotEmpty;
+        case 2: return true; // Launch preview is always valid
         default: return false;
       }
     } return false;
@@ -729,8 +727,8 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   // ===========================================================================
   @override
   Widget build(BuildContext context) {
-    const pink = Color(0xFFFF007F);
-    const purple = Color(0xFFFF7E40);
+    const pink = Color(0xFFFF6B00); // Updated to Orange
+    const purple = Color(0xFFFF9F0A); // Updated to Amber/Orange
     const actPrimary = Color(0xFFFF6B00);
     const actSecondary = Color(0xFF2962FF);
     final accent = _isRushIn ? pink : actPrimary;
@@ -741,14 +739,14 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
       body: Stack(
         children: [
           // ── MAP BACKGROUND (FULL SCREEN) ──
-          if (_currentStep == 3)
+          if (_currentStep == 1)
             Positioned.fill(
               child: _locationMap(Colors.blue),
             ),
 
           // ── AMBIENT ORBS ──
-          if (_currentStep != 3) Positioned(top: -120, right: -80, child: _ambientOrb(accentSecondary, 350)),
-          if (_currentStep != 3) Positioned(bottom: -80, left: -100, child: _ambientOrb(accent, 300)),
+          if (_currentStep != 1) Positioned(top: -120, right: -80, child: _ambientOrb(accentSecondary, 350)),
+          if (_currentStep != 1) Positioned(bottom: -80, left: -100, child: _ambientOrb(accent, 300)),
 
           // ── MAIN CONTENT ──
           SafeArea(
@@ -759,7 +757,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Builder(
                     builder: (context) {
-                      final bool isMapLight = _currentStep == 3 ? _isLightMode : isDoodleMode(context);
+                      final bool isMapLight = _currentStep == 1 ? _isLightMode : isDoodleMode(context);
                       final Color topIconColor = isMapLight ? DoodleColors.textPrimary : Colors.white;
                       final Color topSubColor = isMapLight ? DoodleColors.textPrimary.withValues(alpha: 0.6) : Colors.white38;
                       final Color topIconBg = isMapLight ? Colors.black.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.05);
@@ -818,16 +816,16 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                   child: Stack(
                     children: [
                       IgnorePointer(
-                        ignoring: _currentStep == 3,
+                        ignoring: _currentStep == 1,
                         child: PageView(
                           controller: _pageCtrl,
                           physics: const NeverScrollableScrollPhysics(),
-                          children: [_rushStep0Identity(accent, accentSecondary), _rushStep1Vibes(accent), _rushStep2Rules(accent, accentSecondary), const SizedBox(), _rushStep4Launch(accent, accentSecondary)],
+                          children: [_rushStep0Identity(accent, accentSecondary), const SizedBox(), _rushStep4Launch(accent, accentSecondary)],
                         ),
                       ),
-                      if (_currentStep == 3)
+                      if (_currentStep == 1)
                         Positioned.fill(
-                          child: _rushStep3Overlay(Colors.blue),
+                          child: _rushStep3Overlay(accent),
                         ),
                     ],
                   ),

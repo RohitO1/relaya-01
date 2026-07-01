@@ -1104,7 +1104,7 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                         final hostName = host?['name'] ?? host?['full_name'] ?? 'Host';
                         final hostAvatar = host?['avatar_url']?.toString() ?? 'https://picsum.photos/seed/host/200';
                         return GestureDetector(
-                          onTap: host != null ? () => _showHostProfileSheet(act['user_id']) : null,
+                          onTap: host != null ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen(userId: act['user_id']))) : null,
                           child: Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(

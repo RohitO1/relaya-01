@@ -699,6 +699,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       val: '$_contributionScore',
                       label: 'CONTRIBUTIONS',
                       iconColor: const Color(0xFFFFD54F),
+                      onTap: _showContributionsSheet,
                     ),
                     _buildNewStatColumn(
                       icon: Icons.groups_rounded,
@@ -755,6 +756,90 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           ],
         ),
       ),
+    );
+  }
+
+  void _showContributionsSheet() {
+    final doodle = isDoodleMode(context);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.45),
+          decoration: doodle
+              ? DoodleDecorations.card(color: DoodleColors.cream, borderColor: DoodleColors.brown)
+              : const BoxDecoration(
+                  color: Color(0xFF0F0F0F),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  border: Border(top: BorderSide(color: Colors.white12)),
+                ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: doodle ? DoodleColors.brown.withValues(alpha: 0.3) : Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Contributions',
+                    style: doodle ? DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.inter(
+                      fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFD54F).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$_contributionScore',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFFFFD54F)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Your community contribution score',
+                style: doodle ? DoodleFonts.body(fontSize: 12, color: DoodleColors.brown.withValues(alpha: 0.7)) : GoogleFonts.inter(
+                  fontSize: 12, color: Colors.white54,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.auto_awesome, size: 64, color: const Color(0xFFFFD54F).withValues(alpha: 0.4)),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Keep hosting and joining activities to increase your contribution score and unlock premium badges!',
+                        textAlign: TextAlign.center,
+                        style: doodle ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown) : GoogleFonts.inter(fontSize: 14, color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
