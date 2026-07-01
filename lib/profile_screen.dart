@@ -2,6 +2,7 @@
 // ignore_for_file: unused_field, unused_element
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 // removed invalid import
@@ -671,19 +672,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               ),
               const SizedBox(height: 28),
 
-              // 7. Large Centered Stats Card Container
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-                decoration: doodle
-                  ? DoodleDecorations.card(color: DoodleColors.cream, borderColor: DoodleColors.brown)
-                  : BoxDecoration(
-                      color: const Color(0xFF0F0F0F),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        width: 1,
-                      ),
-                    ),
+              // 7. Large Centered Stats Row
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
@@ -728,33 +719,56 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     final doodle = isDoodleMode(context);
     return Expanded(
       child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: doodle ? DoodleColors.brown : iconColor, size: 18),
-            const SizedBox(height: 6),
-            Text(
-              val,
-              style: doodle ? DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          if (onTap != null) onTap();
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
+          decoration: doodle
+              ? DoodleDecorations.card(color: DoodleColors.cream)
+              : BoxDecoration(
+                  color: const Color(0xFF13131A),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  boxShadow: [
+                    BoxShadow(color: iconColor.withValues(alpha: 0.08), blurRadius: 12, offset: const Offset(0, 4)),
+                  ],
+                ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: iconColor.withValues(alpha: 0.15),
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: doodle ? DoodleFonts.body(fontSize: 10, color: DoodleColors.brown) : GoogleFonts.inter(
-                fontSize: 8,
-                fontWeight: FontWeight.w800,
-                color: Colors.white38,
-                letterSpacing: 0.5,
+              const SizedBox(height: 10),
+              Text(
+                val,
+                style: doodle ? DoodleFonts.heading(fontSize: 22, color: DoodleColors.brown) : GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: doodle ? DoodleFonts.body(fontSize: 11, color: DoodleColors.brown) : GoogleFonts.inter(
+                  fontSize: 9,
+                  letterSpacing: 0.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white54,
+                ),
+              ),
+            ],
+          ),
+        ).animate(onPlay: (c) => c.repeat(reverse: true)).shimmer(duration: 3000.ms, color: Colors.white.withValues(alpha: 0.05)),
       ),
     );
   }
@@ -2339,29 +2353,40 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   Widget _buildSettingsRow(IconData icon, String title, {String? valueText, Color? valueColor, bool hasArrow = false, bool isDanger = false, bool? toggleValue, ValueChanged<bool>? onToggle, VoidCallback? onTap}) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        if (onTap != null) onTap();
+        if (onToggle != null && toggleValue != null) onToggle(!toggleValue);
+      },
       behavior: HitTestBehavior.opaque,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
-          color: ProfileColors.glass,
-          borderRadius: BorderRadius.circular(12),
+          color: isDanger ? ProfileColors.red.withValues(alpha: 0.05) : ProfileColors.glass,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: isDanger ? ProfileColors.red.withValues(alpha: 0.15) : ProfileColors.gborder),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: isDanger ? ProfileColors.red : ProfileColors.textSecondary),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDanger ? ProfileColors.red.withValues(alpha: 0.1) : ProfileColors.cyan.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 18, color: isDanger ? ProfileColors.red : ProfileColors.textSecondary),
+            ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500, color: isDanger ? ProfileColors.red : ProfileColors.textPrimary)),
+              child: Text(title, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: isDanger ? ProfileColors.red : ProfileColors.textPrimary)),
             ),
             const SizedBox(width: 12),
             if (valueText != null)
               Flexible(
                 child: Text(
                   valueText, 
-                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: valueColor ?? ProfileColors.textMuted),
+                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: valueColor ?? ProfileColors.textMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
@@ -2375,16 +2400,17 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                    value: toggleValue,
                    onChanged: onToggle,
                    activeThumbColor: Colors.white,
-                   activeTrackColor: ProfileColors.cyan,
+                   activeTrackColor: const Color(0xFFFF6B00), // Brand orange
                    inactiveThumbColor: ProfileColors.textMuted,
-                   inactiveTrackColor: ProfileColors.bgPrimary,
+                   inactiveTrackColor: Colors.white10,
+                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                  ),
                )
             else if (hasArrow)
                Icon(Icons.arrow_forward_ios, size: 14, color: ProfileColors.textMuted.withValues(alpha:0.5)),
           ],
         ),
-      ),
+      ).animate(target: 1).scale(begin: const Offset(1,1), end: const Offset(1.02, 1.02), duration: 200.ms, curve: Curves.easeOutBack),
     );
   }
 }

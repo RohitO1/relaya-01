@@ -1856,6 +1856,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   String? _hangoutRequestStatus;
   String? _hangoutRequestSenderId;
   bool _showEmojiPicker = false;
+  bool _isTyping = false;
 
   // @mention system
   List<Map<String, dynamic>> _mentionSuggestions = [];
@@ -2077,6 +2078,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     super.initState();
     _memberChatEnabled = widget.memberChatEnabled;
     _myUid = Supabase.instance.client.auth.currentUser?.id ?? '';
+
+    // Simulate typing for demo purposes
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _isTyping = true);
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) setState(() => _isTyping = false);
+      });
+    });
 
     _msgController.addListener(() {
       if (mounted) {
@@ -2667,6 +2676,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
+  @override
   Widget build(BuildContext context) {
     final bgColor = _chatThemes[widget.targetUserId] ?? const Color(0xFF000000);
     
@@ -2876,7 +2886,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                 child: Align(
                                 alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                                 child: Container(
-                                  margin: const EdgeInsets.only(bottom: 4),
+                                  margin: const EdgeInsets.only(bottom: 6),
                                   constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                                   child: Column(
                                     crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -2890,11 +2900,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                                 ? const LinearGradient(
                                                     begin: Alignment.topLeft,
                                                     end: Alignment.bottomRight,
-                                                    colors: [Color(0xFFD65200), Color(0xFFB53900)]
+                                                    colors: [Color(0xFFFF6B00), Color(0xFFFF3D00)]
                                                   )
                                                 : null,
-                                            color: isMe ? null : const Color(0xFF1A1A1E),
-                                            borderRadius: BorderRadius.circular(16),
+                                            color: isMe ? null : const Color(0xFF1E2128),
+                                            borderRadius: BorderRadius.only(
+                                              topLeft: const Radius.circular(20),
+                                              topRight: const Radius.circular(20),
+                                              bottomLeft: Radius.circular(isMe ? 20 : 4),
+                                              bottomRight: Radius.circular(isMe ? 4 : 20),
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: (isMe ? const Color(0xFFFF6B00) : Colors.black).withValues(alpha: 0.15),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 4),
+                                              )
+                                            ],
                                           ),
                                           padding: (isImage && msg['reply_to_text'] == null) ? const EdgeInsets.all(4) : const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                           child: msg['deleted_for_everyone'] == true
@@ -2908,13 +2930,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                                   children: [
                                                     if (msg['reply_to_text'] != null) ...[
                                                       Container(
-                                                        margin: const EdgeInsets.only(bottom: 6),
-                                                        padding: const EdgeInsets.all(8),
+                                                        margin: const EdgeInsets.only(bottom: 8),
+                                                        padding: const EdgeInsets.all(10),
                                                         decoration: BoxDecoration(
-                                                          color: isMe ? Colors.black.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.06),
-                                                          borderRadius: BorderRadius.circular(8),
+                                                          color: Colors.black.withValues(alpha: 0.2),
+                                                          borderRadius: BorderRadius.circular(10),
                                                           border: Border(
-                                                            left: BorderSide(color: isMe ? Colors.white70 : const Color(0xFFFF6B00), width: 3),
+                                                            left: BorderSide(color: isMe ? Colors.white : const Color(0xFFFF6B00), width: 4),
                                                           ),
                                                         ),
                                                         child: Column(
@@ -2922,13 +2944,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                                           children: [
                                                             Text(
                                                               msg['reply_to_sender'] == _myUid ? 'You' : widget.name,
-                                                              style: TextStyle(color: isMe ? Colors.white : const Color(0xFFFF6B00), fontSize: 11, fontWeight: FontWeight.bold),
+                                                              style: TextStyle(color: isMe ? Colors.white : const Color(0xFFFF6B00), fontSize: 12, fontWeight: FontWeight.bold),
                                                             ),
-                                                            const SizedBox(height: 2),
+                                                            const SizedBox(height: 4),
                                                             Text(
                                                               msg['reply_to_text'] as String,
-                                                              style: const TextStyle(color: Colors.white60, fontSize: 12),
-                                                              maxLines: 1,
+                                                              style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                                              maxLines: 2,
                                                               overflow: TextOverflow.ellipsis,
                                                             ),
                                                           ],
@@ -2945,19 +2967,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                                     Row(
                                                       mainAxisSize: MainAxisSize.min,
                                                       children: [
-                                                        Text(timeStr, style: TextStyle(color: isMe ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF7A7A7A), fontSize: 10)),
+                                                        Text(timeStr, style: TextStyle(color: isMe ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF8B95A5), fontSize: 11, fontWeight: FontWeight.w500)),
                                                         if (isMe) ...[
                                                           const SizedBox(width: 4),
                                                           Builder(
                                                               builder: (context) {
                                                                 final isTemp = msg['id'] is int && (msg['id'] as int) > 1000000000000;
                                                                 if (isTemp) {
-                                                                  return const Icon(Icons.access_time, color: Colors.white70, size: 10);
+                                                                  return const Icon(Icons.access_time, color: Colors.white70, size: 12);
                                                                 }
                                                                 final isRead = msg['is_read'] == true;
                                                                 return Icon(
                                                                   isRead ? Icons.done_all : Icons.check,
-                                                                  color: isRead ? const Color(0xFF4ADE80) : Colors.white.withValues(alpha: 0.8),
+                                                                  color: isRead ? Colors.white : Colors.white.withValues(alpha: 0.7),
                                                                   size: 14,
                                                                 );
                                                               }
@@ -2995,6 +3017,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     )
                 ),
           ),
+          if (_isTyping) 
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: TypingIndicator(),
+            ),
           // ── Input Field or Locked State ──
           if (_hangoutRequestStatus == 'pending')
             if (_hangoutRequestSenderId == _myUid)
@@ -3597,6 +3624,76 @@ class _ArchivedChatsScreenState extends State<_ArchivedChatsScreen> {
                 );
               },
             ),
+    );
+  }
+}
+
+class TypingIndicator extends StatefulWidget {
+  const TypingIndicator({super.key});
+
+  @override
+  State<TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _buildDot(int index) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final val = _controller.value * 3;
+        final delay = index * 0.5;
+        double y = 0;
+        if (val > delay && val < delay + 1) {
+          y = -4 * (1 - (val - delay - 0.5).abs() * 2);
+        }
+        return Transform.translate(
+          offset: Offset(0, y),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF6B00).withValues(alpha: 0.8),
+              shape: BoxShape.circle,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(left: 16, bottom: 8, top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2128),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildDot(0),
+          _buildDot(1),
+          _buildDot(2),
+        ],
+      ),
     );
   }
 }

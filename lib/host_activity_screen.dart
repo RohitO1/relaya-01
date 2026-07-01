@@ -65,7 +65,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
   // ── RUSH-IN DATA ──
   final List<String> _selectedVibes = [];
-  String _selectedMood = '🔥';
+  String _selectedCategory = 'Music';
   int _participantLimit = 10;
   int _durationHours = 6;
   double _radiusKm = 5.0;
@@ -311,7 +311,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
   // ── LOOKUP MAPS ──
   final List<String> _categories = ['Outdoor', 'Sports', 'Music', 'Food', 'Study', 'Gaming', 'Fitness'];
-  final List<String> _moods = ['🔥', '🎉', '😎', '🌙', '💀', '🧘', '🎶', '⚡', '🍕', '💬'];
+
   final Map<String, Map<String, dynamic>> _vibeData = {
     'Outdoor':    {'icon': Icons.park, 'color': const Color(0xFF4ADE80)},
     'Sports':     {'icon': Icons.sports_soccer, 'color': const Color(0xFFFFAB40)},
@@ -1000,189 +1000,88 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
           const SizedBox(height: 16),
           _neonTextField(_noteCtrl, 'Pack a picnic, bring a frisbee, maybe some cricket gear? Park hang out.', Icons.sticky_note_2_outlined, Colors.white38, maxLines: 3),
           const SizedBox(height: 32),
-          _buildBannerImageSection(accent),
-        ],
-      ),
-    );
-  }
 
-  // ===========================================================================
-  // RUSH-IN STEP 1: VIBES
-  // ===========================================================================
-  Widget _rushStep1Vibes(Color accent) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHeader('PICK YOUR VIBES', 'Select all the energy tags that fit this Rush-In.'),
-          const SizedBox(height: 8),
-          Text('${_selectedVibes.length} selected', style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          ...(_categories.map((cat) {
-            final sel = _selectedVibes.contains(cat);
-            final vibe = _vibeData[cat]!;
-            final clr = vibe['color'] as Color;
-            return GestureDetector(
-              onTap: () => setState(() { sel ? _selectedVibes.remove(cat) : _selectedVibes.add(cat); }),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: BoxDecoration(
-                  color: sel ? clr.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.02),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: sel ? clr.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.04)),
-                  boxShadow: sel ? [BoxShadow(color: clr.withValues(alpha: 0.2), blurRadius: 16)] : [],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: sel ? clr.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(14)),
-                      child: Icon(vibe['icon'] as IconData, color: sel ? clr : Colors.white38, size: 22),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(child: Text(cat.toUpperCase(), style: TextStyle(color: sel ? Colors.white : Colors.white54, fontWeight: FontWeight.w800, fontSize: 14, letterSpacing: 1))),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child: sel
-                        ? Icon(Icons.check_circle, key: const ValueKey('check'), color: clr, size: 24)
-                        : Container(key: const ValueKey('empty'), width: 24, height: 24, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white.withValues(alpha: 0.1)))),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          })),
-        ],
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // RUSH-IN STEP 2: RULES
-  // ===========================================================================
-  Widget _rushStep2Rules(Color accent, Color secondary) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // START TIME (OPTIONAL)
-          _sectionHeader('START TIME', 'When does the Rush-In begin? (Default: Now)'),
+          // ── VIBES ──
+          _sectionHeader('YOUR VIBES', 'Select energy tags that match this Rush-In.'),
+          if (_selectedVibes.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('${_selectedVibes.length} selected', style: const TextStyle(color: Color(0xFFFF6B00), fontSize: 12, fontWeight: FontWeight.bold)),
+          ],
           const SizedBox(height: 16),
-          GestureDetector(onTap: _pickTime, child: _dateTile(Icons.access_time, 'TIME', _selectedTime == null ? 'Starting Now' : _selectedTime!.format(context), accent)),
-          const SizedBox(height: 36),
-
-          // CREW LIMIT
-          _sectionHeader('CREW LIMIT', 'How many people can join?'),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [2, 5, 10, 20, 50].map((n) {
-              final sel = _participantLimit == n;
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: _categories.map((cat) {
+              final sel = _selectedVibes.contains(cat);
+              final vibe = _vibeData[cat]!;
+              final clr = vibe['color'] as Color;
               return GestureDetector(
-                onTap: () => setState(() => _participantLimit = n),
+                onTap: () => setState(() { sel ? _selectedVibes.remove(cat) : _selectedVibes.add(cat); }),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: 56, height: 56,
-                  alignment: Alignment.center,
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: sel ? LinearGradient(colors: [accent, secondary], begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
-                    color: sel ? null : Colors.white.withValues(alpha: 0.04),
-                    boxShadow: sel ? [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 12)] : [],
+                    color: sel ? clr.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.03),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: sel ? clr.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.08)),
+                    boxShadow: sel ? [BoxShadow(color: clr.withValues(alpha: 0.2), blurRadius: 12)] : [],
                   ),
-                  child: Text('$n', style: TextStyle(color: sel ? Colors.white : Colors.white54, fontWeight: FontWeight.w900, fontSize: sel ? 20 : 15)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(vibe['icon'] as IconData, color: sel ? clr : Colors.white38, size: 16),
+                    const SizedBox(width: 6),
+                    Text(cat, style: TextStyle(color: sel ? Colors.white : Colors.white54, fontWeight: FontWeight.w700, fontSize: 12)),
+                    if (sel) ...[
+                      const SizedBox(width: 4),
+                      Icon(Icons.check_circle, color: clr, size: 14),
+                    ],
+                  ]),
                 ),
               );
             }).toList(),
           ),
-          const SizedBox(height: 36),
+          const SizedBox(height: 32),
 
-          // BURNOUT TIMER
-          _sectionHeader('BURNOUT TIMER', 'How long will the Rush-In stay live?'),
+          // ── QUICK SETTINGS ──
+          _sectionHeader('QUICK SETTINGS', 'Fine-tune how your Rush-In behaves.'),
           const SizedBox(height: 16),
+          _ruleToggle(Icons.visibility_off_rounded, 'GHOST MODE', 'Your identity stays hidden on the feed.', _isGhostMode, (v) => setState(() => _isGhostMode = v)),
+          const SizedBox(height: 12),
+
+          // Duration row
           Row(
             children: [
-              {'h': 1, 'label': 'FLASH', 'icon': Icons.flash_on},
-              {'h': 6, 'label': 'EVENING', 'icon': Icons.nights_stay},
-              {'h': 12, 'label': 'HALF DAY', 'icon': Icons.wb_twilight},
-              {'h': 24, 'label': 'FULL DAY', 'icon': Icons.wb_sunny},
-            ].map((d) {
-              final h = d['h'] as int;
-              final sel = _durationHours == h;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _durationHours = h),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    decoration: BoxDecoration(
-                      color: sel ? accent.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.02),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: sel ? accent.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.04)),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(d['icon'] as IconData, color: sel ? accent : Colors.white38, size: 22),
-                        const SizedBox(height: 8),
-                        Text('${h}H', style: TextStyle(color: sel ? Colors.white : Colors.white54, fontWeight: FontWeight.w900, fontSize: 16)),
-                        const SizedBox(height: 4),
-                        Text(d['label'] as String, style: TextStyle(color: sel ? accent : Colors.white30, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                      ],
-                    ),
+              const Icon(Icons.access_time_rounded, color: Color(0xFFFF6B00), size: 18),
+              const SizedBox(width: 10),
+              const Text('Live Duration:', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [1, 6, 12, 24].map((h) {
+                      final sel = _durationHours == h;
+                      return GestureDetector(
+                        onTap: () => setState(() => _durationHours = h),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: sel ? const Color(0xFFFF6B00) : Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text('${h}H', style: TextStyle(color: sel ? Colors.white : Colors.white38, fontWeight: FontWeight.w800, fontSize: 12)),
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ),
-              );
-            }).toList(),
+              ),
+            ],
           ),
-          const SizedBox(height: 36),
+          const SizedBox(height: 32),
 
-          // BROADCAST RADIUS
-          _sectionHeader('BROADCAST RADIUS', 'How far should your Rush-In signal reach?'),
-          const SizedBox(height: 8),
-          Text('${_radiusKm.round()} km', style: TextStyle(color: accent, fontWeight: FontWeight.w900, fontSize: 28)),
-          const SizedBox(height: 4),
-          Text(
-            _radiusKm <= 2 ? 'Hyper-local — only the closest people' : _radiusKm <= 5 ? 'Neighborhood radius — nearby users' : _radiusKm <= 10 ? 'City-wide signal — broad reach' : 'Maximum broadcast — district-wide',
-            style: const TextStyle(color: Colors.white38, fontSize: 11),
-          ),
-          const SizedBox(height: 12),
-          SliderTheme(
-            data: SliderThemeData(
-              activeTrackColor: accent,
-              inactiveTrackColor: Colors.white.withValues(alpha: 0.06),
-              thumbColor: Colors.white,
-              overlayColor: accent.withValues(alpha: 0.15),
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
-              trackHeight: 6,
-              activeTickMarkColor: accent,
-              inactiveTickMarkColor: Colors.white.withValues(alpha: 0.1),
-            ),
-            child: Slider(
-              value: _radiusKm,
-              min: 1,
-              max: 25,
-              divisions: 24,
-              onChanged: (v) => setState(() => _radiusKm = v),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: ['1km', '5km', '10km', '15km', '25km'].map((l) => Text(l, style: const TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.bold))).toList(),
-            ),
-          ),
-          const SizedBox(height: 36),
-
-          // TOGGLE SWITCHES
-          _sectionHeader('ADVANCED SETTINGS', 'Fine-tune your Rush-In behavior.'),
-          const SizedBox(height: 16),
-          _ruleToggle(Icons.visibility_off, 'GHOST MODE', 'Your identity is hidden on the feed.', _isGhostMode, (v) => setState(() => _isGhostMode = v)),
+          _buildBannerImageSection(accent),
         ],
       ),
     );
@@ -1391,11 +1290,16 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
           onTap: _isUploadingBanner ? null : _pickAndUploadBannerImage,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.02),
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFFFF6B00).withValues(alpha: 0.08),
+                  const Color(0xFFFF3D00).withValues(alpha: 0.03),
+                ],
+              ),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.5),
+              border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), width: 1.5),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1410,16 +1314,34 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                     ),
                   )
                 else ...[
-                  Icon(Icons.photo_library, color: accent.withValues(alpha: 0.8), size: 20),
-                  const SizedBox(width: 10),
-                  Text(
-                    'UPLOAD FROM GALLERY',
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF6B00).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
+                    child: Icon(Icons.photo_library_rounded, color: accent, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Upload from Gallery',
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        'JPG, PNG supported',
+                        style: GoogleFonts.inter(
+                          color: Colors.white38,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ],
@@ -1720,29 +1642,52 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   Widget _sectionHeader(String title, String sub, {bool? forceLight}) {
     final isLight = forceLight ?? isDoodleMode(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: TextStyle(color: isLight ? DoodleColors.textPrimary : Colors.white, fontWeight: FontWeight.w900, fontSize: isLight ? 20 : 18, letterSpacing: 1)),
-      const SizedBox(height: 4),
-      Text(sub, style: TextStyle(color: isLight ? DoodleColors.textPrimary.withValues(alpha: 0.6) : Colors.white38, fontSize: isLight ? 13 : 12)),
+      Row(children: [
+        Container(
+          width: 3, height: 20,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(2),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFFFF6B00), Color(0xFFFF3D00)],
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(title, style: TextStyle(color: isLight ? DoodleColors.textPrimary : Colors.white, fontWeight: FontWeight.w900, fontSize: isLight ? 18 : 16, letterSpacing: 0.5)),
+      ]),
+      const SizedBox(height: 6),
+      Padding(
+        padding: const EdgeInsets.only(left: 13),
+        child: Text(sub, style: TextStyle(color: isLight ? DoodleColors.textPrimary.withValues(alpha: 0.6) : Colors.white38, fontSize: isLight ? 13 : 12, height: 1.4)),
+      ),
     ]);
   }
 
   Widget _neonTextField(TextEditingController ctrl, String hint, IconData icon, Color glow, {int maxLines = 1, TextInputType? keyboardType, bool? forceLight, ValueChanged<String>? onChanged}) {
     final isLight = forceLight ?? isDoodleMode(context);
-    final bg = isLight ? Colors.white : Colors.white.withValues(alpha: 0.03);
-    final border = isLight ? DoodleColors.sketchLine : Colors.white.withValues(alpha: 0.06);
+    final bg = isLight ? Colors.white : const Color(0xFF0E0E12);
     final txt = isLight ? DoodleColors.textPrimary : Colors.white;
-    final hintClr = isLight ? DoodleColors.textPrimary.withValues(alpha: 0.5) : Colors.white24;
+    final hintClr = isLight ? DoodleColors.textPrimary.withValues(alpha: 0.45) : Colors.white24;
     return Container(
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
+        border: Border.all(color: isLight ? DoodleColors.sketchLine : const Color(0xFFFF6B00).withValues(alpha: 0.2)),
+        boxShadow: isLight ? null : [
+          BoxShadow(
+            color: const Color(0xFFFF6B00).withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: TextField(
         controller: ctrl,
         maxLines: maxLines,
         keyboardType: keyboardType,
-        style: TextStyle(color: txt, fontSize: isLight ? 16 : 15, fontWeight: isLight ? FontWeight.w500 : FontWeight.normal),
+        style: TextStyle(color: txt, fontSize: isLight ? 16 : 15, fontWeight: isLight ? FontWeight.w500 : FontWeight.w500),
         onChanged: (v) {
           if (onChanged != null) onChanged(v);
           setState(() {});
@@ -1750,7 +1695,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: hintClr, fontSize: isLight ? 15 : 14),
-          prefixIcon: maxLines == 1 ? Icon(icon, color: isLight ? DoodleColors.textPrimary.withValues(alpha: 0.6) : glow.withValues(alpha: 0.6), size: isLight ? 22 : 20) : null,
+          prefixIcon: maxLines == 1 ? Icon(icon, color: isLight ? DoodleColors.textPrimary.withValues(alpha: 0.6) : const Color(0xFFFF6B00), size: isLight ? 22 : 20) : null,
           border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: maxLines == 1 ? 18 : 20),
         ),
@@ -1785,10 +1730,11 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
           ])),
           Switch(
             value: value, onChanged: onChanged,
-            activeThumbColor: isLight ? Colors.white : Colors.white,
-            activeTrackColor: isLight ? DoodleColors.blue : Colors.white.withValues(alpha: 0.3),
+            activeThumbColor: Colors.white,
+            activeTrackColor: const Color(0xFFFF6B00),
             inactiveThumbColor: isLight ? Colors.white : Colors.white38,
             inactiveTrackColor: isLight ? DoodleColors.sketchLine : Colors.white.withValues(alpha: 0.08),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ],
       ),
