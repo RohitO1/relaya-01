@@ -1,6 +1,7 @@
 // ignore_for_file: duplicate_ignore, unused_element, unused_local_variable, deprecated_member_use, use_build_context_synchronously, curly_braces_in_flow_control_structures, unnecessary_brace_in_string_interps, avoid_print, unused_field, prefer_final_fields
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -14,21 +15,23 @@ import 'image_upload_service.dart';
 import 'feature_guide_screen.dart';
 import 'main.dart';
 import 'services/location_service.dart';
-import 'services/doodle_theme.dart';
+
 
 // ─────────────────────────────────────────────────────────────────
-// PREMIUM ONBOARDING SCREEN — 16-step ultra-detailed profile setup
+// PREMIUM ONBOARDING SCREEN — 6-step cinematic profile setup
+// Inspired by Hinge / Bumble / Tinder best practices
 // ─────────────────────────────────────────────────────────────────
 
-const _bg = Color(0xFF000000);
-const _card = Color(0xFF1A1F2E);
-const _cyan = Color(0xFFFF6B00);
-const _pink = Color(0xFFFF007F);
-const _green = Color(0xFF22C55E);
-const _txt = Color(0xFFF1F5F9);
-const _txt2 = Color(0xFF94A3B8);
+const _bg    = Color(0xFF000000);
+const _card  = Color(0xFF131318);
+const _card2 = Color(0xFF1A1A22);
+const _orange = Color(0xFFFF6B00);
+const _amber  = Color(0xFFFF9F0A);
+const _green  = Color(0xFF22C55E);
+const _txt   = Color(0xFFF1F5F9);
+const _txt2  = Color(0xFF94A3B8);
 const _muted = Color(0xFF64748B);
-const _gb = Color(0x14FFFFFF);
+const _gb    = Color(0x14FFFFFF);
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -36,96 +39,158 @@ class OnboardingScreen extends StatefulWidget {
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
+class _OnboardingScreenState extends State<OnboardingScreen>
+    with TickerProviderStateMixin {
   int _step = 0;
-  final int _totalSteps = 3;
+  static const int _totalSteps = 6;
   bool _saving = false;
   final PageController _pageCtrl = PageController();
+  late AnimationController _pulseCtrl;
+  late AnimationController _orbCtrl;
 
-  // Basic Info
+  // ── Step 1: Identity ──
   String? _photoUrl;
-  final _displayNameCtrl = TextEditingController();
-  final _dobCtrl = TextEditingController();
-  int _dobDay = 1;
-  int _dobMonth = 1;
-  int _dobYear = 2000;
-  bool _dobPickerExpanded = false;
-  static const _monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  final _nameCtrl     = TextEditingController();
+  final _usernameCtrl = TextEditingController();
+  bool _usernameAvailable = false;
+  bool _checkingUsername = false;
+  Timer? _usernameDebounce;
+
+  // ── Step 2: DOB & Bio ──
+  int _dobDay = 1, _dobMonth = 1, _dobYear = 2000;
+  bool _dobSet = false;
   final _bioCtrl = TextEditingController();
+  static const _monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // ── Step 3: Gender ──
   String _gender = '';
-  
-  // Location
-  final _cityCtrl = TextEditingController();
-  final _stateCtrl = TextEditingController();
-  double? _lat;
-  double? _lng;
-  final MapController _mapCtrl = MapController();
-  final TextEditingController _locSearchCtrl = TextEditingController();
-  List<Map<String, dynamic>> _searchResults = [];
-  Timer? _searchDebounce;
-  double _radiusKm = 25.0;
-  bool _detectingLocation = false;
-  bool _isMapLight = false;
 
-  // Demographics / Lifestyle
-  double _heightCm = 170;
-  String _smoking = '';
-  String _drinking = '';
-  String _weed = '';
-  String _diet = '';
-  String _exercise = '';
-  String _education = '';
-  final String _jobTitle = '';
-  String _zodiac = '';
-  String _relationshipType = '';
-  String _religion = '';
-  String _matchGender = '';
-  
-  // Personality & Interests
-  final Set<String> _selectedTraits = {};
+  // ── Step 4: Interests ──
   final Set<String> _selectedInterests = {};
-  final Set<String> _selectedVibes = {};
-  
-  // Preferences
-  final _langCtrl = TextEditingController();
-  bool _pushNotif = true;
-  bool _privateProfile = false;
+  static const int _maxInterests = 7;
 
-  // --- DATA LISTS ---
-  static const _personalityTraits = ['Active Listener', 'Adventurous', 'Affectionate', 'Ambitious', 'Animal lover', 'Assertive', 'Bookworm', 'Brunch Lover', 'Carefree', 'Charismatic', 'Cheerful', 'Competitive', 'Confident', 'Conservative', 'Creative', 'Cultural', 'Empathetic', 'ENFJ', 'ENFP', 'ENTJ', 'ENTP', 'Entrepreneurial', 'ESFJ', 'ESFP', 'ESTJ', 'ESTP', 'Extroverted', 'Family-oriented', 'Fashionable', 'Funny', 'Generous', 'Germaphobe', 'Good with Kids', 'INFJ', 'INFP', 'Intelligent', 'INTJ', 'INTP', 'Introverted', 'ISFJ', 'ISFP', 'ISTJ', 'ISTP', 'Liberal', 'Nerdy', 'Night owl', 'Open-minded', 'Outdoorsy', 'Patient', 'Playful', 'Positive', 'Respectful', 'Romantic', 'Self-aware', 'Shopaholic', 'Spontaneous', 'Thoughtful'];
-
-  static const _interestCategories = {
-    'Arts & Culture': ['Acting', 'Anime', 'Art galleries', 'Board games', 'Creative writing', 'Design', 'DIY', 'Fashion', 'Film & Cinema', 'Filmmaking', 'Knitting', 'Learning languages', 'Live music', 'Museums', 'Painting', 'Photography', 'Playing music', 'Pottery', 'Reading', 'Sewing', 'Standup comedy', 'Theatre', 'Travel', 'TV shows'],
-    'Community': ['Activism', 'Family time', 'Politics', 'Spending time with friends', 'Volunteering'],
-    'Food & Drink': ['Baking', 'Bubble tea', 'Cake decorating', 'Chocolate', 'Coffee', 'Cooking', 'Eating out', 'Fish & chips', 'Healthy eating', 'Junk food', 'Meat lover', 'Pescatarian', 'Pizza', 'Sushi', 'Vegan', 'Vegetarian'],
-    'Outdoors': ['Bird watching', 'Camping', 'Fishing', 'Gardening', 'Hiking', 'Nature walks', 'Scuba diving'],
-    'Sport': ['American football', 'Archery', 'Badminton', 'Baseball', 'Basketball', 'Boxing', 'Calisthenics', 'Cricket', 'Cycling', 'Dancing', 'Fencing', 'Figure skating', 'Football', 'Golf', 'Gym', 'Gymnastics', 'Horse Riding', 'Ice hockey', 'Mixed Martial arts', 'Motorsports', 'Pilates', 'Rock climbing', 'Rollerblading', 'Rowing', 'Rugby', 'Running', 'Sailing', 'Skateboarding', 'Skiing', 'Snowboarding', 'Surfing', 'Swimming', 'Tennis', 'Volleyball', 'Yoga'],
-    'Technology': ['Animation', 'Blogging', 'Coding', 'Content creation', 'Digital art', 'Influencer', 'Live streaming', 'Tech', 'Video games']
+  static const _interestGroups = {
+    '🎵 Music':    ['Pop','Hip-Hop','Rock','Jazz','EDM','Classical','Indie','R&B','Bollywood','K-Pop'],
+    '🎮 Gaming':   ['Mobile Games','PC Gaming','Console','Esports','RPGs','FPS','Casual Games'],
+    '✈️ Travel':   ['Backpacking','Beach','Mountains','City Trips','Solo Travel','Luxury Travel'],
+    '🍕 Food':     ['Street Food','Cooking','Baking','Cafes','Fine Dining','Veganism','Sushi','Desserts'],
+    '📸 Creative': ['Photography','Drawing','Writing','Design','Music Production','Film Making'],
+    '🏋️ Fitness':  ['Gym','Yoga','Running','Cycling','Cricket','Football','Basketball','Dance'],
+    '💻 Tech':     ['Coding','AI & ML','Gadgets','Startups','Blockchain','Gaming Tech'],
+    '📚 Learning': ['Books','Podcasts','Online Courses','Philosophy','History','Science'],
+    '🎬 Culture':  ['Movies','Series','Anime','Theatre','Stand-Up Comedy','Art Galleries'],
+    '🌿 Outdoors': ['Hiking','Camping','Nature Walks','Bird Watching','Adventure Sports'],
   };
 
-  static const _zodiacSigns = ['♈ Aries', '♉ Taurus', '♊ Gemini', '♋ Cancer', '♌ Leo', '♍ Virgo', '♎ Libra', '♏ Scorpio', '♐ Sagittarius', '♑ Capricorn', '♒ Aquarius', '♓ Pisces'];
-  static const _religions = ['Agnostic', 'Atheist', 'Buddhist', 'Catholic', 'Christian', 'Hindu', 'Jewish', 'Muslim', 'Sikh', 'Spiritual', 'Other', 'Prefer not to say'];
-  static const _eduLevels = ['High School', 'Trade/Tech School', 'In College', 'Undergraduate Degree', 'In Grad School', 'Graduate Degree', 'Prefer not to say'];
-  
+  // ── Step 5: Personality Vibes ──
+  final Set<String> _selectedVibes = {};
+  static const int _maxVibes = 4;
+
+  static const _vibes = [
+    ('🌙 Night Owl',     'nightowl'),
+    ('☀️ Early Bird',    'earlybird'),
+    ('⚡ Spontaneous',   'spontaneous'),
+    ('🎯 Goal-Oriented', 'goaldirected'),
+    ('🎭 Creative Soul', 'creative'),
+    ('🤝 Social Butterfly','social'),
+    ('🧘 Calm & Chill',  'calm'),
+    ('🔥 Ambitious',     'ambitious'),
+    ('😂 Funny & Witty', 'funny'),
+    ('💡 Deep Thinker',  'deepthink'),
+    ('🎉 Party Person',  'partyperson'),
+    ('📖 Homebody',      'homebody'),
+    ('🌍 Adventurous',   'adventurous'),
+    ('💪 Fitness Buff',  'fitness'),
+    ('🎨 Artsy',         'artsy'),
+    ('🤓 Intellectual',  'intellectual'),
+  ];
+
+  // ── Step 6: Location ──
+  double? _lat, _lng;
+  final _cityCtrl    = TextEditingController();
+  final _stateCtrl   = TextEditingController();
+  final MapController _mapCtrl = MapController();
+  final _locSearchCtrl = TextEditingController();
+  List<Map<String, dynamic>> _searchResults = [];
+  Timer? _searchDebounce;
+  bool _detectingLocation = false;
+
+  // ── DOB wheel state ──
+  late final FixedExtentScrollController _dayCtrl;
+  late final FixedExtentScrollController _monthCtrl;
+  late final FixedExtentScrollController _yearCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true);
+    _orbCtrl   = AnimationController(vsync: this, duration: const Duration(seconds: 10))..repeat(reverse: true);
+    final now = DateTime.now();
+    _dobDay = 1; _dobMonth = 1; _dobYear = now.year - 20;
+    final yearList = _yearList;
+    _dayCtrl   = FixedExtentScrollController(initialItem: 0);
+    _monthCtrl = FixedExtentScrollController(initialItem: 0);
+    _yearCtrl  = FixedExtentScrollController(initialItem: yearList.indexOf(_dobYear).clamp(0, yearList.length - 1));
+  }
+
+  List<int> get _yearList {
+    final maxYear = DateTime.now().year - 16;
+    return List.generate(maxYear - 1950 + 1, (i) => 1950 + i);
+  }
+
+  int _daysInMonth(int m, int y) => DateTime(y, m + 1, 0).day;
+
+  String get _dobString {
+    if (!_dobSet) return '';
+    return '$_dobYear-${_dobMonth.toString().padLeft(2,'0')}-${_dobDay.toString().padLeft(2,'0')}';
+  }
+
+  String get _dobDisplay {
+    if (!_dobSet) return 'Select Date of Birth';
+    return '${_monthNames[_dobMonth - 1]} $_dobDay, $_dobYear';
+  }
+
   @override
   void dispose() {
-    _displayNameCtrl.dispose();
-    _dobCtrl.dispose();
+    _pulseCtrl.dispose();
+    _orbCtrl.dispose();
+    _nameCtrl.dispose();
+    _usernameCtrl.dispose();
+    _usernameDebounce?.cancel();
     _bioCtrl.dispose();
     _cityCtrl.dispose();
     _stateCtrl.dispose();
     _locSearchCtrl.dispose();
-    _langCtrl.dispose();
-    _pageCtrl.dispose();
     _searchDebounce?.cancel();
+    _pageCtrl.dispose();
+    _dayCtrl.dispose();
+    _monthCtrl.dispose();
+    _yearCtrl.dispose();
     super.dispose();
   }
 
+  // ── Step validation ──────────────────────────────────────────────
+  bool get _canProceed {
+    switch (_step) {
+      case 0: return _nameCtrl.text.trim().length >= 2;
+      case 1: return _dobSet;
+      case 2: return _gender.isNotEmpty;
+      case 3: return _selectedInterests.length >= 3;
+      case 4: return _selectedVibes.isNotEmpty;
+      case 5: return true; // location optional
+      default: return true;
+    }
+  }
+
   void _nextStep() {
+    if (!_canProceed) {
+      _showNudge();
+      return;
+    }
     if (_step < _totalSteps - 1) {
       HapticFeedback.selectionClick();
       setState(() => _step++);
-      _pageCtrl.nextPage(duration: const Duration(milliseconds: 400), curve: Curves.easeInOutCubic);
+      _pageCtrl.nextPage(duration: const Duration(milliseconds: 450), curve: Curves.easeInOutCubic);
     } else {
       _completeOnboarding();
     }
@@ -135,64 +200,170 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (_step > 0) {
       HapticFeedback.selectionClick();
       setState(() => _step--);
-      _pageCtrl.previousPage(duration: const Duration(milliseconds: 400), curve: Curves.easeInOutCubic);
+      _pageCtrl.previousPage(duration: const Duration(milliseconds: 450), curve: Curves.easeInOutCubic);
     }
   }
 
+  void _showNudge() {
+    final msgs = [
+      'Please add your name to continue.',
+      'Pick your birthday to continue.',
+      'Select your gender to continue.',
+      'Pick at least 3 interests to continue.',
+      'Choose at least 1 vibe that describes you.',
+      '',
+    ];
+    if (msgs[_step].isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msgs[_step], style: const TextStyle(color: Colors.white)),
+      backgroundColor: _orange,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  // ── Username check ───────────────────────────────────────────────
+  void _checkUsername(String val) {
+    _usernameDebounce?.cancel();
+    final clean = val.toLowerCase().trim();
+    if (clean.length < 3) {
+      setState(() { _usernameAvailable = false; _checkingUsername = false; });
+      return;
+    }
+    setState(() => _checkingUsername = true);
+    _usernameDebounce = Timer(const Duration(milliseconds: 600), () async {
+      try {
+        final res = await Supabase.instance.client
+            .from('profiles').select('id').eq('username', clean).maybeSingle();
+        if (mounted) setState(() { _usernameAvailable = res == null; _checkingUsername = false; });
+      } catch (_) {
+        if (mounted) setState(() => _checkingUsername = false);
+      }
+    });
+  }
+
+  // ── Photo upload ─────────────────────────────────────────────────
   Future<void> _handlePhotoUpload() async {
     final url = await ImageUploadService.pickAndUpload(context: context, folder: 'avatars');
     if (url != null && mounted) setState(() => _photoUrl = url);
   }
 
+  // ── Location search ──────────────────────────────────────────────
+  void _onSearchChanged(String q) {
+    _searchDebounce?.cancel();
+    if (q.trim().length < 2) { if (mounted) setState(() => _searchResults = []); return; }
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () async {
+      final results = await locationService.searchLocations(q);
+      if (mounted) setState(() => _searchResults = results);
+    });
+  }
+
+  void _selectResult(Map<String, dynamic> r) {
+    final lat = (r['lat'] as num).toDouble();
+    final lng = (r['lng'] as num).toDouble();
+    final name = r['name']?.toString() ?? '';
+    final full = r['full_name']?.toString() ?? '';
+    setState(() {
+      _lat = lat; _lng = lng;
+      _cityCtrl.text = name;
+      _stateCtrl.text = full.split(',').length > 1 ? full.split(',')[1].trim() : '';
+      _locSearchCtrl.text = name;
+      _searchResults = [];
+    });
+    _mapCtrl.move(LatLng(lat, lng), 14.0);
+  }
+
+  Future<void> _reverseGeocode(double lat, double lng) async {
+    try {
+      final url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&addressdetails=1';
+      final resp = await http.get(Uri.parse(url), headers: {'User-Agent': 'RelayaApp/1.0'});
+      if (resp.statusCode == 200 && mounted) {
+        final data = jsonDecode(resp.body);
+        final addr = data['address'] ?? {};
+        final city = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['county'] ?? '';
+        final state = addr['state'] ?? '';
+        setState(() { _cityCtrl.text = city; _stateCtrl.text = state; _locSearchCtrl.text = city; });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _detectMyLocation() async {
+    setState(() => _detectingLocation = true);
+    try {
+      bool svcEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!svcEnabled) throw Exception('Location services disabled');
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.deniedForever) throw Exception('Permission denied forever');
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium);
+      setState(() { _lat = pos.latitude; _lng = pos.longitude; });
+      _mapCtrl.move(LatLng(pos.latitude, pos.longitude), 14.0);
+      await _reverseGeocode(pos.latitude, pos.longitude);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not detect: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _detectingLocation = false);
+    }
+  }
+
+  // ── Complete onboarding ──────────────────────────────────────────
   Future<void> _completeOnboarding() async {
     setState(() => _saving = true);
     try {
       final uid = Supabase.instance.client.auth.currentUser!.id;
       final locationName = [_cityCtrl.text.trim(), _stateCtrl.text.trim()].where((s) => s.isNotEmpty).join(', ');
+      final cleanUsername = _usernameCtrl.text.trim().toLowerCase();
+      final finalUsername = cleanUsername.isNotEmpty && _usernameAvailable
+          ? cleanUsername
+          : 'user_${uid.substring(0, 8)}';
 
+      final payload = <String, dynamic>{
+        'id': uid,
+        'name': _nameCtrl.text.trim(),
+        'full_name': _nameCtrl.text.trim(),
+        'username': finalUsername,
+        'gender': _gender,
+        'bio': _bioCtrl.text.trim(),
+        'city': _cityCtrl.text.trim(),
+        'district': _cityCtrl.text.trim(),
+        'state': _stateCtrl.text.trim(),
+        'lat': _lat ?? 0,
+        'lng': _lng ?? 0,
+        'avatar_url': _photoUrl ?? '',
+        'onboarding_complete': true,
+        'is_public': true,
+      };
+
+      if (_dobSet) payload['dob'] = _dobString;
+      if (_selectedInterests.isNotEmpty) payload['interests'] = _selectedInterests.toList();
+      if (_selectedVibes.isNotEmpty) payload['personality_tags'] = _selectedVibes.toList();
+
+      // Try to save all fields; gracefully degrade if schema lacks optional columns
       try {
+        await Supabase.instance.client.from('profiles').upsert(payload, onConflict: 'id');
+      } on PostgrestException catch (e) {
+        // Retry with only core fields if optional columns don't exist yet
+        debugPrint('Full upsert failed ($e), retrying with core fields...');
         await Supabase.instance.client.from('profiles').upsert({
           'id': uid,
-          'name': _displayNameCtrl.text.trim(),
-          'full_name': _displayNameCtrl.text.trim(),
-          'dob': _dobCtrl.text.trim(),
+          'name': _nameCtrl.text.trim(),
+          'full_name': _nameCtrl.text.trim(),
+          'username': finalUsername,
           'gender': _gender,
           'city': _cityCtrl.text.trim(),
-          'district': _cityCtrl.text.trim(),
-          'state': _stateCtrl.text.trim(),
           'lat': _lat ?? 0,
           'lng': _lng ?? 0,
-          'avatar_url': _photoUrl ?? 'https://picsum.photos/seed/$uid/200',
+          'avatar_url': _photoUrl ?? '',
           'onboarding_complete': true,
         }, onConflict: 'id');
-      } on PostgrestException catch (e) {
-        if (e.message.contains('dob') || e.code == 'PGRST204') {
-          // Retry without 'dob' column if it does not exist in schema
-          await Supabase.instance.client.from('profiles').upsert({
-            'id': uid,
-            'name': _displayNameCtrl.text.trim(),
-            'full_name': _displayNameCtrl.text.trim(),
-            'gender': _gender,
-            'city': _cityCtrl.text.trim(),
-            'district': _cityCtrl.text.trim(),
-            'state': _stateCtrl.text.trim(),
-            'lat': _lat ?? 0,
-            'lng': _lng ?? 0,
-            'avatar_url': _photoUrl ?? 'https://picsum.photos/seed/$uid/200',
-            'onboarding_complete': true,
-          }, onConflict: 'id');
-        } else {
-          rethrow;
-        }
-      } catch (_) {
-        rethrow;
       }
 
       if (_lat != null && _lng != null) {
         locationService.setLocation(locationName.isNotEmpty ? locationName : _cityCtrl.text, lat: _lat, lng: _lng);
       }
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble('matchRadius', _radiusKm);
+      await prefs.setDouble('matchRadius', 25.0);
 
       if (mounted) {
         Navigator.of(context).pushReplacement(
@@ -211,517 +382,659 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving profile: $e'), backgroundColor: Colors.red),
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // BUILD
+  // ═══════════════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : _bg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Progress Bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
-              child: Row(
-                children: List.generate(_totalSteps, (i) {
-                  final active = i <= _step;
-                  return Expanded(
-                    child: Container(
-                      height: 4,
-                      margin: EdgeInsets.only(right: i < _totalSteps - 1 ? 2 : 0),
-                      decoration: BoxDecoration(
-                        color: active ? _cyan : Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(2),
-                        boxShadow: active && i == _step ? [BoxShadow(color: _cyan.withValues(alpha: 0.5), blurRadius: 4)] : null,
-                      ),
-                    ),
-                  );
-                }),
-              ),
-            ),
-            
-            // Content
-            Expanded(
-              child: PageView(
-                controller: _pageCtrl,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _s0BasicInfo(),
-                  _s1Gender(),
-                  _s2Location(),
-                ],
-              ),
-            ),
+    final stepTitles = [
+      'Create your identity',
+      'Your birthday & bio',
+      'How do you identify?',
+      'What do you love?',
+      'Your vibe',
+      'Where are you?',
+    ];
+    final stepSubtitles = [
+      'Set up your public profile',
+      'Help us personalise your experience',
+      'This helps us tailor your feed',
+      'Pick up to 7 interests',
+      'Pick up to 4 words that describe you',
+      'Find people & events near you',
+    ];
 
-            // Bottom Nav
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [_bg, _bg.withValues(alpha: 0)]),
-              ),
-              child: Row(
-                children: [
-                  if (_step > 0)
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: _prevStep,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          margin: const EdgeInsets.only(right: 12),
-                          decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(16), border: Border.all(color: _gb)),
-                          child: const Icon(Icons.arrow_back, color: _txt2),
-                        ),
+    return Scaffold(
+      backgroundColor: _bg,
+      body: Stack(
+        children: [
+          // Ambient background orbs
+          AnimatedBuilder(
+            animation: _orbCtrl,
+            builder: (_, __) {
+              final t = _orbCtrl.value;
+              return Stack(children: [
+                Positioned(
+                  top: -60 + 30 * math.sin(t * math.pi),
+                  right: -80,
+                  child: _orb(300, _orange.withValues(alpha: 0.07)),
+                ),
+                Positioned(
+                  bottom: 80 + 20 * math.cos(t * math.pi),
+                  left: -60,
+                  child: _orb(250, _amber.withValues(alpha: 0.06)),
+                ),
+              ]);
+            },
+          ),
+          SafeArea(
+            child: Column(
+              children: [
+                // ── Top bar ──────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: Row(
+                    children: [
+                      if (_step > 0)
+                        GestureDetector(
+                          onTap: _prevStep,
+                          child: Container(
+                            width: 40, height: 40,
+                            decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(12), border: Border.all(color: _gb)),
+                            child: const Icon(Icons.arrow_back_ios_new, color: _txt2, size: 16),
+                          ),
+                        )
+                      else
+                        const SizedBox(width: 40),
+                      const Spacer(),
+                      Text(
+                        '${_step + 1} / $_totalSteps',
+                        style: GoogleFonts.inter(color: _muted, fontSize: 13, fontWeight: FontWeight.w600),
                       ),
-                    ),
-                  Expanded(
-                    flex: 2,
-                    child: GestureDetector(
-                      onTap: _saving ? null : _nextStep,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [_cyan, _green]),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [BoxShadow(color: _cyan.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 5))],
+                    ],
+                  ),
+                ),
+
+                // ── Progress bar ─────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                  child: Row(
+                    children: List.generate(_totalSteps, (i) {
+                      final filled = i <= _step;
+                      final active = i == _step;
+                      return Expanded(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.easeInOutCubic,
+                          height: 4,
+                          margin: EdgeInsets.only(right: i < _totalSteps - 1 ? 4 : 0),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(4),
+                            color: filled ? _orange : Colors.white.withValues(alpha: 0.08),
+                            boxShadow: active ? [BoxShadow(color: _orange.withValues(alpha: 0.5), blurRadius: 6)] : null,
+                          ),
                         ),
-                        child: Center(
-                          child: _saving 
-                              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                              : Text(_step == _totalSteps - 1 ? 'Complete' : 'Continue', style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 16)),
-                        ),
-                      ),
+                      );
+                    }),
+                  ),
+                ),
+
+                // ── Step header ──────────────────────────────────
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: Padding(
+                    key: ValueKey(_step),
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(stepTitles[_step], style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: _txt, height: 1.1)),
+                        const SizedBox(height: 6),
+                        Text(stepSubtitles[_step], style: GoogleFonts.inter(fontSize: 13, color: _muted)),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+
+                // ── Page content ─────────────────────────────────
+                Expanded(
+                  child: PageView(
+                    controller: _pageCtrl,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      _step0Identity(),
+                      _step1BioAndDob(),
+                      _step2Gender(),
+                      _step3Interests(),
+                      _step4Vibes(),
+                      _step5Location(),
+                    ],
+                  ),
+                ),
+
+                // ── Bottom CTA ───────────────────────────────────
+                _buildBottomCta(),
+              ],
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _orb(double size, Color color) => Container(
+    width: size, height: size,
+    decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [color, Colors.transparent])),
+  );
+
+  Widget _buildBottomCta() {
+    final isLast = _step == _totalSteps - 1;
+    final canGo  = _canProceed;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+      child: GestureDetector(
+        onTap: _saving ? null : _nextStep,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          decoration: BoxDecoration(
+            gradient: canGo && !_saving
+                ? const LinearGradient(colors: [_orange, _amber])
+                : null,
+            color: !canGo || _saving ? Colors.white.withValues(alpha: 0.07) : null,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: canGo && !_saving ? [BoxShadow(color: _orange.withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 8))] : null,
+          ),
+          child: Center(
+            child: _saving
+                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                : Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(isLast ? Icons.rocket_launch_rounded : Icons.arrow_forward_rounded,
+                        color: canGo ? Colors.black : _muted, size: 18),
+                    const SizedBox(width: 10),
+                    Text(
+                      isLast ? "Let's Go!" : 'Continue',
+                      style: GoogleFonts.inter(color: canGo ? Colors.black : _muted, fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                  ]),
+          ),
         ),
       ),
     );
   }
 
-  // ── HELPERS ──────────────────────────────────────────────────────────
-  int _daysInMonth(int month, int year) {
-    return DateTime(year, month + 1, 0).day;
-  }
-
-  void _commitDob() {
-    final maxDay = _daysInMonth(_dobMonth, _dobYear);
-    if (_dobDay > maxDay) _dobDay = maxDay;
-    _dobCtrl.text = '$_dobYear-${_dobMonth.toString().padLeft(2, '0')}-${_dobDay.toString().padLeft(2, '0')}';
-  }
-
-  Widget _buildDobPicker() {
-    final now = DateTime.now();
-    final maxYear = now.year - 16;
-    final years = List.generate(maxYear - 1950 + 1, (i) => 1950 + i);
-    final days = List.generate(_daysInMonth(_dobMonth, _dobYear), (i) => i + 1);
-    final months = List.generate(12, (i) => i + 1);
-
-    const itemH = 52.0;
-    const visibleItems = 3;
-
-    return StatefulBuilder(builder: (ctx, setLocal) {
-      FixedExtentScrollController dayCtrl2 = FixedExtentScrollController(initialItem: _dobDay - 1);
-      FixedExtentScrollController monthCtrl2 = FixedExtentScrollController(initialItem: _dobMonth - 1);
-      FixedExtentScrollController yearCtrl2 = FixedExtentScrollController(initialItem: years.indexOf(_dobYear).clamp(0, years.length - 1));
-
-      Widget col(FixedExtentScrollController c, List items, Function(int) onChange, {bool isYear = false}) {
-        return Expanded(
-          child: ListWheelScrollView.useDelegate(
-            controller: c,
-            itemExtent: itemH,
-            physics: const FixedExtentScrollPhysics(),
-            perspective: 0.003,
-            diameterRatio: 1.8,
-            onSelectedItemChanged: (i) {
-              onChange(i);
-              setLocal(() {});
-            },
-            childDelegate: ListWheelChildBuilderDelegate(
-              builder: (_, i) {
-                if (i < 0 || i >= items.length) return null;
-                final sel = c.hasClients && c.selectedItem == i;
-                final String label;
-                if (isYear) {
-                  label = '${items[i]}';
-                } else if (items == months) {
-                  label = _monthNames[items[i] - 1];
-                } else {
-                  label = '${items[i]}'.padLeft(2, '0');
-                }
-                return Center(
-                  child: AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 150),
-                    style: GoogleFonts.inter(
-                      fontSize: sel ? 26 : 20,
-                      fontWeight: sel ? FontWeight.w800 : FontWeight.w400,
-                      color: sel ? Colors.white : Colors.white.withValues(alpha: 0.35),
-                    ),
-                    child: Text(label),
+  // ════════════════════════════════════════════════════════════════
+  // STEP 0 — Identity: Photo, Name, Username
+  // ════════════════════════════════════════════════════════════════
+  Widget _step0Identity() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+      child: Column(
+        children: [
+          // Photo picker
+          GestureDetector(
+            onTap: _handlePhotoUpload,
+            child: AnimatedBuilder(
+              animation: _pulseCtrl,
+              builder: (_, child) {
+                final glow = _photoUrl == null ? _pulseCtrl.value * 0.08 + 0.02 : 0.0;
+                return Container(
+                  width: 110, height: 110,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _card2,
+                    border: Border.all(color: _photoUrl != null ? _orange : Colors.white.withValues(alpha: 0.15), width: 2.5),
+                    boxShadow: _photoUrl == null ? [BoxShadow(color: _orange.withValues(alpha: glow), blurRadius: 24, spreadRadius: 4)] : null,
                   ),
+                  child: _photoUrl != null
+                      ? ClipOval(child: Image(image: _buildSafeImage(_photoUrl), fit: BoxFit.cover, width: 110, height: 110))
+                      : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          const Icon(Icons.add_a_photo_rounded, color: _orange, size: 28),
+                          const SizedBox(height: 6),
+                          Text('Add Photo', style: GoogleFonts.inter(color: _orange, fontSize: 11, fontWeight: FontWeight.w600)),
+                        ]),
                 );
               },
-              childCount: items.length,
             ),
           ),
-        );
+          const SizedBox(height: 8),
+          Text('Profile photo', style: GoogleFonts.inter(color: _muted, fontSize: 11)),
+          const SizedBox(height: 28),
+          _inputField('Your first name *', _nameCtrl, Icons.person_outline, onChanged: (_) => setState(() {})),
+          const SizedBox(height: 14),
+          _usernameField(),
+        ],
+      ),
+    );
+  }
+
+  Widget _usernameField() {
+    final val = _usernameCtrl.text.trim();
+    Color borderColor = _gb;
+    IconData? trailingIcon;
+    Color? trailingColor;
+    if (val.length >= 3) {
+      if (_checkingUsername) {
+        borderColor = _gb;
+      } else if (_usernameAvailable) {
+        borderColor = _green;
+        trailingIcon = Icons.check_circle;
+        trailingColor = _green;
+      } else {
+        borderColor = Colors.red;
+        trailingIcon = Icons.cancel;
+        trailingColor = Colors.red;
       }
-
-      final localDays = List.generate(_daysInMonth(_dobMonth, _dobYear), (i) => i + 1);
-
-      return AnimatedContainer(
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOutCubic,
-        margin: const EdgeInsets.only(top: 12),
-        decoration: BoxDecoration(
-          color: _bg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _cyan.withValues(alpha: 0.25), width: 1.5),
-          boxShadow: [BoxShadow(color: _cyan.withValues(alpha: 0.08), blurRadius: 20, spreadRadius: 2)],
-        ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  GestureDetector(
-                    onTap: () { setState(() => _dobPickerExpanded = false); },
-                    child: Text('Cancel', style: GoogleFonts.inter(color: Colors.white38, fontSize: 14)),
-                  ),
-                  Row(children: [
-                    const Icon(Icons.cake_outlined, color: _cyan, size: 16),
-                    const SizedBox(width: 6),
-                    Text('Date of Birth', style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
-                  ]),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _commitDob();
-                        _dobPickerExpanded = false;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [_cyan, _green]),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text('Done', style: GoogleFonts.inter(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w800)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Row(
-                children: [
-                  Expanded(child: Center(child: Text('DAY', style: GoogleFonts.inter(color: _cyan.withValues(alpha: 0.6), fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w700)))),
-                  Expanded(child: Center(child: Text('MONTH', style: GoogleFonts.inter(color: _cyan.withValues(alpha: 0.6), fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w700)))),
-                  Expanded(child: Center(child: Text('YEAR', style: GoogleFonts.inter(color: _cyan.withValues(alpha: 0.6), fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w700)))),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
-            SizedBox(
-              height: itemH * visibleItems,
-              child: Stack(
-                children: [
-                  Center(
-                    child: Container(
-                      height: itemH,
-                      margin: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          top: BorderSide(color: _cyan.withValues(alpha: 0.5), width: 1),
-                          bottom: BorderSide(color: _cyan.withValues(alpha: 0.5), width: 1),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(top: 0, left: 0, right: 0, height: itemH * 0.9,
-                    child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_bg, _bg.withValues(alpha: 0)])))),
-                  Positioned(bottom: 0, left: 0, right: 0, height: itemH * 0.9,
-                    child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [_bg, _bg.withValues(alpha: 0)])))),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        col(dayCtrl2, localDays, (i) { _dobDay = localDays[i]; }),
-                        col(monthCtrl2, months, (i) { _dobMonth = months[i]; }, isYear: false),
-                        col(yearCtrl2, years, (i) { _dobYear = years[i]; }, isYear: true),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  ImageProvider _buildSafeImage(String? url) {
-    if (url == null || url.isEmpty) return const NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
-    if (url.startsWith('http')) return NetworkImage(url);
-    try {
-      final base64Str = url.contains(',') ? url.split(',').last : url;
-      return MemoryImage(base64Decode(base64Str));
-    } catch (_) {
-      return const NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
     }
-  }
-
-  Widget _header(String title, String subtitle) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 20),
-        Text(title, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: _txt)),
-        const SizedBox(height: 8),
-        Text(subtitle, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 14, color: _muted, height: 1.5)),
-        const SizedBox(height: 30),
+        Container(
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor, width: borderColor == _gb ? 1 : 1.5),
+          ),
+          child: TextField(
+            controller: _usernameCtrl,
+            style: GoogleFonts.inter(color: _txt, fontSize: 15),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_\.]'))],
+            decoration: InputDecoration(
+              hintText: '@username (optional)',
+              hintStyle: GoogleFonts.inter(color: _muted, fontSize: 14),
+              prefixIcon: const Icon(Icons.alternate_email, color: _orange, size: 20),
+              suffixIcon: _checkingUsername
+                  ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(strokeWidth: 2, color: _orange)))
+                  : trailingIcon != null ? Icon(trailingIcon, color: trailingColor, size: 20) : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            onChanged: (v) { setState(() {}); _checkUsername(v); },
+          ),
+        ),
+        if (val.length >= 3 && !_checkingUsername && !_usernameAvailable)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, top: 4),
+            child: Text('Username taken. Try another.', style: GoogleFonts.inter(color: Colors.red, fontSize: 11)),
+          ),
       ],
     );
   }
 
-  Widget _doodleIcon(IconData icon, Color color) {
-    return Container(
-      width: 120, height: 120,
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        shape: BoxShape.circle,
-        border: Border.all(color: color.withValues(alpha: 0.3), width: 2),
+  // ════════════════════════════════════════════════════════════════
+  // STEP 1 — Birthday & Bio
+  // ════════════════════════════════════════════════════════════════
+  Widget _step1BioAndDob() {
+    final yearList = _yearList;
+    final days     = List.generate(_daysInMonth(_dobMonth, _dobYear), (i) => i + 1);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // DOB header
+          Row(children: [
+            const Icon(Icons.cake_outlined, color: _orange, size: 18),
+            const SizedBox(width: 8),
+            Text('Date of Birth', style: GoogleFonts.inter(color: _txt, fontWeight: FontWeight.w700, fontSize: 15)),
+            const Spacer(),
+            if (_dobSet)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: _orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                child: Text(_dobDisplay, style: GoogleFonts.inter(color: _orange, fontWeight: FontWeight.w600, fontSize: 12)),
+              ),
+          ]),
+          const SizedBox(height: 12),
+          // Drum-roll date picker
+          Container(
+            height: 180,
+            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(18), border: Border.all(color: _orange.withValues(alpha: 0.2))),
+            child: Stack(
+              children: [
+                // selection indicator
+                Center(
+                  child: Container(
+                    height: 50,
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: _orange.withValues(alpha: 0.4), width: 1.5),
+                      color: _orange.withValues(alpha: 0.06),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      // Day
+                      Expanded(child: _drumWheel(
+                        controller: _dayCtrl,
+                        items: days,
+                        label: (v) => v.toString().padLeft(2,'0'),
+                        onChanged: (i) { _dobDay = days[i]; _dobSet = true; setState((){}); },
+                      )),
+                      // Month
+                      Expanded(child: _drumWheel(
+                        controller: _monthCtrl,
+                        items: List.generate(12, (i) => i + 1),
+                        label: (v) => _monthNames[v - 1],
+                        onChanged: (i) { _dobMonth = i + 1; _dobSet = true; setState((){}); },
+                      )),
+                      // Year
+                      Expanded(child: _drumWheel(
+                        controller: _yearCtrl,
+                        items: yearList,
+                        label: (v) => v.toString(),
+                        onChanged: (i) { _dobYear = yearList[i]; _dobSet = true; setState((){}); },
+                      )),
+                    ],
+                  ),
+                ),
+                // top/bottom fades
+                Positioned(top: 0, left: 0, right: 0, height: 60,
+                  child: Container(decoration: BoxDecoration(borderRadius: const BorderRadius.vertical(top: Radius.circular(18)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_card, _card.withValues(alpha: 0)])))),
+                Positioned(bottom: 0, left: 0, right: 0, height: 60,
+                  child: Container(decoration: BoxDecoration(borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)), gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [_card, _card.withValues(alpha: 0)])))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+          // Bio
+          Row(children: [
+            const Icon(Icons.edit_outlined, color: _orange, size: 18),
+            const SizedBox(width: 8),
+            Text('Short Bio', style: GoogleFonts.inter(color: _txt, fontWeight: FontWeight.w700, fontSize: 15)),
+            const SizedBox(width: 6),
+            Text('(optional)', style: GoogleFonts.inter(color: _muted, fontSize: 12)),
+          ]),
+          const SizedBox(height: 10),
+          Container(
+            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _gb)),
+            child: TextField(
+              controller: _bioCtrl,
+              maxLines: 3,
+              maxLength: 120,
+              style: GoogleFonts.inter(color: _txt, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'e.g. "Music lover, explorer, always up for an adventure ✨"',
+                hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.all(16),
+                counterStyle: GoogleFonts.inter(color: _muted, fontSize: 11),
+              ),
+            ),
+          ),
+        ],
       ),
-      child: Icon(icon, size: 60, color: color),
     );
   }
 
-  Widget _optionTile(String label, String value, String current, ValueChanged<String> onSelect, {IconData? icon}) {
-    final sel = value == current;
+  Widget _drumWheel({
+    required FixedExtentScrollController controller,
+    required List<int> items,
+    required String Function(int) label,
+    required void Function(int) onChanged,
+  }) {
+    return ListWheelScrollView.useDelegate(
+      controller: controller,
+      itemExtent: 50,
+      perspective: 0.003,
+      diameterRatio: 1.8,
+      physics: const FixedExtentScrollPhysics(),
+      onSelectedItemChanged: onChanged,
+      childDelegate: ListWheelChildBuilderDelegate(
+        childCount: items.length,
+        builder: (_, i) {
+          if (i < 0 || i >= items.length) return null;
+          final sel = controller.hasClients && controller.selectedItem == i;
+          return Center(
+            child: AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 150),
+              style: GoogleFonts.inter(
+                fontSize: sel ? 22 : 16,
+                fontWeight: sel ? FontWeight.w800 : FontWeight.w400,
+                color: sel ? _txt : Colors.white.withValues(alpha: 0.3),
+              ),
+              child: Text(label(items[i])),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // STEP 2 — Gender
+  // ════════════════════════════════════════════════════════════════
+  Widget _step2Gender() {
+    final options = [
+      ('Man',       Icons.face_rounded,       const Color(0xFF3B82F6)),
+      ('Woman',     Icons.face_3_rounded,      const Color(0xFFEC4899)),
+      ('Non-Binary',Icons.person_2_rounded,    const Color(0xFF8B5CF6)),
+      ('Prefer not to say', Icons.remove_circle_outline, _muted),
+    ];
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      child: Column(
+        children: [
+          Row(children: [
+            Expanded(child: _genderCard(options[0])),
+            const SizedBox(width: 14),
+            Expanded(child: _genderCard(options[1])),
+          ]),
+          const SizedBox(height: 14),
+          _genderTile(options[2]),
+          const SizedBox(height: 10),
+          _genderTile(options[3]),
+        ],
+      ),
+    );
+  }
+
+  Widget _genderCard((String, IconData, Color) opt) {
+    final sel = _gender == opt.$1;
     return GestureDetector(
-      onTap: () => onSelect(value),
+      onTap: () { HapticFeedback.selectionClick(); setState(() => _gender = opt.$1); },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 32),
+        decoration: BoxDecoration(
+          color: sel ? opt.$3.withValues(alpha: 0.12) : _card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: sel ? opt.$3 : _gb, width: sel ? 2 : 1),
+          boxShadow: sel ? [BoxShadow(color: opt.$3.withValues(alpha: 0.2), blurRadius: 14, offset: const Offset(0,4))] : null,
+        ),
+        child: Column(children: [
+          Icon(opt.$2, size: 52, color: sel ? opt.$3 : _muted),
+          const SizedBox(height: 12),
+          Text(opt.$1, style: GoogleFonts.inter(color: sel ? opt.$3 : _txt, fontSize: 16, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
+          if (sel) ...[const SizedBox(height: 6), Icon(Icons.check_circle, color: opt.$3, size: 18)],
+        ]),
+      ),
+    );
+  }
+
+  Widget _genderTile((String, IconData, Color) opt) {
+    final sel = _gender == opt.$1;
+    return GestureDetector(
+      onTap: () { HapticFeedback.selectionClick(); setState(() => _gender = opt.$1); },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        margin: const EdgeInsets.only(bottom: 2),
         decoration: BoxDecoration(
-          color: sel ? _cyan.withValues(alpha: 0.1) : _card,
+          color: sel ? opt.$3.withValues(alpha: 0.10) : _card,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: sel ? _cyan : _gb, width: sel ? 2 : 1),
+          border: Border.all(color: sel ? opt.$3 : _gb, width: sel ? 1.5 : 1),
         ),
-        child: Row(
-          children: [
-            if (icon != null) ...[Icon(icon, color: sel ? _cyan : _muted, size: 20), const SizedBox(width: 16)],
-            Expanded(child: Text(label, style: GoogleFonts.inter(color: sel ? _cyan : _txt, fontSize: 16, fontWeight: sel ? FontWeight.w600 : FontWeight.w500))),
-            if (sel) const Icon(Icons.check_circle, color: _cyan, size: 22),
-          ],
-        ),
+        child: Row(children: [
+          Icon(opt.$2, color: sel ? opt.$3 : _muted, size: 22),
+          const SizedBox(width: 16),
+          Text(opt.$1, style: GoogleFonts.inter(color: sel ? opt.$3 : _txt, fontSize: 15, fontWeight: sel ? FontWeight.w600 : FontWeight.w500)),
+          const Spacer(),
+          if (sel) Icon(Icons.check_circle_rounded, color: opt.$3, size: 20),
+        ]),
       ),
     );
   }
 
-  // ── STEPS ────────────────────────────────────────────────────────────
-
-  Widget _s0BasicInfo() {
+  // ════════════════════════════════════════════════════════════════
+  // STEP 3 — Interests
+  // ════════════════════════════════════════════════════════════════
+  Widget _step3Interests() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _header("Let's get to know you", "Add a photo and your basic details"),
-          GestureDetector(
-            onTap: _handlePhotoUpload,
-            child: Container(
-              width: 120, height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle, color: _card,
-                border: Border.all(color: _photoUrl != null ? _cyan : _gb, width: 2),
-              ),
-              child: _photoUrl != null
-                  ? ClipOval(child: Image(image: _buildSafeImage(_photoUrl), fit: BoxFit.cover))
-                  : const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.camera_alt, color: _muted, size: 30), SizedBox(height: 8), Text('Add Photo', style: TextStyle(color: _cyan, fontSize: 12))]),
-            ),
+          // counter
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(10), border: Border.all(color: _gb)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.interests_outlined, color: _orange, size: 16),
+              const SizedBox(width: 6),
+              Text('${_selectedInterests.length} / $_maxInterests selected',
+                  style: GoogleFonts.inter(color: _selectedInterests.length >= 3 ? _orange : _muted, fontSize: 13, fontWeight: FontWeight.w600)),
+            ]),
           ),
-          const SizedBox(height: 30),
-          _inputField('First Name', _displayNameCtrl, Icons.person),
-          const SizedBox(height: 16),
-          GestureDetector(
-            onTap: () => setState(() => _dobPickerExpanded = !_dobPickerExpanded),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              decoration: BoxDecoration(
-                color: _card,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: _dobPickerExpanded ? _cyan : (_dobCtrl.text.isNotEmpty ? _cyan.withValues(alpha: 0.5) : _gb),
-                  width: _dobPickerExpanded ? 1.5 : 1,
+          const SizedBox(height: 18),
+          ..._interestGroups.entries.map((entry) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(entry.key, style: GoogleFonts.inter(color: _txt2, fontSize: 13, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: entry.value.map((tag) {
+                final sel = _selectedInterests.contains(tag);
+                final maxed = _selectedInterests.length >= _maxInterests && !sel;
+                return GestureDetector(
+                  onTap: maxed ? null : () {
+                    HapticFeedback.selectionClick();
+                    setState(() { if (sel) _selectedInterests.remove(tag); else _selectedInterests.add(tag); });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: sel ? _orange.withValues(alpha: 0.15) : _card,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: sel ? _orange : Colors.white.withValues(alpha: maxed ? 0.03 : 0.1), width: sel ? 1.5 : 1),
+                    ),
+                    child: Text(tag, style: GoogleFonts.inter(color: sel ? _orange : maxed ? _muted : _txt2, fontSize: 13, fontWeight: sel ? FontWeight.w600 : FontWeight.w400)),
+                  ),
+                );
+              }).toList()),
+              const SizedBox(height: 20),
+            ]);
+          }),
+        ],
+      ),
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // STEP 4 — Personality Vibes
+  // ════════════════════════════════════════════════════════════════
+  Widget _step4Vibes() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(10), border: Border.all(color: _gb)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Text('✨', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 6),
+              Text('${_selectedVibes.length} / $_maxVibes selected',
+                  style: GoogleFonts.inter(color: _selectedVibes.isNotEmpty ? _orange : _muted, fontSize: 13, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 10,
+            runSpacing: 12,
+            children: _vibes.map((v) {
+              final (label, key) = v;
+              final sel = _selectedVibes.contains(key);
+              final maxed = _selectedVibes.length >= _maxVibes && !sel;
+              return GestureDetector(
+                onTap: maxed ? null : () {
+                  HapticFeedback.selectionClick();
+                  setState(() { if (sel) _selectedVibes.remove(key); else _selectedVibes.add(key); });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: sel ? _amber.withValues(alpha: 0.15) : _card,
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: sel ? _amber : Colors.white.withValues(alpha: maxed ? 0.04 : 0.12),
+                      width: sel ? 2 : 1,
+                    ),
+                    boxShadow: sel ? [BoxShadow(color: _amber.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0,3))] : null,
+                  ),
+                  child: Text(label, style: GoogleFonts.inter(color: sel ? _amber : maxed ? _muted : _txt, fontSize: 14, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
                 ),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.cake_outlined, color: _dobCtrl.text.isNotEmpty ? _cyan : _muted, size: 22),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: _dobCtrl.text.isNotEmpty
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                (() {
-                                  try {
-                                    final d = DateTime.parse(_dobCtrl.text);
-                                    return '${_monthNames[d.month - 1]} ${d.day}, ${d.year}';
-                                  } catch (e) { return _dobCtrl.text; }
-                                })(),
-                                style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 2),
-                              Text('Date of birth', style: GoogleFonts.inter(color: _muted, fontSize: 11)),
-                            ],
-                          )
-                        : Text('Select Date of Birth', style: GoogleFonts.inter(color: _muted, fontSize: 16)),
-                  ),
-                  Icon(
-                    _dobPickerExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                    color: _muted, size: 20,
-                  ),
-                ],
-              ),
-            ),
+              );
+            }).toList(),
           ),
-          if (_dobPickerExpanded) _buildDobPicker(),
         ],
       ),
     );
   }
 
-  Widget _inputField(String hint, TextEditingController ctrl, IconData icon) {
-    return Container(
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(16), border: Border.all(color: _gb)),
-      child: TextField(
-        controller: ctrl,
-        style: GoogleFonts.inter(color: _txt),
-        decoration: InputDecoration(hintText: hint, hintStyle: GoogleFonts.inter(color: _muted), prefixIcon: Icon(icon, color: _cyan), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 18)),
-      ),
-    );
-  }
-
-  Widget _s1Gender() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("Are you a man or a woman?", "This helps us tailor your experience"),
-          Row(
-            children: [
-              Expanded(child: _genderCard('Man', Icons.face, _gender, (v) => setState(() => _gender = v))),
-              const SizedBox(width: 16),
-              Expanded(child: _genderCard('Woman', Icons.face_3, _gender, (v) => setState(() => _gender = v))),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _optionTile('Non-Binary', 'Non-Binary', _gender, (v) => setState(() => _gender = v)),
-        ],
-      ),
-    );
-  }
-
-  Widget _genderCard(String label, IconData icon, String current, ValueChanged<String> onSelect) {
-    final sel = label == current;
-    return GestureDetector(
-      onTap: () => onSelect(label),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 30),
-        decoration: BoxDecoration(
-          color: sel ? _cyan.withValues(alpha: 0.1) : _card,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: sel ? _cyan : _gb, width: sel ? 2 : 1),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 60, color: sel ? _cyan : _muted),
-            const SizedBox(height: 16),
-            Text(label, style: GoogleFonts.inter(color: sel ? _cyan : _txt, fontSize: 18, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _onSearchChanged(String query) {
-    _searchDebounce?.cancel();
-    if (query.trim().length < 2) {
-      if (mounted) setState(() => _searchResults = []);
-      return;
-    }
-    _searchDebounce = Timer(const Duration(milliseconds: 400), () async {
-      final results = await locationService.searchLocations(query);
-      if (mounted) setState(() => _searchResults = results);
-    });
-  }
-
-  void _selectSearchResult(Map<String, dynamic> result) {
-    final lat = (result['lat'] as num).toDouble();
-    final lng = (result['lng'] as num).toDouble();
-    final name = result['name']?.toString() ?? '';
-    final fullName = result['full_name']?.toString() ?? '';
-    setState(() {
-      _lat = lat;
-      _lng = lng;
-      _cityCtrl.text = name;
-      _stateCtrl.text = fullName.split(',').length > 1 ? fullName.split(',')[1].trim() : '';
-      _locSearchCtrl.text = name;
-      _searchResults = [];
-    });
-    _mapCtrl.move(LatLng(lat, lng), 14.0);
-  }
-
-  Future<void> _reverseGeocode(double lat, double lng) async {
-    try {
-      final url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&addressdetails=1';
-      final resp = await http.get(Uri.parse(url), headers: {'User-Agent': 'MeetraApp/1.0'});
-      if (resp.statusCode == 200 && mounted) {
-        final data = jsonDecode(resp.body);
-        final addr = data['address'] ?? {};
-        final city = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['county'] ?? '';
-        final state = addr['state'] ?? '';
-        setState(() {
-          _cityCtrl.text = city;
-          _stateCtrl.text = state;
-          _locSearchCtrl.text = city;
-        });
-      }
-    } catch (_) {}
-  }
-
-  Widget _s2Location() {
+  // ════════════════════════════════════════════════════════════════
+  // STEP 5 — Location
+  // ════════════════════════════════════════════════════════════════
+  Widget _step5Location() {
     final pinLat = _lat ?? 20.5937;
     final pinLng = _lng ?? 78.9629;
     final hasPin = _lat != null && _lng != null;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         children: [
-          _header("Where are you?", "Find people & events nearby"),
-          _doodleIcon(Icons.location_city, _cyan),
-          
-          // ── Search Bar ──
+          // Detect button
+          GestureDetector(
+            onTap: _detectingLocation ? null : _detectMyLocation,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: _orange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _orange.withValues(alpha: 0.3)),
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                _detectingLocation
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: _orange, strokeWidth: 2))
+                    : const Icon(Icons.my_location_rounded, color: _orange, size: 18),
+                const SizedBox(width: 10),
+                Text(_detectingLocation ? 'Detecting...' : 'Use my current location',
+                    style: GoogleFonts.inter(color: _orange, fontWeight: FontWeight.w600, fontSize: 14)),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Search bar
           Container(
             decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _gb)),
             child: TextField(
@@ -730,10 +1043,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
                 hintText: 'Search city, area, landmark...',
-                hintStyle: GoogleFonts.inter(color: _muted, fontSize: 14),
+                hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                prefixIcon: const Icon(Icons.search, color: _cyan, size: 20),
+                prefixIcon: const Icon(Icons.search, color: _orange, size: 20),
                 suffixIcon: _locSearchCtrl.text.isNotEmpty
                     ? GestureDetector(onTap: () => setState(() { _locSearchCtrl.clear(); _searchResults = []; }), child: const Icon(Icons.close, color: _muted, size: 18))
                     : null,
@@ -741,613 +1054,112 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
 
-          // ── Search Results ──
+          // Search results
           if (_searchResults.isNotEmpty)
             Container(
               margin: const EdgeInsets.only(top: 4),
-              constraints: const BoxConstraints(maxHeight: 180),
+              constraints: const BoxConstraints(maxHeight: 160),
               decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12), border: Border.all(color: _gb)),
               child: ListView.builder(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
+                shrinkWrap: true, padding: EdgeInsets.zero,
                 itemCount: _searchResults.length,
                 itemBuilder: (_, i) {
                   final r = _searchResults[i];
                   return ListTile(
                     dense: true,
-                    leading: const Icon(Icons.location_on, color: _cyan, size: 18),
+                    leading: const Icon(Icons.location_on, color: _orange, size: 18),
                     title: Text(r['name'] ?? '', style: GoogleFonts.inter(color: _txt, fontSize: 13, fontWeight: FontWeight.w500)),
                     subtitle: Text(r['full_name'] ?? '', style: GoogleFonts.inter(color: _muted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    onTap: () => _selectSearchResult(r),
+                    onTap: () => _selectResult(r),
                   );
                 },
               ),
             ),
+          const SizedBox(height: 14),
 
-          const SizedBox(height: 16),
-
-          // ── Interactive Map ──
-          Container(
-            height: 220,
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: _cyan.withValues(alpha: 0.3))),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(15),
-              child: Stack(
-                children: [
-                  FlutterMap(
-                    mapController: _mapCtrl,
-                    options: MapOptions(
-                      initialCenter: LatLng(pinLat, pinLng),
-                      initialZoom: hasPin ? 14.0 : 4.5,
-                      onTap: (_, point) {
-                        setState(() { _lat = point.latitude; _lng = point.longitude; });
-                        _reverseGeocode(point.latitude, point.longitude);
-                      },
-                    ),
-                    children: [
-                      TileLayer(urlTemplate: _isMapLight ? 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png' : 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', userAgentPackageName: 'com.meetra.app'),
-                      if (hasPin)
-                        MarkerLayer(markers: [Marker(point: LatLng(pinLat, pinLng), width: 40, height: 40, child: const Icon(Icons.location_pin, color: _cyan, size: 36))]),
-                    ],
+          // Map
+          if (hasPin || _cityCtrl.text.isEmpty)
+            Container(
+              height: 230,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: _orange.withValues(alpha: 0.25))),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(17),
+                child: FlutterMap(
+                  mapController: _mapCtrl,
+                  options: MapOptions(
+                    initialCenter: LatLng(pinLat, pinLng),
+                    initialZoom: hasPin ? 13.0 : 4.0,
+                    onTap: (_, point) {
+                      setState(() { _lat = point.latitude; _lng = point.longitude; });
+                      _reverseGeocode(point.latitude, point.longitude);
+                    },
                   ),
-                  Positioned(
-                    bottom: 10, right: 10,
-                    child: GestureDetector(
-                      onTap: _detectingLocation ? null : () async {
-                        setState(() => _detectingLocation = true);
-                        try {
-                          // 1. Check if location services are enabled
-                          bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-                          if (!serviceEnabled) {
-                            if (mounted) {
-                              setState(() => _detectingLocation = false);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Row(children: [
-                                    Icon(Icons.location_off, color: Colors.white, size: 18),
-                                    SizedBox(width: 8),
-                                    Expanded(child: Text('Please enable location services in your device settings')),
-                                  ]),
-                                  backgroundColor: Colors.red.shade700,
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                              );
-                            }
-                            return;
-                          }
-
-                          // 2. Check & request permission
-                          LocationPermission permission = await Geolocator.checkPermission();
-                          if (permission == LocationPermission.denied) {
-                            permission = await Geolocator.requestPermission();
-                            if (permission == LocationPermission.denied) {
-                              if (mounted) {
-                                setState(() => _detectingLocation = false);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: const Row(children: [
-                                      Icon(Icons.not_listed_location, color: Colors.white, size: 18),
-                                      SizedBox(width: 8),
-                                      Expanded(child: Text('Location permission denied. Please allow access to use this feature.')),
-                                    ]),
-                                    backgroundColor: Colors.orange.shade800,
-                                    behavior: SnackBarBehavior.floating,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
-                                );
-                              }
-                              return;
-                            }
-                          }
-                          if (permission == LocationPermission.deniedForever) {
-                            if (mounted) {
-                              setState(() => _detectingLocation = false);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Row(children: [
-                                    Icon(Icons.settings, color: Colors.white, size: 18),
-                                    SizedBox(width: 8),
-                                    Expanded(child: Text('Location permanently denied. Please enable it from app settings.')),
-                                  ]),
-                                  backgroundColor: Colors.red.shade700,
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  action: SnackBarAction(
-                                    label: 'Open Settings',
-                                    textColor: Colors.white,
-                                    onPressed: () => Geolocator.openAppSettings(),
-                                  ),
-                                ),
-                              );
-                            }
-                            return;
-                          }
-
-                          // 3. Get precise location with high accuracy
-                          final pos = await Geolocator.getCurrentPosition(
-                            locationSettings: const LocationSettings(
-                              accuracy: LocationAccuracy.high,
-                              timeLimit: Duration(seconds: 15),
-                            ),
-                          );
-                          setState(() { _lat = pos.latitude; _lng = pos.longitude; });
-                          _mapCtrl.move(LatLng(pos.latitude, pos.longitude), 15.0);
-                          await _reverseGeocode(pos.latitude, pos.longitude);
-                          if (mounted) {
-                            setState(() => _detectingLocation = false);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Row(children: [
-                                  const Icon(Icons.check_circle, color: Colors.white, size: 18),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: Text('Location pinned: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}')),
-                                ]),
-                                backgroundColor: _cyan,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                duration: const Duration(seconds: 3),
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            setState(() => _detectingLocation = false);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Row(children: [
-                                  const Icon(Icons.error_outline, color: Colors.white, size: 18),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: Text('Could not get location: $e')),
-                                ]),
-                                backgroundColor: Colors.red.shade700,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: const Color(0xFF1A1F2E).withValues(alpha: 0.9), borderRadius: BorderRadius.circular(12), border: Border.all(color: _cyan.withValues(alpha: 0.3))),
-                        child: _detectingLocation ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: _cyan, strokeWidth: 2)) : const Icon(Icons.my_location, color: _cyan, size: 20),
-                      ),
-                    ),
-                  ),
-                  if (hasPin)
-                    Positioned(
-                      top: 10, left: 10, right: 60,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(color: const Color(0xFF1A1F2E).withValues(alpha: 0.9), borderRadius: BorderRadius.circular(10), border: Border.all(color: _cyan.withValues(alpha: 0.2))),
-                        child: Text(_cityCtrl.text.isNotEmpty ? _cityCtrl.text : '${pinLat.toStringAsFixed(4)}, ${pinLng.toStringAsFixed(4)}', style: GoogleFonts.inter(color: _cyan, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                    ),
-                  // Dark/Light Mode Toggle
-                  Positioned(
-                    top: 10, right: 10,
-                    child: GestureDetector(
-                      onTap: () => setState(() => _isMapLight = !_isMapLight),
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: const Color(0xFF1A1F2E).withValues(alpha: 0.9), borderRadius: BorderRadius.circular(12), border: Border.all(color: _cyan.withValues(alpha: 0.3))),
-                        child: Icon(_isMapLight ? Icons.nightlight_round : Icons.wb_sunny, color: _isMapLight ? Colors.blueGrey : Colors.yellow, size: 20),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // ── Radius Slider ──
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Discovery Radius', style: GoogleFonts.inter(color: _txt2)), Text('${_radiusKm.round()} km', style: GoogleFonts.inter(color: _cyan, fontWeight: FontWeight.bold))]),
-          SliderTheme(
-            data: SliderThemeData(activeTrackColor: _cyan, thumbColor: _cyan, overlayColor: _cyan.withValues(alpha: 0.15)),
-            child: Slider(value: _radiusKm, min: 5, max: 100, onChanged: (v) => setState(() => _radiusKm = v)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _s3Height() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("How tall are you?", "Just for the stats!"),
-          _doodleIcon(Icons.height, _pink),
-          Text('${_heightCm.toInt()} cm', style: GoogleFonts.inter(fontSize: 48, fontWeight: FontWeight.w900, color: _cyan)),
-          const SizedBox(height: 30),
-          SliderTheme(
-            data: SliderThemeData(activeTrackColor: _cyan, thumbColor: Colors.white, overlayColor: _cyan.withValues(alpha: 0.2), trackHeight: 8),
-            child: Slider(value: _heightCm, min: 120, max: 220, onChanged: (v) => setState(() => _heightCm = v)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _s4Lifestyle() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("Lifestyle choices", "Let's align your vibes"),
-          _lifestyleSection('Smoking 🚬', _smoking, ['Never', 'Sometimes', 'Regularly'], (v) => setState(() => _smoking = v)),
-          _lifestyleSection('Drinking 🍷', _drinking, ['Never', 'Socially', 'Regularly'], (v) => setState(() => _drinking = v)),
-          _lifestyleSection('Weed 🌿', _weed, ['Never', 'Sometimes', 'Regularly'], (v) => setState(() => _weed = v)),
-        ],
-      ),
-    );
-  }
-
-  Widget _lifestyleSection(String title, String current, List<String> options, ValueChanged<String> onSelect) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: GoogleFonts.inter(color: _txt, fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
-        Row(children: options.map((o) => Expanded(
-          child: GestureDetector(
-            onTap: () => onSelect(o),
-            child: Container(
-              margin: const EdgeInsets.only(right: 8, bottom: 24),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(color: current == o ? _cyan.withValues(alpha: 0.2) : _card, borderRadius: BorderRadius.circular(10), border: Border.all(color: current == o ? _cyan : _gb)),
-              alignment: Alignment.center,
-              child: Text(o, style: GoogleFonts.inter(color: current == o ? _cyan : _txt2, fontSize: 13, fontWeight: FontWeight.w600)),
-            ),
-          ),
-        )).toList()),
-      ],
-    );
-  }
-
-  Widget _s5Diet() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("Diet Preferences", "Food brings people together"),
-          _doodleIcon(Icons.restaurant, _green),
-          ...['Vegetarian', 'Non-Vegetarian', 'Eggetarian', 'Vegan', 'Pescatarian'].map((o) => _optionTile(o, o, _diet, (v) => setState(() => _diet = v))),
-        ],
-      ),
-    );
-  }
-
-  Widget _s6Exercise() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("Do you exercise?", "Fitness matches are the best"),
-          _doodleIcon(Icons.fitness_center, _cyan),
-          ...['Everyday', 'Sometimes', 'Rarely', 'Never'].map((o) => _optionTile(o, o, _exercise, (v) => setState(() => _exercise = v))),
-        ],
-      ),
-    );
-  }
-
-  Widget _s7Education() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("Education", "What's your academic background?"),
-          _doodleIcon(Icons.school, _pink),
-          ..._eduLevels.map((o) => _optionTile(o, o, _education, (v) => setState(() => _education = v))),
-        ],
-      ),
-    );
-  }
-
-  final _jobTitleCtrl = TextEditingController();
-
-  Widget _s8Job() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("What do you do?", "Your profession or industry"),
-          _doodleIcon(Icons.work, _cyan),
-          _inputField('e.g. Software Engineer, Designer', _jobTitleCtrl, Icons.badge),
-        ],
-      ),
-    );
-  }
-  
-  Widget _s9Zodiac() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("Zodiac Sign", "Written in the stars"),
-          Wrap(
-            spacing: 10, runSpacing: 10,
-            children: _zodiacSigns.map((z) {
-              final sel = _zodiac == z;
-              return GestureDetector(
-                onTap: () => setState(() => _zodiac = z),
-                child: Container(
-                  width: (MediaQuery.of(context).size.width - 60) / 2,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(color: sel ? _cyan.withValues(alpha: 0.1) : _card, borderRadius: BorderRadius.circular(16), border: Border.all(color: sel ? _cyan : _gb)),
-                  alignment: Alignment.center,
-                  child: Text(z, style: GoogleFonts.inter(color: sel ? _cyan : _txt, fontWeight: sel ? FontWeight.bold : FontWeight.normal)),
-                ),
-              );
-            }).toList(),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _s10Relationship() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("What are you looking for?", "Relationship intentions"),
-          _doodleIcon(Icons.favorite, _pink),
-          ...['Long-term partner', 'Short-term', 'Casual', 'Just friends', 'Not sure yet'].map((o) => _optionTile(o, o, _relationshipType, (v) => setState(() => _relationshipType = v))),
-        ],
-      ),
-    );
-  }
-
-  Widget _s11Religion() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("Religion", "Your spiritual background"),
-          Wrap(
-            spacing: 10, runSpacing: 10,
-            children: _religions.map((r) {
-              final sel = _religion == r;
-              return GestureDetector(
-                onTap: () => setState(() => _religion = r),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(color: sel ? _cyan.withValues(alpha: 0.1) : _card, borderRadius: BorderRadius.circular(20), border: Border.all(color: sel ? _cyan : _gb)),
-                  child: Text(r, style: GoogleFonts.inter(color: sel ? _cyan : _txt)),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _s12MatchOrientation() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("Who do you want to meet?", "Your preference for matches"),
-          _doodleIcon(Icons.people, _cyan),
-          ...['Men', 'Women', 'Everyone'].map((o) => _optionTile(o, o, _matchGender, (v) => setState(() => _matchGender = v))),
-        ],
-      ),
-    );
-  }
-
-  Widget _s13Personality() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("Your Personality", "Select up to 5 traits"),
-          Text('${_selectedTraits.length}/5 selected', style: GoogleFonts.inter(color: _cyan, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8, runSpacing: 8,
-            children: _personalityTraits.map((t) {
-              final sel = _selectedTraits.contains(t);
-              return GestureDetector(
-                onTap: () => setState(() {
-                  if (sel) {
-                    _selectedTraits.remove(t);
-                  } else if (_selectedTraits.length < 5) _selectedTraits.add(t);
-                }),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(color: sel ? _cyan : _card, borderRadius: BorderRadius.circular(20), border: Border.all(color: sel ? _cyan : _gb)),
-                  child: Text(t, style: GoogleFonts.inter(color: sel ? Colors.black : _txt, fontWeight: sel ? FontWeight.bold : FontWeight.normal, fontSize: 13)),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 100),
-        ],
-      ),
-    );
-  }
-
-  Widget _s14Interests() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _header("Your Interests", "Select up to 15 interests"),
-          Center(child: Text('${_selectedInterests.length}/15 selected', style: GoogleFonts.inter(color: _cyan, fontWeight: FontWeight.bold))),
-          const SizedBox(height: 20),
-          ..._interestCategories.entries.map((cat) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(cat.key, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: _txt))),
-                Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: cat.value.map((i) {
-                    final sel = _selectedInterests.contains(i);
-                    return GestureDetector(
-                      onTap: () => setState(() {
-                        if (sel) {
-                          _selectedInterests.remove(i);
-                        } else if (_selectedInterests.length < 15) _selectedInterests.add(i);
-                      }),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(color: sel ? _pink.withValues(alpha: 0.2) : _card, borderRadius: BorderRadius.circular(20), border: Border.all(color: sel ? _pink : _gb)),
-                        child: Text(i, style: GoogleFonts.inter(color: sel ? _pink : _txt2, fontSize: 12, fontWeight: sel ? FontWeight.bold : FontWeight.normal)),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-              ],
-            );
-          }),
-          const SizedBox(height: 100),
-        ],
-      ),
-    );
-  }
-
-  Widget _s15Preferences() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header("Almost done! 🎉", "Final touches"),
-          _inputField('Write a short bio...', _bioCtrl, Icons.edit),
-          const SizedBox(height: 24),
-          _toggleRow('Push Notifications', _pushNotif, (v) => setState(() => _pushNotif = v)),
-          _toggleRow('Private Profile', _privateProfile, (v) => setState(() => _privateProfile = v)),
-        ],
-      ),
-    );
-  }
-
-  Widget _toggleRow(String label, bool val, ValueChanged<bool> onChanged) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(16), border: Border.all(color: _gb)),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: GoogleFonts.inter(color: _txt, fontSize: 16)),
-          Switch(value: val, onChanged: onChanged, activeThumbColor: _cyan, trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? _cyan.withValues(alpha: 0.3) : _gb)),
-        ],
-      ),
-    );
-  }
-
-  Widget _s16VibeVisibility() {
-    const vibes = [
-      {'icon': '📚', 'label': 'Study', 'c1': 0xFF0F0C29, 'c2': 0xFF302B63},
-      {'icon': '💪', 'label': 'Fitness', 'c1': 0xFF1A0000, 'c2': 0xFF7F1D1D},
-      {'icon': '🎵', 'label': 'Music', 'c1': 0xFF150020, 'c2': 0xFF5B21B6},
-      {'icon': '🚀', 'label': 'Startup', 'c1': 0xFF030C1A, 'c2': 0xFF1E3A8A},
-      {'icon': '✈️', 'label': 'Travel', 'c1': 0xFF022C22, 'c2': 0xFF064E3B},
-      {'icon': '🎮', 'label': 'Gaming', 'c1': 0xFF0D0028, 'c2': 0xFF3B0764},
-      {'icon': '📸', 'label': 'Photography', 'c1': 0xFF1A0E00, 'c2': 0xFF78350F},
-      {'icon': '🍳', 'label': 'Cooking', 'c1': 0xFF1A0500, 'c2': 0xFF7C2D12},
-      {'icon': '🎤', 'label': 'Perform', 'c1': 0xFF022C22, 'c2': 0xFF065F46},
-      {'icon': '🤖', 'label': 'Tech & AI', 'c1': 0xFF001A25, 'c2': 0xFF082F49},
-      {'icon': '❤️', 'label': 'Dating', 'c1': 0xFF2D0018, 'c2': 0xFF831843},
-    ];
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          _header('Where should people find you?', 'Choose sections to appear in on Explore'),
-          const SizedBox(height: 8),
-          Text('People browsing these vibes will see your profile.\nSelect all that apply — you can edit anytime from Settings.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(color: _txt2, fontSize: 13, height: 1.5),
-          ),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: vibes.map((v) {
-              final label = v['label'] as String;
-              final icon = v['icon'] as String;
-              final active = _selectedVibes.contains(label);
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    if (active) {
-                      _selectedVibes.remove(label);
-                    } else {
-                      _selectedVibes.add(label);
-                    }
-                  });
-                },
-                child: Container(
-                  width: (MediaQuery.of(context).size.width - 72) / 2,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-                  decoration: BoxDecoration(
-                    gradient: active
-                        ? LinearGradient(colors: [Color(v['c1'] as int), Color(v['c2'] as int)])
-                        : null,
-                    color: active ? null : _card,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: active ? _cyan.withValues(alpha: 0.5) : _gb, width: active ? 2 : 1),
-                    boxShadow: active ? [BoxShadow(color: _cyan.withValues(alpha: 0.15), blurRadius: 12)] : null,
-                  ),
-                  child: Row(
-                    children: [
-                      Text(icon, style: const TextStyle(fontSize: 22)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(label,
-                          style: GoogleFonts.inter(
-                            color: active ? Colors.white : _txt2,
-                            fontSize: 14,
-                            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                          ),
+                  children: [
+                    TileLayer(urlTemplate: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', userAgentPackageName: 'com.meetra.app'),
+                    if (hasPin)
+                      MarkerLayer(markers: [Marker(
+                        point: LatLng(pinLat, pinLng), width: 44, height: 44,
+                        child: Container(
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: _orange.withValues(alpha: 0.15), border: Border.all(color: _orange, width: 2)),
+                          child: const Icon(Icons.location_pin, color: _orange, size: 28),
                         ),
-                      ),
-                      if (active)
-                        const Icon(Icons.check_circle, color: _cyan, size: 20),
-                    ],
-                  ),
+                      )]),
+                  ],
                 ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                if (_selectedVibes.length == vibes.length) {
-                  _selectedVibes.clear();
-                } else {
-                  _selectedVibes.addAll(vibes.map((v) => v['label'] as String));
-                }
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: _card,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _gb),
-              ),
-              child: Text(
-                _selectedVibes.length == vibes.length ? 'Deselect All' : 'Select All',
-                style: GoogleFonts.inter(color: _cyan, fontSize: 14, fontWeight: FontWeight.w600),
               ),
             ),
-          ),
+
+          // City display
+          if (_cityCtrl.text.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _green.withValues(alpha: 0.25))),
+              child: Row(children: [
+                const Icon(Icons.location_on, color: _green, size: 18),
+                const SizedBox(width: 10),
+                Expanded(child: Text(
+                  [_cityCtrl.text, _stateCtrl.text].where((s) => s.isNotEmpty).join(', '),
+                  style: GoogleFonts.inter(color: _txt, fontSize: 14, fontWeight: FontWeight.w600),
+                )),
+                const Icon(Icons.check_circle, color: _green, size: 18),
+              ]),
+            ),
+
+          const SizedBox(height: 8),
+          Text('Tap the map to pin your location, or skip for now.',
+              style: GoogleFonts.inter(color: _muted, fontSize: 11), textAlign: TextAlign.center),
         ],
       ),
     );
+  }
+
+  // ── Shared helpers ───────────────────────────────────────────────
+  Widget _inputField(String hint, TextEditingController ctrl, IconData icon, {void Function(String)? onChanged}) {
+    return Container(
+      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _gb)),
+      child: TextField(
+        controller: ctrl,
+        style: GoogleFonts.inter(color: _txt, fontSize: 15),
+        onChanged: onChanged,
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: GoogleFonts.inter(color: _muted, fontSize: 14),
+          prefixIcon: Icon(icon, color: _orange, size: 20),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+        ),
+      ),
+    );
+  }
+
+  ImageProvider _buildSafeImage(String? url) {
+    if (url == null || url.isEmpty) return const NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
+    if (url.startsWith('http')) return NetworkImage(url);
+    try {
+      return MemoryImage(base64Decode(url.contains(',') ? url.split(',').last : url));
+    } catch (_) {
+      return const NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
+    }
   }
 }
-
-

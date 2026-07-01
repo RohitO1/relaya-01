@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'onboarding_screen.dart';
+import 'main.dart' show MainDashboard;
 
 // ── Color tokens (match app theme) ─────────────────────────────────
 const _bg    = Colors.black;
@@ -425,12 +427,23 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
       );
 
       if (res.user != null && mounted) {
-        await _ensureProfile(res.user!);
-        // The StreamBuilder in main.dart auto-navigates to MainDashboard
+        final isNewUser = await _ensureProfile(res.user!);
+        if (!mounted) return;
+        // Explicitly navigate — don't rely on stream timing
+        if (isNewUser) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const _OnboardingWrapper()),
+            (route) => false,
+          );
+        } else {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const _DashboardWrapper()),
+            (route) => false,
+          );
+        }
       }
     } on AuthException catch (e) {
       if (mounted) _showError('Invalid code: ${e.message}');
-      // Clear boxes on error
       for (final c in _ctrl) c.clear();
       if (mounted) _foci[0].requestFocus();
     } catch (e) {
@@ -440,11 +453,12 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
     }
   }
 
-  Future<void> _ensureProfile(User user) async {
+  /// Returns true if this is a brand-new user (profile just created)
+  Future<bool> _ensureProfile(User user) async {
     try {
       final existing = await Supabase.instance.client
           .from('profiles')
-          .select('id')
+          .select('id, onboarding_complete')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -458,14 +472,19 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
           'name': 'User_$suffix',
           'username': 'user_${user.id.substring(0, 8)}',
           'full_name': 'Relaya User',
-          'avatar_url': 'https://picsum.photos/seed/${user.id}/200',
+          'avatar_url': '',
           'onboarding_complete': false,
           'is_public': true,
           'phone': phone,
         }, onConflict: 'id');
+        return true; // new user
       }
+      // Returning user: check if onboarding was completed
+      final onboardingDone = existing['onboarding_complete'] == true;
+      return !onboardingDone; // true = needs onboarding
     } catch (e) {
       debugPrint('Profile creation error (non-fatal): $e');
+      return false;
     }
   }
 
@@ -700,12 +719,63 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
         ),
         onChanged: (val) {
           if (val.isNotEmpty) {
-            if (i < 5) _foci[i + 1].requestFocus();
-            if (i == 5) _verify(); // auto-submit on last digit
+            if (i < 5) {
+              _foci[i + 1].requestFocus();
+            } else {
+              // Last digit: wait for the character to be committed,
+              // then auto-submit so the full 6-digit OTP is read correctly.
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _otp.length == 6) _verify();
+              });
+            }
+          } else if (val.isEmpty && i > 0) {
+            // Backspace: move focus back
+            _foci[i - 1].requestFocus();
           }
           setState(() {});
         },
-        onTap: () => _ctrl[i].clear(),
+        onTap: () {
+          // Only clear a box if we're re-entering the OTP from scratch
+          if (_otp.length < 6) _ctrl[i].selection = TextSelection.fromPosition(TextPosition(offset: _ctrl[i].text.length));
+        },
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// NAVIGATION WRAPPERS — used after OTP verification
+// ═══════════════════════════════════════════════════════════════════
+
+/// Routes a brand-new user to the onboarding flow
+class _OnboardingWrapper extends StatelessWidget {
+  const _OnboardingWrapper();
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: const OnboardingScreen(),
+        ),
+      ),
+    );
+  }
+}
+
+/// Routes a returning user straight into the main dashboard
+class _DashboardWrapper extends StatelessWidget {
+  const _DashboardWrapper();
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: const MainDashboard(),
+        ),
       ),
     );
   }
