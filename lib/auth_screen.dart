@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/doodle_theme.dart';
+import 'phone_auth_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────
 // AUTH SCREEN — Premium Sign In / Sign Up with animations
@@ -525,6 +526,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         _divider('or sign up with'),
         const SizedBox(height: 16),
         _socialButtons(),
+        const SizedBox(height: 12),
+        _phoneButton(),
         const SizedBox(height: 16),
 
         Center(
@@ -578,6 +581,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         _divider('or sign in with'),
         const SizedBox(height: 16),
         _socialButtons(),
+        const SizedBox(height: 12),
+        _phoneButton(),
       ],
     );
   }
@@ -737,6 +742,36 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         const SizedBox(width: 10),
         _socialBtn('Apple', Icons.apple, Colors.white),
       ],
+    );
+  }
+
+  Widget _phoneButton() {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const PhoneAuthScreen()),
+      ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _cyan.withOpacity(0.35)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.phone_android_rounded, color: _cyan, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              'Continue with Phone (OTP)',
+              style: GoogleFonts.inter(
+                  color: _cyan, fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
