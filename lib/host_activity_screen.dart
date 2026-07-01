@@ -71,7 +71,6 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   double _radiusKm = 5.0;
   bool _isGhostMode = false;
 
-  final String _selectedCategory = 'Music';
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
 
