@@ -14,6 +14,7 @@ import 'widgets/location_picker_sheet.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/doodle_theme.dart';
+import 'messages_screen.dart';
 
 // --- Data Models ---
 class Community {
@@ -873,17 +874,45 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
   }
 }
 
-class CommunitiesStandaloneScreen extends StatelessWidget {
+class CommunitiesStandaloneScreen extends StatefulWidget {
   const CommunitiesStandaloneScreen({super.key});
 
   @override
+  State<CommunitiesStandaloneScreen> createState() => _CommunitiesStandaloneScreenState();
+}
+
+class _CommunitiesStandaloneScreenState extends State<CommunitiesStandaloneScreen> {
+  final PageController _pageController = PageController(initialPage: 0);
+  int _currentIndex = 0;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _toggleTab() {
+    final nextIndex = _currentIndex == 0 ? 1 : 0;
+    _pageController.animateToPage(
+      nextIndex,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isDoodle = isDoodleMode(context);
+    final bgColor = isDoodle ? DoodleColors.cream : const Color(0xFF000000);
+    final textColor = isDoodle ? DoodleColors.textPrimary : Colors.white;
+
     return Scaffold(
-      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF000000),
+      backgroundColor: bgColor,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Header ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Row(
@@ -892,29 +921,94 @@ class CommunitiesStandaloneScreen extends StatelessWidget {
                     onTap: () => Navigator.pop(context),
                     child: Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF1A1A1A),
+                      decoration: BoxDecoration(
+                        color: isDoodle ? DoodleColors.paper : const Color(0xFF1A1A1A),
                         shape: BoxShape.circle,
+                        border: isDoodle ? Border.all(color: DoodleColors.cardBorder) : null,
                       ),
-                      child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
+                      child: Icon(Icons.arrow_back, color: textColor, size: 20),
                     ),
                   ),
                   const SizedBox(width: 16),
                   Text(
-                    'TEXT CAMPS',
+                    'Text Camps',
                     style: GoogleFonts.inter(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      fontStyle: FontStyle.italic,
-                      letterSpacing: 1.0,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
                     ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: Icon(Icons.search, color: textColor),
+                    onPressed: () {
+                      // TODO: Implement search if needed
+                    },
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.add_circle_outline, color: const Color(0xFFFF6B00)),
+                    onPressed: () {
+                      // TODO: Implement add logic
+                    },
                   ),
                 ],
               ),
             ),
-            const Expanded(child: CommunitiesListWidget()),
+            
+            // ── Section Title (Direct Messages or Groups) ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _currentIndex == 0 ? 'Direct Messages' : 'Groups',
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    width: 32,
+                    height: 2,
+                    color: const Color(0xFFFF6B00),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // ── Content PageView ──
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: (index) {
+                  setState(() => _currentIndex = index);
+                },
+                children: [
+                  ChatsView(searchQuery: '', filter: 'All'),
+                  const CommunitiesListWidget(),
+                ],
+              ),
+            ),
           ],
+        ),
+      ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 16.0),
+        child: FloatingActionButton(
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            _toggleTab();
+          },
+          backgroundColor: const Color(0xFFFF6B00),
+          elevation: 4,
+          child: Icon(
+            _currentIndex == 0 ? Icons.groups : Icons.chat_bubble_outline,
+            color: Colors.white,
+          ),
         ),
       ),
     );
@@ -1025,157 +1119,85 @@ class _CommunitiesListView extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: const Color(0xFF2A2D35)),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // ── Community Header ──
-                        InkWell(
-                          onTap: () => onTapCommunity(c),
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(12),
-                                    image: DecorationImage(
-                                      image: NetworkImage(c.avatar),
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
+                    child: InkWell(
+                      onTap: () => onTapCommunity(c),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                image: DecorationImage(
+                                  image: NetworkImage(c.avatar),
+                                  fit: BoxFit.cover,
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        c.name,
-                                        style: GoogleFonts.inter(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.people_outline, color: Colors.white54, size: 14),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            '${c.memberCount} members',
-                                            style: GoogleFonts.inter(color: Colors.white54, fontSize: 12),
-                                          ),
-                                        ],
-                                      )
-                                    ],
-                                  ),
-                                ),
-                                const Icon(Icons.chevron_right, color: Colors.white38),
-                              ],
+                              ),
                             ),
-                          ),
-                        ),
-                        const Divider(color: Color(0xFF2A2D35), height: 1),
-                        
-                        // ── Announcements Channel ──
-                        InkWell(
-                          onTap: () => onTapCommunity(c),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
-                                    shape: BoxShape.circle,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    c.name,
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  child: const Icon(Icons.campaign, color: Color(0xFFFF6B00), size: 18),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    c.lastMessage,
+                                    style: GoogleFonts.inter(
+                                      color: isUnread ? const Color(0xFFFF6B00) : Colors.white54,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
                                     children: [
+                                      const Icon(Icons.people_outline, color: Colors.white54, size: 14),
+                                      const SizedBox(width: 4),
                                       Text(
-                                        'Announcements',
-                                        style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Welcome to ${c.name}!',
+                                        '${c.memberCount} members',
                                         style: GoogleFonts.inter(color: Colors.white54, fontSize: 12),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
                                       ),
+                                      if (c.lastMessageTime.isNotEmpty) ...[
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '· ${c.lastMessageTime}',
+                                          style: GoogleFonts.inter(color: Colors.white38, fontSize: 11),
+                                        ),
+                                      ],
                                     ],
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        ),
-                        
-                        // ── General Channel ──
-                        InkWell(
-                          onTap: () => onTapCommunity(c),
-                          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: const BoxDecoration(color: Color(0xFF23252A), shape: BoxShape.circle),
-                                  child: const Icon(Icons.tag, color: Colors.white70, size: 18),
+                            if (isUnread)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(color: Color(0xFFFF6B00), shape: BoxShape.circle),
+                                child: Text(
+                                  '${c.unreadCount}',
+                                  style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'General',
-                                        style: GoogleFonts.inter(
-                                          color: isUnread ? Colors.white : Colors.white70,
-                                          fontSize: 14,
-                                          fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        c.lastMessage,
-                                        style: GoogleFonts.inter(
-                                          color: isUnread ? const Color(0xFFFF6B00) : Colors.white54,
-                                          fontSize: 12,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (isUnread)
-                                  Container(
-                                    margin: const EdgeInsets.only(left: 8),
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: const BoxDecoration(color: Color(0xFFFF6B00), shape: BoxShape.circle),
-                                    child: Text(
-                                      '${c.unreadCount}',
-                                      style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
+                              )
+                            else
+                              const Icon(Icons.chevron_right, color: Colors.white38),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   );
                 },
@@ -1243,10 +1265,10 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
             .from('text_camp_messages')
             .select()
             .eq('id', msgId)
-            .single();
+            .maybeSingle();
         if (mounted) {
           setState(() {
-            _pinnedMessage = msgRes;
+            _pinnedMessage = msgRes; // null-safe: will be null if message was deleted
           });
         }
       } else {
@@ -1796,7 +1818,7 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
                   child: StreamBuilder<List<Map<String, dynamic>>>(
                     stream: Supabase.instance.client
                         .from('text_camp_join_requests')
-                        .stream(primaryKey: ['camp_id', 'user_id'])
+                        .stream(primaryKey: ['id'])
                         .eq('camp_id', widget.community.id),
                     builder: (context, reqSnap) {
                       final requests = reqSnap.data ?? [];
@@ -2060,7 +2082,9 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeChannel = widget.community.channels.first; // using first channel
+    final activeChannel = widget.community.channels.isNotEmpty
+        ? widget.community.channels.first
+        : CommunityChannel(name: 'general', messages: []);
 
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
@@ -2068,7 +2092,7 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
         child: StreamBuilder<List<Map<String, dynamic>>>(
           stream: Supabase.instance.client
               .from('text_camp_members')
-              .stream(primaryKey: ['camp_id', 'user_id'])
+              .stream(primaryKey: ['id'])
               .eq('camp_id', widget.community.id)
               .handleError((err) => debugPrint('Member Stream Error: $err')),
           builder: (context, memberSnap) {
@@ -2139,45 +2163,14 @@ class _CommunityChatRoomScreenState extends State<CommunityChatRoomScreen> {
           ),
         ),
 
-        // Channel Pill
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '# ',
-                  style: GoogleFonts.inter(
-                    color: const Color(0xFFFF6B00),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  activeChannel.name,
-                  style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        const SizedBox(height: 8),
 
         if (widget.community.isPrivate && !isMember) ...[
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: Supabase.instance.client
                   .from('text_camp_join_requests')
-                  .stream(primaryKey: ['camp_id', 'user_id'])
+                  .stream(primaryKey: ['id'])
                   .eq('camp_id', widget.community.id),
               builder: (context, reqSnap) {
                 final requests = reqSnap.data ?? [];

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/services.dart';
 import 'widgets/skeleton_loaders.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'messages_screen.dart';
@@ -48,7 +49,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _pollingTimer;
 
   // UI state matching reference image
-  String _selectedFilter = 'All';
+  final PageController _pageController = PageController(initialPage: 0);
+  int _currentIndex = 0;
 
   // Source tags for conversations (simulated based on index)
   static const _sourceTags = ['Explore', 'Rush-in', 'General', 'Activity', 'Explore', 'General'];
@@ -59,6 +61,15 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadDeletedChats();
     _fetchConversations();
     _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) => _fetchConversations());
+  }
+
+  void _toggleTab() {
+    final nextIndex = _currentIndex == 0 ? 1 : 0;
+    _pageController.animateToPage(
+      nextIndex,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   Future<void> _loadDeletedChats() async {
@@ -74,6 +85,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -297,14 +309,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   // Trigger group creation
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.campaign_outlined, color: Colors.white),
-                title: Text('New Channel', style: GoogleFonts.inter(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  // Trigger channel creation
-                },
-              ),
             ],
           ),
         );
@@ -493,10 +497,30 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
 
-                // ── Filter Pills ──
-                _buildFilterPills(),
-
-                const SizedBox(height: 16),
+                // ── Section Title (Direct Messages or Groups) ──
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _currentIndex == 0 ? 'Direct Messages' : 'Groups',
+                        style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: doodle ? DoodleColors.textPrimary : Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        width: 32,
+                        height: 2,
+                        color: const Color(0xFFFF6B00),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
 
                 // ── Content area ──
                 Expanded(
@@ -504,104 +528,62 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? Center(child: Text('Please sign in to see messages', style: TextStyle(color: doodle ? DoodleColors.textMuted : Colors.white54)))
                     : _isLoading
                       ? SkeletonLoaders.chatListSkeleton(doodle: isDoodleMode(context))
-                      : _getFilteredItems().isEmpty
-                          ? _buildEmptyState()
-                          : ListView.builder(
-                              itemCount: _getFilteredItems().length,
-                              padding: const EdgeInsets.only(top: 4, bottom: 100),
-                              itemBuilder: (context, index) {
-                                final item = _getFilteredItems()[index];
-                                if (item.type == ChatItemType.dm) {
-                                  return _buildConversationRow(item.partnerId!, item.dmLastMessage!, index);
-                                } else {
-                                  return _buildCommunityCard(item.community!);
-                                }
-                              },
-                            ),
+                      : PageView(
+                          controller: _pageController,
+                          onPageChanged: (index) {
+                            setState(() => _currentIndex = index);
+                          },
+                          children: [
+                            _buildListView(ChatItemType.dm),
+                            _buildListView(ChatItemType.group),
+                          ],
+                        ),
                 ),
               ],
             ),
           ),
         ],
       ),
-    );
-  }
-
-  // ── Filter Pills ──
-  List<ChatListItem> _getFilteredItems() {
-    if (_selectedFilter == 'All') return _unifiedItems;
-    if (_selectedFilter == 'General') return _unifiedItems.where((i) => i.type == ChatItemType.dm).toList();
-    if (_selectedFilter == 'Groups') return _unifiedItems.where((i) => i.type == ChatItemType.group).toList();
-    if (_selectedFilter == 'Channels') return _unifiedItems.where((i) => i.type == ChatItemType.channel).toList();
-    return _unifiedItems;
-  }
-
-  Widget _buildFilterPills() {
-    final doodle = isDoodleMode(context);
-    final filters = ['All', 'General', 'Groups', 'Channels', 'Location'];
-    
-    return SizedBox(
-      height: 40,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: filters.length,
-        itemBuilder: (context, index) {
-          final filter = filters[index];
-          final isSelected = _selectedFilter == filter;
-          
-          if (filter == 'Location') {
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Container(
-                width: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF1A1A1A),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: const Center(child: Icon(Icons.location_on_outlined, color: Colors.white, size: 18)),
-              ),
-            );
-          }
-
-          IconData? icon;
-          if (filter == 'General') icon = Icons.numbers;
-          if (filter == 'Groups') icon = Icons.people_alt_outlined;
-          if (filter == 'Channels') icon = Icons.campaign_outlined;
-
-          return GestureDetector(
-            onTap: () => setState(() => _selectedFilter = filter),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFFFF6B00) : const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(20),
-                border: isSelected ? null : Border.all(color: Colors.white12),
-              ),
-              child: Row(
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, color: isSelected ? Colors.white : Colors.white70, size: 16),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    filter == 'General' ? '# General' : filter,
-                    style: GoogleFonts.inter(
-                      color: isSelected ? Colors.white : Colors.white70,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 84.0), // Padding to avoid nav bar
+        child: FloatingActionButton(
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            _toggleTab();
+          },
+          backgroundColor: const Color(0xFFFF6B00),
+          elevation: 4,
+          child: Icon(
+            _currentIndex == 0 ? Icons.groups : Icons.chat_bubble_outline,
+            color: Colors.white,
+          ),
+        ),
       ),
     );
   }
+
+  Widget _buildListView(ChatItemType targetType) {
+    final filtered = _unifiedItems.where((i) {
+      if (targetType == ChatItemType.dm) return i.type == ChatItemType.dm;
+      return i.type == ChatItemType.group || i.type == ChatItemType.channel;
+    }).toList();
+
+    if (filtered.isEmpty) return _buildEmptyState();
+
+    return ListView.builder(
+      itemCount: filtered.length,
+      padding: const EdgeInsets.only(top: 4, bottom: 100),
+      itemBuilder: (context, index) {
+        final item = filtered[index];
+        if (item.type == ChatItemType.dm) {
+          return _buildConversationRow(item.partnerId!, item.dmLastMessage!, index);
+        } else {
+          return _buildCommunityCard(item.community!);
+        }
+      },
+    );
+  }
+
 
   // ── Empty state ──
   Widget _buildEmptyState() {
@@ -926,163 +908,73 @@ class _ChatScreenState extends State<ChatScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFF2A2D35)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          InkWell(
-            onTap: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => CommunityChatRoomScreen(community: c)),
-              );
-              _fetchConversations();
-            },
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      image: DecorationImage(
-                        image: NetworkImage(c.avatar),
-                        fit: BoxFit.cover,
+      child: InkWell(
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => CommunityChatRoomScreen(community: c)),
+          );
+          _fetchConversations();
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  image: DecorationImage(
+                    image: NetworkImage(c.avatar),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      c.name,
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          c.name,
-                          style: GoogleFonts.inter(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(Icons.people_outline, color: Colors.white54, size: 14),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${c.memberCount} members',
-                              style: GoogleFonts.inter(color: Colors.white54, fontSize: 12),
-                            ),
-                          ],
-                        )
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, color: Colors.white38),
-                ],
-              ),
-            ),
-          ),
-          const Divider(color: Color(0xFF2A2D35), height: 1),
-          
-          // Announcements
-          InkWell(
-            onTap: () {},
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.campaign, color: Color(0xFFFF6B00), size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Announcements',
-                          style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Welcome to ${c.name}!',
-                          style: GoogleFonts.inter(color: Colors.white54, fontSize: 12),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          // General Channel
-          InkWell(
-            onTap: () {},
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(color: Color(0xFF23252A), shape: BoxShape.circle),
-                    child: const Icon(Icons.tag, color: Colors.white70, size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'General',
-                          style: GoogleFonts.inter(
-                            color: isUnread ? Colors.white : Colors.white70,
-                            fontSize: 14,
-                            fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          c.lastMessage,
-                          style: GoogleFonts.inter(
-                            color: isUnread ? const Color(0xFFFF6B00) : Colors.white54,
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (isUnread)
-                    Container(
-                      margin: const EdgeInsets.only(left: 8),
-                      padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(color: Color(0xFFFF6B00), shape: BoxShape.circle),
-                      child: Text(
-                        '${c.unreadCount}',
-                        style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    const SizedBox(height: 4),
+                    Text(
+                      c.lastMessage,
+                      style: GoogleFonts.inter(
+                        color: isUnread ? const Color(0xFFFF6B00) : Colors.white54,
+                        fontSize: 13,
+                        fontWeight: isUnread ? FontWeight.w600 : FontWeight.w400,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                ],
+                  ],
+                ),
               ),
-            ),
+              if (isUnread)
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(color: Color(0xFFFF6B00), shape: BoxShape.circle),
+                  child: Text(
+                    '${c.unreadCount}',
+                    style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              const Icon(Icons.chevron_right, color: Colors.white38),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
