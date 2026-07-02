@@ -55,6 +55,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   bool _usernameAvailable = false;
   bool _checkingUsername = false;
   Timer? _usernameDebounce;
+  final _passwordCtrl = TextEditingController();
+  final _confirmPasswordCtrl = TextEditingController();
+  bool _obscurePassword = true;
 
   // ── Step 2: DOB & Bio ──
   int _dobDay = 1, _dobMonth = 1, _dobYear = 2000;
@@ -166,13 +169,20 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     _dayCtrl.dispose();
     _monthCtrl.dispose();
     _yearCtrl.dispose();
+    _passwordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
     super.dispose();
   }
 
   // ── Step validation ──────────────────────────────────────────────
   bool get _canProceed {
     switch (_step) {
-      case 0: return _nameCtrl.text.trim().length >= 2;
+      case 0:
+        final bool isNameValid = _nameCtrl.text.trim().length >= 2;
+        final bool isUsernameValid = _usernameCtrl.text.trim().length >= 3 && _usernameAvailable;
+        final bool isPasswordValid = _passwordCtrl.text.isEmpty || 
+            (_passwordCtrl.text.length >= 6 && _passwordCtrl.text == _confirmPasswordCtrl.text);
+        return isNameValid && isUsernameValid && isPasswordValid;
       case 1: return _dobSet;
       case 2: return _gender.isNotEmpty;
       case 3: return _selectedInterests.length >= 3;
@@ -317,6 +327,19 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       final finalUsername = cleanUsername.isNotEmpty && _usernameAvailable
           ? cleanUsername
           : 'user_${uid.substring(0, 8)}';
+
+      if (_passwordCtrl.text.trim().isNotEmpty && _passwordCtrl.text == _confirmPasswordCtrl.text) {
+        try {
+          await Supabase.instance.client.auth.updateUser(
+            UserAttributes(
+              email: '$finalUsername@relaya.app',
+              password: _passwordCtrl.text.trim(),
+            ),
+          );
+        } catch (e) {
+          debugPrint('Auth updateUser failed (email/password setup): $e');
+        }
+      }
 
       final payload = <String, dynamic>{
         'id': uid,
@@ -613,8 +636,74 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           _inputField('Your first name *', _nameCtrl, Icons.person_outline, onChanged: (_) => setState(() {})),
           const SizedBox(height: 14),
           _usernameField(),
+          const SizedBox(height: 14),
+          _passwordFields(),
         ],
       ),
+    );
+  }
+
+  Widget _passwordFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _gb),
+          ),
+          child: TextField(
+            controller: _passwordCtrl,
+            obscureText: _obscurePassword,
+            style: GoogleFonts.inter(color: _txt, fontSize: 16),
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              icon: Icon(Icons.lock_outline, color: _muted, size: 22),
+              border: InputBorder.none,
+              hintText: 'Password (Optional for Phone users)',
+              hintStyle: GoogleFonts.inter(color: _txt2),
+              suffixIcon: IconButton(
+                icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: _muted),
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+          ),
+        ),
+        if (_passwordCtrl.text.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+            decoration: BoxDecoration(
+              color: _card,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: _confirmPasswordCtrl.text.isEmpty
+                    ? _gb
+                    : (_passwordCtrl.text == _confirmPasswordCtrl.text ? _green : Colors.red),
+              ),
+            ),
+            child: TextField(
+              controller: _confirmPasswordCtrl,
+              obscureText: _obscurePassword,
+              style: GoogleFonts.inter(color: _txt, fontSize: 16),
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                icon: Icon(Icons.lock_outline, color: _muted, size: 22),
+                border: InputBorder.none,
+                hintText: 'Confirm Password',
+                hintStyle: GoogleFonts.inter(color: _txt2),
+              ),
+            ),
+          ),
+          if (_passwordCtrl.text.isNotEmpty && _confirmPasswordCtrl.text.isNotEmpty && _passwordCtrl.text != _confirmPasswordCtrl.text)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 16),
+              child: Text('Passwords do not match', style: GoogleFonts.inter(color: Colors.red, fontSize: 12)),
+            )
+        ],
+      ],
     );
   }
 

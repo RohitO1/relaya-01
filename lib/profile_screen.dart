@@ -309,6 +309,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     final name = p['name'] ?? p['full_name'] ?? 'User';
     final username = p['username'] ?? name.replaceAll(' ', '.').toLowerCase();
     final bio = p['bio'] ?? '"Chasing sunsets & stories \u2728"';
+    final dob = p['dob'] as String?;
+    final gender = p['gender'] as String?;
     final location = (locationService.activeLocation.isNotEmpty && isMe)
         ? locationService.activeLocation
         : (p['city'] ?? p['location'] ?? 'Mumbai, India');
@@ -344,7 +346,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     physics: const BouncingScrollPhysics(),
                     child: Column(
                       children: [
-                        TiltableHeroSection(child: _buildHeroSection(name, username, bio, location, avatarUrl, isMe)),
+                        TiltableHeroSection(child: _buildHeroSection(name, username, bio, location, avatarUrl, isMe, dob, gender)),
                         _buildPostsTabs(),
                         _buildPostsContent(canViewContent, isMe),
                         const SizedBox(height: 100),
@@ -510,7 +512,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   // ============== 2. PROFILE HERO ==============
-  Widget _buildHeroSection(String name, String username, String bio, String location, String avatarUrl, bool isMe) {
+  Widget _buildHeroSection(String name, String username, String bio, String location, String avatarUrl, bool isMe, String? dob, String? gender) {
     final doodle = isDoodleMode(context);
     String initials = name.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase();
     if (initials.isEmpty) initials = 'U';
@@ -592,15 +594,33 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               ),
               const SizedBox(height: 4),
 
-              // 3. Centered Username
-              Text(
-                '@${username.toLowerCase()}',
-                style: doodle ? DoodleFonts.body(fontSize: 16, color: DoodleColors.brown) : GoogleFonts.inter(
-                  fontSize: 14,
-                  color: Colors.white54,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              // 3. Centered Username + Age + Gender
+              Builder(builder: (context) {
+                int? age;
+                if (dob != null && dob.isNotEmpty) {
+                  try {
+                    final bdate = DateTime.parse(dob);
+                    final today = DateTime.now();
+                    age = today.year - bdate.year;
+                    if (today.month < bdate.month || (today.month == bdate.month && today.day < bdate.day)) {
+                      age = age - 1;
+                    }
+                  } catch (_) {}
+                }
+                
+                String subtitle = '@${username.toLowerCase()}';
+                if (age != null) subtitle += ' • $age';
+                if (gender != null && gender.isNotEmpty) subtitle += ' • $gender';
+                
+                return Text(
+                  subtitle,
+                  style: doodle ? DoodleFonts.body(fontSize: 16, color: DoodleColors.brown) : GoogleFonts.inter(
+                    fontSize: 14,
+                    color: Colors.white54,
+                    fontWeight: FontWeight.w500,
+                  ),
+                );
+              }),
               const SizedBox(height: 8),
 
               // 4. Centered Location with Pin Icon

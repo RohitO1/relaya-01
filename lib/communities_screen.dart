@@ -974,146 +974,202 @@ class _CommunitiesListView extends StatelessWidget {
                       ),
                     )
                   : ListView.builder(
-                padding: const EdgeInsets.only(top: 4, bottom: 100),
-                itemCount: communities.length,
+                padding: const EdgeInsets.only(top: 10, bottom: 100),
+                itemCount: communities.length + 1,
                 itemBuilder: (context, index) {
-                  final c = communities[index];
-                  final bool isUnread = c.unreadCount > 0;
-                  return InkWell(
-                    onTap: () => onTapCommunity(c),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Community Avatar with Unread Badge
-                          Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.1), width: 1),
-                                  image: DecorationImage(
-                                    image: NetworkImage(c.avatar),
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
+                  // Static "New Community" button at the top
+                  if (index == 0) {
+                    return InkWell(
+                      onTap: onCreateTap,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF23252A),
+                                borderRadius: BorderRadius.circular(14),
                               ),
-                            ],
-                          ),
-                          const SizedBox(width: 16),
-                          
-                          // Details
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              child: const Icon(Icons.group_add, color: Colors.white, size: 24),
+                            ),
+                            const SizedBox(width: 16),
+                            Text(
+                              'New Community',
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  final c = communities[index - 1];
+                  final bool isUnread = c.unreadCount > 0;
+                  
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF13151A),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFF2A2D35)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Community Header ──
+                        InkWell(
+                          onTap: () => onTapCommunity(c),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
                               children: [
-                                Text(
-                                  c.name,
-                                  style: GoogleFonts.inter(
-                                    color: Colors.white,
-                                    fontSize: 15,
-                                    fontWeight: isUnread ? FontWeight.w700 : FontWeight.w600,
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    image: DecorationImage(
+                                      image: NetworkImage(c.avatar),
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Text(
-                                      '# ${c.category}',
-                                      style: GoogleFonts.inter(
-                                        color: Colors.white54,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    const Icon(Icons.people_outline, color: Colors.white54, size: 14),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '${c.memberCount}',
-                                      style: GoogleFonts.inter(
-                                        color: Colors.white54,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    if (c.locationDistrict != null && c.locationDistrict!.isNotEmpty) ...[
-                                      const SizedBox(width: 12),
-                                      const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 14),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          c.locationDistrict!,
-                                          style: GoogleFonts.inter(
-                                            color: Colors.white54,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        c.name,
+                                        style: GoogleFonts.inter(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
                                         ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.people_outline, color: Colors.white54, size: 14),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${c.memberCount} members',
+                                            style: GoogleFonts.inter(color: Colors.white54, fontSize: 12),
+                                          ),
+                                        ],
+                                      )
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.chevron_right, color: Colors.white38),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Divider(color: Color(0xFF2A2D35), height: 1),
+                        
+                        // ── Announcements Channel ──
+                        InkWell(
+                          onTap: () => onTapCommunity(c),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.campaign, color: Color(0xFFFF6B00), size: 18),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Announcements',
+                                        style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Welcome to ${c.name}!',
+                                        style: GoogleFonts.inter(color: Colors.white54, fontSize: 12),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ],
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  c.lastMessage,
-                                  style: GoogleFonts.inter(
-                                    color: isUnread ? Colors.white70 : const Color(0xFF7A7A7A),
-                                    fontSize: 13,
-                                    fontWeight: isUnread ? FontWeight.w500 : FontWeight.normal,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          // Timestamp and Unread Bubble on the right
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                c.lastMessageTime,
-                                style: GoogleFonts.inter(
-                                  color: isUnread ? const Color(0xFFFF6B00) : const Color(0xFF7A7A7A),
-                                  fontSize: 12,
-                                  fontWeight: isUnread ? FontWeight.w600 : FontWeight.w500,
-                                ),
-                              ),
-                              if (isUnread) ...[
-                                const SizedBox(height: 6),
+                        ),
+                        
+                        // ── General Channel ──
+                        InkWell(
+                          onTap: () => onTapCommunity(c),
+                          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Row(
+                              children: [
                                 Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFFF6B00),
-                                    shape: BoxShape.circle,
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: const BoxDecoration(color: Color(0xFF23252A), shape: BoxShape.circle),
+                                  child: const Icon(Icons.tag, color: Colors.white70, size: 18),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'General',
+                                        style: GoogleFonts.inter(
+                                          color: isUnread ? Colors.white : Colors.white70,
+                                          fontSize: 14,
+                                          fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        c.lastMessage,
+                                        style: GoogleFonts.inter(
+                                          color: isUnread ? const Color(0xFFFF6B00) : Colors.white54,
+                                          fontSize: 12,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ),
-                                  child: Center(
+                                ),
+                                if (isUnread)
+                                  Container(
+                                    margin: const EdgeInsets.only(left: 8),
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: const BoxDecoration(color: Color(0xFFFF6B00), shape: BoxShape.circle),
                                     child: Text(
                                       '${c.unreadCount}',
-                                      style: GoogleFonts.inter(
-                                        color: const Color(0xFF0D0F14),
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                                     ),
                                   ),
-                                ),
                               ],
-                            ],
+                            ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   );
                 },
@@ -1122,16 +1178,6 @@ class _CommunitiesListView extends StatelessWidget {
           ],
         ),
 
-        // FAB
-        Positioned(
-          bottom: 24,
-          right: 24,
-          child: FloatingActionButton(
-            onPressed: onCreateTap,
-            backgroundColor: const Color(0xFFFF6B00),
-            child: const Icon(Icons.add, color: Colors.white),
-          ),
-        ),
       ],
     );
   }

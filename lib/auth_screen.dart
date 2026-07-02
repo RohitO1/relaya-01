@@ -271,11 +271,14 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _handleSignin() async {
-    final email = _siEmailCtrl.text.trim();
+    final inputStr = _siEmailCtrl.text.trim();
     final pass  = _siPassCtrl.text.trim();
+    
+    // If input doesn't have '@', assume it's a username and append the hidden alias.
+    final email = inputStr.contains('@') ? inputStr : '${inputStr.toLowerCase()}@relaya.app';
 
-    if (!_isValidEmail(email) || pass.isEmpty) {
-      _showError('Please enter a valid email and password.');
+    if (email.isEmpty || pass.isEmpty) {
+      _showError('Please enter a valid email or username and password.');
       return;
     }
 

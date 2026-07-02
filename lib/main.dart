@@ -43,7 +43,6 @@ import 'package:app_links/app_links.dart';
 import 'chatroom_live_screen.dart';
 import 'explore_screen.dart';
 import 'services/doodle_theme.dart';
-import 'location_permission_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -551,31 +550,55 @@ class _MainDashboardState extends State<MainDashboard> {
               bottom: 0,
               child: isDoodleMode(context)
                 ? _buildDoodleNavBar(bottomSafeArea)
-                : Container(
-                    padding: EdgeInsets.only(bottom: bottomSafeArea),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF0A0A0F),
-                      border: Border(
-                        top: BorderSide(
-                          color: Color(0xFF2A1F3D),
-                          width: 1.0,
+                : ClipRect(
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                      child: Container(
+                        padding: EdgeInsets.only(bottom: bottomSafeArea),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF000000).withValues(alpha: 0.6),
+                          border: const Border(
+                            top: BorderSide(
+                              color: Color(0x2AFFFFFF),
+                              width: 1.0,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    child: SizedBox(
-                      height: 60,
-                      child: Row(
-                        children: [
-                          _buildNavItem(Icons.home_outlined, Icons.home_rounded, 0),
-                          _buildNavItem(Icons.explore_outlined, Icons.explore_rounded, 1),
-                          _buildCenterRushInButton(),
-                          _buildNavItem(Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 3),
-                          _buildNavItem(Icons.person_outline_rounded, Icons.person_rounded, 4),
-                        ],
+                        child: SizedBox(
+                          height: 60,
+                          child: Row(
+                            children: [
+                              _buildNavItem(Icons.home_outlined, Icons.home_rounded, 0, 'Home'),
+                              _buildNavItem(Icons.explore_outlined, Icons.explore_rounded, 1, 'Explore'),
+                              const Expanded(child: SizedBox()), // Placeholder for center button
+                              _buildNavItem(Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 3, 'Chat'),
+                              _buildNavItem(Icons.person_outline_rounded, Icons.person_rounded, 4, 'Profile'),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
             ),
+            
+            // ── Center Button Overlay ──
+            // Placed outside the ClipRect so it doesn't get cut in half.
+            if (!isDoodleMode(context))
+              Positioned(
+                bottom: bottomSafeArea,
+                left: 0,
+                right: 0,
+                child: SizedBox(
+                  height: 60,
+                  child: Row(
+                    children: [
+                      const Spacer(flex: 2),
+                      _buildCenterRushInButton(),
+                      const Spacer(flex: 2),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -727,9 +750,11 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 
-  Widget _buildNavItem(IconData outlineIcon, IconData filledIcon, int index) {
+  Widget _buildNavItem(IconData outlineIcon, IconData filledIcon, int index, String label) {
     bool isSelected = _currentIndex == index;
-    Color color = isSelected ? Colors.white : const Color(0xFF8E8E93);
+    // Base colors: active gets brand orange, inactive is muted
+    Color iconColor = isSelected ? const Color(0xFFFF6B00) : const Color(0xFF616161);
+    
     return Expanded(
       child: GestureDetector(
         onTap: () => _onSelectTab(index),
@@ -737,10 +762,46 @@ class _MainDashboardState extends State<MainDashboard> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              isSelected ? filledIcon : outlineIcon,
-              color: color,
-              size: 28,
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutBack,
+              transform: Matrix4.identity()..scale(isSelected ? 1.15 : 1.0),
+              transformAlignment: Alignment.center,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  if (isSelected)
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFFF6B00).withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                  Icon(
+                    isSelected ? filledIcon : outlineIcon,
+                    color: iconColor,
+                    size: 26,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? const Color(0xFFFF6B00) : const Color(0xFF616161),
+              ),
+              child: Text(label),
             ),
           ],
         ),

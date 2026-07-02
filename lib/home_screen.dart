@@ -920,9 +920,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     return Column(
       children: [
-        // 1:1 square image area (full card width, no padding)
-        AspectRatio(
-          aspectRatio: 1.0,
+        // Dynamic aspect ratio constraint (Max square, but can be taller 4:5 like Instagram)
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.width * 1.25), // max 4:5 aspect ratio
           child: PageView.builder(
             controller: controller,
             itemCount: images.length,
@@ -994,20 +994,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildActionBtn(IconData icon, String label, Color color, VoidCallback onTap) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          color: color.withValues(alpha: label.isNotEmpty && color != HomeColors.muted ? 0.08 : 0.0),
+          borderRadius: BorderRadius.circular(12),
+          color: color.withValues(alpha: label.isNotEmpty && color != HomeColors.muted ? 0.12 : 0.0),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 17, color: color),
-            if (label.isNotEmpty) ...[const SizedBox(width: 5), Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: color))],
+            Icon(icon, size: 18, color: color),
+            if (label.isNotEmpty) ...[const SizedBox(width: 6), Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: color))],
           ],
         ),
-      ),
+      ).animate(target: color != HomeColors.muted ? 1 : 0).scale(begin: const Offset(1,1), end: const Offset(1.05, 1.05), duration: 200.ms, curve: Curves.easeOutBack),
     );
   }
 
@@ -1830,50 +1833,53 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-              boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 24)],
+              boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 24, spreadRadius: 4)],
             ),
-            child: const Center(child: Icon(Icons.location_city_rounded, color: Colors.white, size: 34)),
-          ),
-          const SizedBox(height: 20),
+            child: const Center(child: Icon(Icons.location_city_rounded, color: Colors.white, size: 38)),
+          ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(1,1), end: const Offset(1.05, 1.05), duration: 1500.ms, curve: Curves.easeInOut),
+          const SizedBox(height: 24),
           Text(
             'No posts in $city yet',
             textAlign: TextAlign.center,
             style: doodle
-                ? DoodleFonts.heading(fontSize: 20, fontWeight: FontWeight.w800)
-                : GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: HomeColors.txt),
+                ? DoodleFonts.heading(fontSize: 22, fontWeight: FontWeight.w800)
+                : GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: HomeColors.txt),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             'Be the first to spark a conversation in $city!',
             textAlign: TextAlign.center,
             style: doodle
-                ? DoodleFonts.body(fontSize: 13, color: DoodleColors.textSecondary)
-                : GoogleFonts.inter(fontSize: 13, color: HomeColors.muted),
+                ? DoodleFonts.body(fontSize: 14, color: DoodleColors.textSecondary)
+                : GoogleFonts.inter(fontSize: 14, color: HomeColors.txt2),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           GestureDetector(
-            onTap: () => showLocationSearchSheet(context),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              showLocationSearchSheet(context);
+            },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFFFF6B00).withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.4)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 14),
-                  const SizedBox(width: 6),
+                  const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 16),
+                  const SizedBox(width: 8),
                   Text('Try a different city',
-                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: const Color(0xFFFF6B00))),
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: const Color(0xFFFF6B00))),
                 ],
               ),
             ),
           ),
         ]),
       ),
-    );
+    ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.05, end: 0, curve: Curves.easeOutCubic);
   }
 }
 
