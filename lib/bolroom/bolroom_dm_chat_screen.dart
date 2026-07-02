@@ -14,6 +14,7 @@ import 'dart:ui';
 import '../chatroom_live_screen.dart';
 import '../services/doodle_theme.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'bolroom_avatars.dart';
 
 import '../services/notification_service.dart';
 
@@ -953,23 +954,12 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
   // HELPER WIDGETS
   // ==========================================
   Widget _buildGlowingAvatar(double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: userAvatarAura,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(2.0),
-        child: Container(
-          decoration: const BoxDecoration(shape: BoxShape.circle, color: bgColor),
-          child: CircleAvatar(
-            backgroundColor: cardColor,
-            child: Icon(Icons.person, color: Colors.white30, size: size * 0.6),
-          ),
-        ),
-      ),
+    return BolroomAvatarWidget(
+      size: size,
+      avatarUrl: null, // DM uses avatarKey only (no photo needed in chat)
+      avatarKey: widget.partnerAvatarKey.isNotEmpty ? widget.partnerAvatarKey : null,
+      userId: widget.partnerId,
+      showRing: size > 30,
     );
   }
 }

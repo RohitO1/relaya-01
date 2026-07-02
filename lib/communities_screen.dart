@@ -29,6 +29,8 @@ class Community {
   final String? locationDistrict;
   final List<CommunityChannel> channels;
   final bool isPrivate;
+  final String chatType;
+  final bool isBroadcastOnly;
 
   Community({
     required this.id,
@@ -43,6 +45,8 @@ class Community {
     this.locationDistrict,
     required this.channels,
     this.isPrivate = false,
+    this.chatType = 'group',
+    this.isBroadcastOnly = false,
   });
 }
 
@@ -244,6 +248,8 @@ class _CommunitiesListWidgetState extends State<CommunitiesListWidget> {
           locationDistrict: _cleanSavedDistrict(row['location_district'] as String?),
           channels: [CommunityChannel(name: 'general', messages: _sampleMessages)],
           isPrivate: row['is_private'] ?? false,
+          chatType: row['chat_type'] ?? 'group',
+          isBroadcastOnly: row['is_broadcast_only'] ?? false,
         );
       }).toList();
       

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'bolroom_theme.dart';
 import '../services/notification_service.dart';
 import '../services/doodle_theme.dart';
+import 'bolroom_avatars.dart';
 
 /// ============================================================
 /// Community Detail Screen — Chat inside a community
@@ -886,8 +887,8 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
   Widget _buildMessageBubble(Map<String, dynamic> msg, bool doodle) {
     final isMe = msg['user_id'] == _myId;
     final anonName = msg['anon_name'] ?? 'Anonymous';
-    final avatarKey = msg['avatar_key'] ?? 'default';
-    final preset = BolroomTheme.avatarPresets[avatarKey] ?? BolroomTheme.avatarPresets['default']!;
+    final avatarKey = msg['avatar_key']?.toString();
+    final userId = msg['user_id']?.toString() ?? '';
     final text = msg['text'] ?? '';
     final time = _formatTime(msg['created_at']);
 
@@ -898,14 +899,12 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
         mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           if (!isMe) ...[
-            Container(
-              width: 32, height: 32,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: (preset['color'] as Color).withValues(alpha: 0.2),
-                border: Border.all(color: (preset['color'] as Color).withValues(alpha: 0.3)),
-              ),
-              child: Center(child: Text(preset['icon'] as String, style: TextStyle(fontSize: 16))),
+            BolroomAvatarWidget(
+              size: 32,
+              avatarUrl: null,
+              avatarKey: avatarKey,
+              userId: userId,
+              showRing: false,
             ),
             SizedBox(width: 8),
           ],
@@ -1126,16 +1125,13 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
     );
   }
 
-  Widget _buildAvatarWidget(String avatarKey, double size) {
-    final preset = BolroomTheme.avatarPresets[avatarKey] ?? BolroomTheme.avatarPresets['default']!;
-    return Container(
-      width: size, height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: (preset['color'] as Color).withValues(alpha: 0.2),
-        border: Border.all(color: (preset['color'] as Color).withValues(alpha: 0.3)),
-      ),
-      child: Center(child: Text(preset['icon'] as String, style: TextStyle(fontSize: size * 0.5))),
+  Widget _buildAvatarWidget(String? avatarKey, double size, {String? userId}) {
+    return BolroomAvatarWidget(
+      size: size,
+      avatarUrl: null,
+      avatarKey: avatarKey,
+      userId: userId ?? '',
+      showRing: size > 40,
     );
   }
 
@@ -1218,7 +1214,7 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                               padding: const EdgeInsets.symmetric(vertical: 8.0),
                               child: Row(
                                 children: [
-                                  _buildAvatarWidget(prof['avatar_key'] ?? 'default', 36),
+                                  _buildAvatarWidget(prof['avatar_key']?.toString(), 36, userId: reqId),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
@@ -1261,7 +1257,7 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                             padding: const EdgeInsets.symmetric(vertical: 8.0),
                             child: Row(
                               children: [
-                                _buildAvatarWidget(prof['avatar_key'] ?? 'default', 36),
+                                _buildAvatarWidget(prof['avatar_key']?.toString(), 36, userId: memId),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Row(

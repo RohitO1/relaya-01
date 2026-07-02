@@ -23,6 +23,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:meetra_app/services/voice_mask_service.dart';
 import 'package:meetra_app/widgets/tiltable_hero_section.dart';
+import 'package:meetra_app/bolroom/bolroom_avatars.dart';
 
 class BolroomProfileScreen extends StatefulWidget {
   final String? targetUserId;
@@ -46,6 +47,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   String _auraColorHex = '#8A2BE2';
   String _location = 'Global';
   String? _avatarUrl;
+  String? _avatarKey;
   int _roomsHosted = 0;
   int _followerCount = 0;
   int _followingCount = 0;
@@ -295,11 +297,13 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
 
       final bp = await _sb.from('bolroom_profiles').select('*').eq('id', _targetId).maybeSingle();
       if (bp != null && mounted) {
+        final String? avatarKey = bp['avatar_key'] as String?;
         setState(() {
           _anonName = bp['anon_name'] ?? 'Anonymous';
           _anonBio = bp['anon_bio'] ?? '';
           _auraColorHex = bp['aura_color'] ?? '#8A2BE2';
           _avatarUrl = bp['avatar_url'];
+          _avatarKey = avatarKey ?? BolroomAvatars.forUser(_targetId).id;
           _location = _isMe ? localLoc : (bp['location'] ?? 'Global');
           _roomsHosted = bp['rooms_hosted'] ?? 0;
           _voiceMaskEnabled = bp['voice_mask_enabled'] ?? false;
@@ -307,9 +311,20 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
           _voiceMaskPreset = (bp['voice_mask_preset'] ?? 'ghost').toString();
           _loading = false;
         });
+        // Persist random assignment to DB if needed
+        if (avatarKey == null && _isMe) {
+          _sb.from('bolroom_profiles')
+              .update({'avatar_key': _avatarKey}).eq('id', _myId)
+              .catchError((_) {});
+        }
       } else {
         if (_isMe) {
-          await _sb.from('bolroom_profiles').upsert({'id': _myId, 'anon_name': 'Shadow_${_myId.substring(0, 4)}'});
+          final assigned = BolroomAvatars.forUser(_myId);
+          await _sb.from('bolroom_profiles').upsert({
+            'id': _myId,
+            'anon_name': 'Shadow_${_myId.substring(0, 4)}',
+            'avatar_key': assigned.id,
+          });
           _loadProfile();
         } else {
           setState(() => _loading = false); // User doesn't exist
@@ -440,7 +455,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
       builder: (_) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : Colors.white24, borderRadius: BorderRadius.circular(2))),
-          _menuTile(Icons.image_outlined, 'Change Profile Picture', const Color(0xFF8A2BE2), () { Navigator.pop(context); _showAvatarOptionsSheet(); }),
+          _menuTile(Icons.auto_awesome, 'Choose Avatar', const Color(0xFF8A2BE2), () { Navigator.pop(context); _showAvatarOptionsSheet(); }),
           _menuTile(Icons.share_outlined, 'Share Profile', const Color(0xFFFF6B00), () { 
             Navigator.pop(context); 
             Share.share('Join me on Bolrooms! Check out my profile: https://meetra.app/profile/$_myId'); 
@@ -466,6 +481,26 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
     );
   }
 
+  void _showAvatarPickerSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => BolroomAvatarPickerSheet(
+        userId: _myId,
+        currentAvatarKey: _avatarKey,
+        onSelected: (key) async {
+          setState(() {
+            _avatarKey = key;
+            _avatarUrl = null; // custom avatar clears photo
+          });
+          await BolroomAvatars.saveAvatarKey(_myId, key);
+          _showToast('Avatar updated! ✨');
+        },
+      ),
+    );
+  }
+
   void _showAvatarOptionsSheet() {
     final doodle = isDoodleMode(context);
     showModalBottomSheet(
@@ -482,6 +517,10 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
+                _buildAvatarActionBtn(Icons.auto_awesome, 'Avatars', purpleGlow, () {
+                  Navigator.pop(context);
+                  _showAvatarPickerSheet();
+                }),
                 _buildAvatarActionBtn(Icons.camera_alt, 'Camera', purpleGlow, () => _pickAndUploadAvatar(ImageSource.camera)),
                 _buildAvatarActionBtn(Icons.photo_library, 'Gallery', const Color(0xFFFF6B00), () => _pickAndUploadAvatar(ImageSource.gallery)),
                 if (_avatarUrl != null)
@@ -618,36 +657,25 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
   }
 
   Widget _buildProfileAvatar(bool doodle) {
-    Color aura = doodle ? DoodleColors.orange : purpleGlow;
-    try { aura = Color(int.parse('FF${_auraColorHex.replaceFirst('#', '')}', radix: 16)); } catch (_) {}
-
     return GestureDetector(
       onTap: _isMe ? _showAvatarOptionsSheet : null,
       child: Stack(
         alignment: Alignment.bottomRight,
         children: [
-          Container(
-            width: 140, height: 140,
-            decoration: doodle
-              ? DoodleDecorations.card(color: DoodleColors.paper)
-              : BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: SweepGradient(colors: [aura, const Color(0xFF1E90FF), aura, const Color(0xFFFF8C00), aura]),
-                  boxShadow: [BoxShadow(color: aura.withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 5)],
-                ),
-            child: Padding(
-              padding: const EdgeInsets.all(3.0),
-              child: Container(
-                decoration: BoxDecoration(shape: BoxShape.circle, color: doodle ? DoodleColors.cream : bgColor),
-                child: _uploadingAvatar
-                  ? CircleAvatar(backgroundColor: doodle ? DoodleColors.paper : cardColor, radius: 65, child: CircularProgressIndicator(color: doodle ? DoodleColors.brown : purpleGlow, strokeWidth: 2))
-                  : (_avatarUrl != null && _avatarUrl!.startsWith('http')
-                    ? CircleAvatar(radius: 65, backgroundImage: NetworkImage(_avatarUrl!), backgroundColor: doodle ? DoodleColors.paper : cardColor)
-                    : CircleAvatar(backgroundColor: doodle ? DoodleColors.paper : cardColor, radius: 65, child: Icon(Icons.person, size: 60, color: doodle ? DoodleColors.brown.withValues(alpha: 0.2) : Colors.white24))),
+          _uploadingAvatar
+            ? Container(
+                width: 140, height: 140,
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: cardColor),
+                child: const Center(child: CircularProgressIndicator(color: purpleGlow, strokeWidth: 2)),
+              )
+            : BolroomAvatarWidget(
+                size: 140,
+                avatarUrl: _avatarUrl,
+                avatarKey: _avatarKey,
+                userId: _targetId,
+                showRing: !doodle,
               ),
-            ),
-          ),
-          // Camera edit badge
+          // Edit badge
           if (_isMe)
             Positioned(
               bottom: 5, right: 5,
@@ -657,7 +685,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                 child: Container(
                   width: 28, height: 28,
                   decoration: BoxDecoration(color: doodle ? DoodleColors.brown : const Color(0xFF7B2CBF), shape: BoxShape.circle),
-                  child: Icon(Icons.camera_alt, color: doodle ? DoodleColors.cream : Colors.white, size: 14),
+                  child: Icon(Icons.auto_awesome, color: doodle ? DoodleColors.cream : Colors.white, size: 14),
                 ),
               ),
             ),
@@ -2725,20 +2753,12 @@ class _FollowListSheetState extends State<_FollowListSheet> {
                             contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                             leading: GestureDetector(
                               onTap: () => widget.onProfileTap(uid),
-                              child: Container(
-                                width: 50, height: 50,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: SweepGradient(colors: [aura, const Color(0xFF1E90FF), aura, const Color(0xFFFF8C00), aura]),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(2),
-                                  child: CircleAvatar(
-                                    backgroundColor: const Color(0xFF13101E),
-                                    backgroundImage: u['avatar_url'] != null ? NetworkImage(u['avatar_url']) : null,
-                                    child: u['avatar_url'] == null ? const Icon(Icons.person, color: Colors.white24) : null,
-                                  ),
-                                ),
+                              child: BolroomAvatarWidget(
+                                size: 50,
+                                avatarUrl: u['avatar_url']?.toString(),
+                                avatarKey: u['avatar_key']?.toString(),
+                                userId: uid,
+                                showRing: true,
                               ),
                             ),
                             title: GestureDetector(

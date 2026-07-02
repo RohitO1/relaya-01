@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'bolroom_theme.dart';
 import 'bolroom_dm_chat_screen.dart';
 import '../services/doodle_theme.dart';
+import 'bolroom_avatars.dart';
 
 class BolroomDmScreen extends StatefulWidget {
   const BolroomDmScreen({super.key});
@@ -93,10 +94,13 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
     return '${diff.inDays}d';
   }
 
-  void _openChat(Map<String, dynamic> convo, String otherName) async {
+  void _openChat(Map<String, dynamic> convo, String otherName, {String? avatarKey}) async {
     HapticFeedback.lightImpact();
     await Navigator.push(context, BolroomTheme.slideRoute(BolroomDmChatScreen(
-      conversationId: convo['id'].toString(), partnerId: _otherUserId(convo), partnerName: otherName, partnerAvatarKey: 'default',
+      conversationId: convo['id'].toString(),
+      partnerId: _otherUserId(convo),
+      partnerName: otherName,
+      partnerAvatarKey: avatarKey ?? BolroomAvatars.forUser(_otherUserId(convo)).id,
     )));
     _loadConvos();
   }
@@ -347,7 +351,7 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
           Map<String, dynamic> c = entry.value;
           final otherId = _otherUserId(c);
           return FutureBuilder<Map<String, dynamic>?>(
-            future: _sb.from('bolroom_profiles').select('anon_name, aura_color').eq('id', otherId).maybeSingle(),
+            future: _sb.from('bolroom_profiles').select('anon_name, aura_color, avatar_key').eq('id', otherId).maybeSingle(),
             builder: (_, snap) {
               final p = snap.data;
               final name = p?['anon_name'] ?? 'Anon';
@@ -358,10 +362,19 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
               return Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: GestureDetector(
-                  onTap: () => _openChat(c, name),
+                  onTap: () => _openChat(c, name, avatarKey: p?['avatar_key']?.toString()),
                   child: Column(
                     children: [
-                      doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 30, child: Icon(Icons.person, color: DoodleColors.cream, size: 30)) : _buildGlowingAvatar(aura, 60),
+                      doodle
+                        ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 30, child: Icon(Icons.person, color: DoodleColors.cream, size: 30))
+                        : BolroomAvatarWidget(
+                            size: 60,
+                            avatarUrl: null,
+                            avatarKey: p?['avatar_key']?.toString(),
+                            userId: otherId,
+                            showRing: true,
+                            isOnline: true,
+                          ),
                       const SizedBox(height: 6),
                       Text(
                         name.length > 5 ? "${name.substring(0, 5)}.." : name,
@@ -381,7 +394,7 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
   Widget _buildDynamicChatTile(Map<String, dynamic> chat, int idx, bool doodle) {
     final otherId = _otherUserId(chat);
     return FutureBuilder<Map<String, dynamic>?>(
-      future: _sb.from('bolroom_profiles').select('anon_name, aura_color').eq('id', otherId).maybeSingle(),
+      future: _sb.from('bolroom_profiles').select('anon_name, aura_color, avatar_key').eq('id', otherId).maybeSingle(),
       builder: (_, snap) {
         final p = snap.data;
         final name = p?['anon_name'] ?? 'Anonymous';
@@ -393,6 +406,7 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
         
         final lastMsg = chat['last_message'] ?? 'Started a chat';
         final timeStr = _timeAgo(chat['last_message_at']?.toString());
+        final partnerAvatarKey = p?['avatar_key']?.toString();
         
         int unreadCount = _unreadCounts[chat['id'].toString()] ?? 0;
         bool hasUnread = unreadCount > 0;
@@ -438,7 +452,7 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
             });
           },
           child: InkWell(
-            onTap: () => _openChat(chat, name),
+            onTap: () => _openChat(chat, name, avatarKey: partnerAvatarKey),
             onLongPress: () => _showContextMenu(context, otherId, name),
             borderRadius: BorderRadius.circular(16),
             child: Container(
@@ -460,21 +474,16 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                 children: [
                   Stack(
                     children: [
-                      doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 25, child: Icon(Icons.person, color: DoodleColors.cream, size: 25)) : _buildGlowingAvatar(aura, 50),
-                      if (isOnline)
-                        Positioned(
-                          bottom: 2,
-                          right: 2,
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF00FF00), // Online Green
-                              shape: BoxShape.circle,
-                              border: Border.all(color: doodle ? DoodleColors.paper : bgColor, width: 2),
-                            ),
+                      doodle
+                        ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 25, child: Icon(Icons.person, color: DoodleColors.cream, size: 25))
+                        : BolroomAvatarWidget(
+                            size: 50,
+                            avatarUrl: null,
+                            avatarKey: partnerAvatarKey,
+                            userId: otherId,
+                            showRing: true,
+                            isOnline: isOnline,
                           ),
-                        ),
                     ],
                   ),
                   const SizedBox(width: 16),
@@ -557,7 +566,8 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
     );
   }
 
-  Widget _buildGlowingAvatar(Color glowColor, double size) {
+  // _buildGlowingAvatar replaced by BolroomAvatarWidget — kept for legacy doodle mode fallback
+  Widget _buildGlowingAvatarLegacy(Color glowColor, double size) {
     return Container(
       width: size,
       height: size,
@@ -671,7 +681,15 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
                               ? DoodleDecorations.card(color: DoodleColors.cream)
                               : BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(14), border: Border.all(color: borderColor)),
                             child: Row(children: [
-                              doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 20, child: Icon(Icons.person, color: DoodleColors.cream, size: 20)) : _buildGlowingAvatar(aura, 40),
+                              doodle
+                                ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 20, child: Icon(Icons.person, color: DoodleColors.cream, size: 20))
+                                : BolroomAvatarWidget(
+                                    size: 40,
+                                    avatarUrl: null,
+                                    avatarKey: u['avatar_key']?.toString(),
+                                    userId: u['id']?.toString() ?? '',
+                                    showRing: true,
+                                  ),
                               const SizedBox(width: 12),
                               Text('@$name', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
                               const Spacer(),
@@ -696,7 +714,10 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
         .maybeSingle();
       if (existing != null) {
         Navigator.push(context, BolroomTheme.slideRoute(BolroomDmChatScreen(
-          conversationId: existing['id'].toString(), partnerId: otherId, partnerName: otherName, partnerAvatarKey: 'default',
+          conversationId: existing['id'].toString(),
+          partnerId: otherId,
+          partnerName: otherName,
+          partnerAvatarKey: BolroomAvatars.forUser(otherId).id,
         )));
         _loadConvos();
         return;
@@ -705,7 +726,10 @@ class _BolroomDmScreenState extends State<BolroomDmScreen> {
         'user1_id': _myId, 'user2_id': otherId,
       }).select().single();
       Navigator.push(context, BolroomTheme.slideRoute(BolroomDmChatScreen(
-        conversationId: newConvo['id'].toString(), partnerId: otherId, partnerName: otherName, partnerAvatarKey: 'default',
+        conversationId: newConvo['id'].toString(),
+        partnerId: otherId,
+        partnerName: otherName,
+        partnerAvatarKey: BolroomAvatars.forUser(otherId).id,
       )));
       _loadConvos();
     } catch (e) { debugPrint('Start convo: $e'); }

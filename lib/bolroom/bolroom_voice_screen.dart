@@ -13,6 +13,7 @@ import '../chatroom_live_screen.dart';
 import '../services/location_service.dart';
 
 import '../services/doodle_theme.dart';
+import 'bolroom_avatars.dart';
 
 class BolroomVoiceScreen extends StatefulWidget {
   const BolroomVoiceScreen({super.key});
@@ -604,7 +605,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
-                doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 16, child: Icon(Icons.person, color: DoodleColors.cream, size: 16)) : _buildGlowingAvatar(auraColor, 32),
+                doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 16, child: Icon(Icons.person, color: DoodleColors.cream, size: 16)) : _buildGlowingAvatar(auraColor, 32, userId: room['host_id']?.toString()),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -1022,7 +1023,18 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
     );
   }
 
-  Widget _buildGlowingAvatar(Color glowColor, double size, {bool isPulsing = false}) {
+  Widget _buildGlowingAvatar(Color glowColor, double size, {bool isPulsing = false, String? userId, String? avatarKey}) {
+    // If we have a userId, prefer BolroomAvatarWidget for the custom avatar experience
+    if (userId != null && userId.isNotEmpty) {
+      return BolroomAvatarWidget(
+        size: size,
+        avatarUrl: null,
+        avatarKey: avatarKey,
+        userId: userId,
+        showRing: true,
+      );
+    }
+    // Fallback: plain glow ring with person icon
     return Container(
       width: size, height: size,
       decoration: BoxDecoration(
