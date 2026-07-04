@@ -12,6 +12,7 @@ import 'image_upload_service.dart';
 import 'services/theme_service.dart';
 import 'services/location_service.dart';
 import 'widgets/location_picker_sheet.dart';
+import 'widgets/rush_in_history_sheet.dart';
 import 'services/doodle_theme.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -518,7 +519,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 20),
 
             // ═══════════════════════════════════════════════
-            // 2. TRUST & SAFETY
+            // 2. ACTIVITY & HISTORY
+            // ═══════════════════════════════════════════════
+            _buildSectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Activity & History', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 16),
+                  _buildTrustRow(Icons.history, 'Rush-In History', 'View All',
+                      const Color(0xFF3B82F6),
+                      onTap: () {
+                        final currentUid = Supabase.instance.client.auth.currentUser?.id;
+                        if (currentUid != null) {
+                          showRushInHistorySheet(context, currentUid);
+                        }
+                      }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // ═══════════════════════════════════════════════
+            // 3. TRUST & SAFETY
             // ═══════════════════════════════════════════════
             _buildSectionCard(
               child: Column(

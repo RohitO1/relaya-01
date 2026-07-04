@@ -114,22 +114,22 @@ class _HCSState extends State<_HostedCategoryScreen> {
           .select('id, title, description, location_name, activity_time, category, created_at, is_rush_in, expires_at, duration_hours, participant_limit')
           .eq('user_id', _uid)
           .order('created_at', ascending: false);
-      final now = DateTime.now().toUtc();
+      final now = DateTime.now();
       final filtered = (all as List).where((a) {
         final isRushIn = a['is_rush_in'] == true || (a['description']?.toString().contains('[is_rush_in:true]') ?? false);
         if (widget.isRushIn) {
           if (!isRushIn) return false;
-          // Hide expired rush-ins from the hosted list
+          // Hide expired rush-ins from the hosted list completely
           final expiresStr = a['expires_at'] as String?;
           if (expiresStr != null) {
-            final expires = DateTime.tryParse(expiresStr);
+            final expires = DateTime.tryParse(expiresStr)?.toLocal();
             if (expires != null && expires.isBefore(now)) return false;
           } else {
             // No expires_at — fallback: activity_time + duration_hours
             final actStr = a['activity_time'] as String?;
             final durHours = a['duration_hours'] as int? ?? 6;
             if (actStr != null) {
-              final actTime = DateTime.tryParse(actStr);
+              final actTime = DateTime.tryParse(actStr)?.toLocal();
               if (actTime != null && actTime.add(Duration(hours: durHours)).isBefore(now)) return false;
             }
           }
@@ -264,14 +264,14 @@ class _CCState extends State<_CreationCard> {
       if (mounted) {
         setState(() {
           _isLive = true;
-          _countdownText = 'LIVE · Ends in ${_formatDuration(diff)}';
+          _countdownText = 'STARTED · Ends in ${_formatDuration(diff)}';
         });
       }
     } else {
       if (mounted) {
         setState(() {
           _isLive = false;
-          _countdownText = 'Expired';
+          _countdownText = 'ENDED';
         });
       }
     }

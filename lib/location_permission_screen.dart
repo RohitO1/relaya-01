@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -38,6 +39,13 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
       _isDetecting = true;
       _errorMsg = '';
     });
+
+    if (kIsWeb) {
+      locationService.setLocation('Web Test City, Test', lat: 28.6139, lng: 77.2090);
+      markLocationFetchedThisSession();
+      widget.onPermissionGranted();
+      return;
+    }
 
     final success = await locationService.fetchLiveLocation(forceReverseGeocode: true);
 

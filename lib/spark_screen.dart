@@ -360,8 +360,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
             }
           }
           
-          if (parsedExpiresAt != null && parsedExpiresAt.isBefore(DateTime.now())) {
-            continue; // Skip expired rush-ins
+          if (parsedExpiresAt != null && parsedExpiresAt.isBefore(DateTime.now().subtract(const Duration(hours: 6)))) {
+            continue; // Skip expired rush-ins after 6 hours
           }
         }
 
@@ -396,7 +396,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
             if (parsedExpiresAt != null) {
               final endDiff = parsedExpiresAt.difference(now);
               if (endDiff.isNegative) {
-                timerDisplay = 'Ended';
+                timerDisplay = 'ENDED';
               } else if (endDiff.inHours > 0) {
                 timerDisplay = 'Ends in ${endDiff.inHours}h ${endDiff.inMinutes % 60}m';
               } else {
