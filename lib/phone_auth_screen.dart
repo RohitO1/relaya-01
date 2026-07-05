@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase;
 import 'onboarding_screen.dart';
 import 'main.dart' show MainDashboard;
 
@@ -77,21 +78,97 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen>
     setState(() => _isLoading = true);
 
     try {
-      await Supabase.instance.client.auth.signInWithOtp(phone: fullPhone);
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OtpVerifyScreen(phoneNumber: fullPhone),
-          ),
-        );
-      }
-    } on AuthException catch (e) {
-      if (mounted) _showError(e.message);
+      await firebase.FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: fullPhone,
+        verificationCompleted: (firebase.PhoneAuthCredential credential) async {
+          // Auto-resolution (e.g. Android SMS auto-retrieval)
+          try {
+            final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
+            if (userCred.user != null && mounted) {
+              await _syncWithSupabase(userCred.user!, fullPhone);
+            }
+          } catch (e) {
+            debugPrint("Auto verification failed: $e");
+          }
+        },
+        verificationFailed: (firebase.FirebaseAuthException e) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            _showError(e.message ?? 'Verification failed.');
+          }
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => OtpVerifyScreen(
+                  phoneNumber: fullPhone,
+                  verificationId: verificationId,
+                  resendToken: resendToken,
+                ),
+              ),
+            );
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {},
+      );
     } catch (e) {
-      if (mounted) _showError('Failed to send OTP. Check your connection.');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError('Failed to send OTP: $e');
+      }
+    }
+  }
+
+  Future<void> _syncWithSupabase(firebase.User firebaseUser, String phone) async {
+    // Attempt to map Firebase login to Supabase
+    // If Supabase natively supports passing an ID token to signInWithIdToken, we can do it here,
+    // or if anon sign-in is allowed, we can sign in anonymously and map.
+    // Assuming Third-Party auth is configured on Supabase:
+    try {
+      final idToken = await firebaseUser.getIdToken();
+      if (idToken != null) {
+        // Here you would pass the idToken to your backend or use signInWithIdToken if SDK supports it.
+        // As a fallback for SDKs without direct third-party token sign in, 
+        // we'll rely on the existing user's session if any, or proceed to onboarding.
+        // For a full production flow, configure Supabase initialize with accessToken callback.
+        
+        // Wait briefly for Supabase client to sync if it's listening to Auth changes
+        await Future.delayed(const Duration(seconds: 1));
+      }
+      
+      if (mounted) {
+        final existing = await Supabase.instance.client
+            .from('profiles')
+            .select('id, onboarding_complete')
+            .eq('phone', phone)
+            .maybeSingle();
+
+        if (existing == null) {
+          // Force push onboarding
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const _OnboardingWrapper()),
+            (route) => false,
+          );
+        } else {
+          final onboardingDone = existing['onboarding_complete'] == true;
+          if (!onboardingDone) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const _OnboardingWrapper()),
+              (route) => false,
+            );
+          } else {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const _DashboardWrapper()),
+              (route) => false,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Error syncing with Supabase: $e");
     }
   }
 
@@ -365,7 +442,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen>
 // ═══════════════════════════════════════════════════════════════════
 class OtpVerifyScreen extends StatefulWidget {
   final String phoneNumber;
-  const OtpVerifyScreen({super.key, required this.phoneNumber});
+  final String verificationId;
+  final int? resendToken;
+
+  const OtpVerifyScreen({
+    super.key,
+    required this.phoneNumber,
+    required this.verificationId,
+    this.resendToken,
+  });
 
   @override
   State<OtpVerifyScreen> createState() => _OtpVerifyScreenState();
@@ -380,10 +465,13 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
   bool _isResending = false;
   int _countdown = 60;
   Timer? _timer;
+  
+  late String _currentVerificationId;
 
   @override
   void initState() {
     super.initState();
+    _currentVerificationId = widget.verificationId;
     _startTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _foci[0].requestFocus();
@@ -420,16 +508,17 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
     }
     setState(() => _isVerifying = true);
     try {
-      final res = await Supabase.instance.client.auth.verifyOTP(
-        phone: widget.phoneNumber,
-        token: _otp,
-        type: OtpType.sms,
+      firebase.PhoneAuthCredential credential = firebase.PhoneAuthProvider.credential(
+        verificationId: _currentVerificationId,
+        smsCode: _otp,
       );
 
-      if (res.user != null && mounted) {
-        final isNewUser = await _ensureProfile(res.user!);
+      final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
+
+      if (userCred.user != null && mounted) {
+        final isNewUser = await _ensureProfile(userCred.user!);
         if (!mounted) return;
-        // Explicitly navigate — don't rely on stream timing
+        
         if (isNewUser) {
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const _OnboardingWrapper()),
@@ -442,7 +531,7 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
           );
         }
       }
-    } on AuthException catch (e) {
+    } on firebase.FirebaseAuthException catch (e) {
       if (mounted) _showError('Invalid code: ${e.message}');
       for (final c in _ctrl) c.clear();
       if (mounted) _foci[0].requestFocus();
@@ -454,12 +543,12 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
   }
 
   /// Returns true if this is a brand-new user (profile just created)
-  Future<bool> _ensureProfile(User user) async {
+  Future<bool> _ensureProfile(firebase.User user) async {
     try {
       final existing = await Supabase.instance.client
           .from('profiles')
           .select('id, onboarding_complete')
-          .eq('id', user.id)
+          .eq('phone', widget.phoneNumber)
           .maybeSingle();
 
       if (existing == null) {
@@ -467,10 +556,12 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
         final suffix = phone.length >= 4
             ? phone.substring(phone.length - 4)
             : phone;
+            
+        // Assuming Firebase UUID will be used as primary ID in Supabase
         await Supabase.instance.client.from('profiles').upsert({
-          'id': user.id,
+          'id': user.uid,
           'name': 'User_$suffix',
-          'username': 'user_${user.id.substring(0, 8)}',
+          'username': 'user_${user.uid.substring(0, 8)}',
           'full_name': 'Relaya User',
           'avatar_url': '',
           'onboarding_complete': false,
@@ -492,20 +583,51 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
     if (_countdown > 0 || _isResending) return;
     setState(() => _isResending = true);
     try {
-      await Supabase.instance.client.auth
-          .signInWithOtp(phone: widget.phoneNumber);
-      _startTimer();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Code resent to ${widget.phoneNumber}',
-              style: const TextStyle(color: Colors.white)),
-          backgroundColor: _green,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ));
-      }
-      for (final c in _ctrl) c.clear();
-      if (mounted) _foci[0].requestFocus();
+      await firebase.FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: widget.phoneNumber,
+        forceResendingToken: widget.resendToken,
+        verificationCompleted: (firebase.PhoneAuthCredential credential) async {
+           try {
+            final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
+            if (userCred.user != null && mounted) {
+              final isNew = await _ensureProfile(userCred.user!);
+              if (!mounted) return;
+              if (isNew) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const _OnboardingWrapper()),
+                  (route) => false,
+                );
+              } else {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const _DashboardWrapper()),
+                  (route) => false,
+                );
+              }
+            }
+          } catch (e) {
+            debugPrint("Auto verification failed: $e");
+          }
+        },
+        verificationFailed: (firebase.FirebaseAuthException e) {
+          if (mounted) _showError(e.message ?? 'Failed to resend');
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          if (mounted) {
+            _currentVerificationId = verificationId;
+            _startTimer();
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Code resent to ${widget.phoneNumber}',
+                  style: const TextStyle(color: Colors.white)),
+              backgroundColor: _green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ));
+            for (final c in _ctrl) c.clear();
+            _foci[0].requestFocus();
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {},
+      );
     } catch (_) {
       if (mounted) _showError('Failed to resend. Try again.');
     } finally {

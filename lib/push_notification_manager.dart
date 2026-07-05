@@ -16,9 +16,12 @@ import 'knocks_list_screen.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    // Firebase may already be initialized; only initialize if not yet done
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
     debugPrint("Handling background FCM message: ${message.messageId}");
   } catch (e) {
     debugPrint("Error in background handler: $e");
@@ -44,10 +47,11 @@ class PushNotificationManager {
         return;
       }
 
-      // Safely initialize with the real firebase options
-      await Firebase.initializeApp(
-        options: opts,
-      );
+      // Firebase is already initialized in main() — skip re-initialization
+      // to avoid [core/duplicate-app] errors that break Phone Auth
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(options: opts);
+      }
 
       // Register background messaging handler
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);

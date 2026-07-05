@@ -3,6 +3,8 @@ import 'vibe_artwork.dart';
 import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:async';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 // ignore_for_file: avoid_print, unused_local_variable, unused_element, unused_field, use_build_context_synchronously, unused_element_parameter, prefer_final_fields
 import 'package:http/http.dart' as http;
@@ -52,6 +54,10 @@ void main() async {
   await Supabase.initialize(
     url: 'https://tkcdzuthjrxpfczqathy.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrY2R6dXRoanJ4cGZjenFhdGh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MDc2MzAsImV4cCI6MjA5MTQ4MzYzMH0.RSwwJlPUxvvF2K8ZTER54WXuq91H-wgNW105JnzxJv8',
+  );
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
   // Initialize services
