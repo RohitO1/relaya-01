@@ -180,8 +180,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       case 0:
         final bool isNameValid = _nameCtrl.text.trim().length >= 2;
         final bool isUsernameValid = _usernameCtrl.text.trim().length >= 3 && _usernameAvailable;
-        final bool isPasswordValid = _passwordCtrl.text.isEmpty || 
-            (_passwordCtrl.text.length >= 6 && _passwordCtrl.text == _confirmPasswordCtrl.text);
+        final bool isPasswordValid = _passwordCtrl.text.length >= 6 && _passwordCtrl.text == _confirmPasswordCtrl.text;
         return isNameValid && isUsernameValid && isPasswordValid;
       case 1: return _dobSet;
       case 2: return _gender.isNotEmpty;
@@ -216,7 +215,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   void _showNudge() {
     final msgs = [
-      'Please add your name to continue.',
+      'Please enter your name, username, and a valid password.',
       'Pick your birthday to continue.',
       'Select your gender to continue.',
       'Pick at least 3 interests to continue.',
@@ -662,7 +661,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             decoration: InputDecoration(
               icon: Icon(Icons.lock_outline, color: _muted, size: 22),
               border: InputBorder.none,
-              hintText: 'Password (Optional for Phone users)',
+              hintText: 'Create a Password (min. 6 chars)',
               hintStyle: GoogleFonts.inter(color: _txt2),
               suffixIcon: IconButton(
                 icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: _muted),
@@ -739,7 +738,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             style: GoogleFonts.inter(color: _txt, fontSize: 15),
             inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_\.]'))],
             decoration: InputDecoration(
-              hintText: '@username (optional)',
+              hintText: '@username',
               hintStyle: GoogleFonts.inter(color: _muted, fontSize: 14),
               prefixIcon: const Icon(Icons.alternate_email, color: _orange, size: 20),
               suffixIcon: _checkingUsername
