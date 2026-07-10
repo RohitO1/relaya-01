@@ -155,6 +155,21 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     }
   }
 
+  bool _isTestPhoneNumber(String phone) {
+    final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+    final knownTestNumbers = {
+      '16505553434',
+      '919876543210',
+      '911234567890',
+      '919999999999',
+      '918888888888',
+      '917777777777',
+      '910000000000',
+      '1234567890',
+    };
+    return knownTestNumbers.contains(cleanPhone) || cleanPhone.contains('555');
+  }
+
   // ── Phone Auth Actions ──────────────────────────────────────────
 
   Future<void> _sendOtp() async {
@@ -168,8 +183,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     setState(() => _isLoading = true);
 
     try {
-      // To bypass reCAPTCHA during local testing with dummy phone numbers, uncomment below:
-      await firebase.FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: true);
+      final isTest = _isTestPhoneNumber(_fullPhoneNumber);
+      await firebase.FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: isTest);
 
       await firebase.FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: _fullPhoneNumber,
@@ -344,8 +359,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     if (_countdown > 0 || _isResending) return;
     setState(() => _isResending = true);
     try {
-      // To bypass reCAPTCHA during local testing with dummy phone numbers, uncomment below:
-      // await firebase.FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: true);
+      final isTest = _isTestPhoneNumber(_fullPhoneNumber);
+      await firebase.FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: isTest);
 
       await firebase.FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: _fullPhoneNumber,
