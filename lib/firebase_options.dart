@@ -41,12 +41,13 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDWD5TXC2wetAqhULay7ziB8eJ0pufFWw4',
-    appId: '1:488610187435:android:11ded936dcc1580ac90fee', // Using the registered project App ID
+    apiKey: 'AIzaSyBpg1lVeQoWwrNZs71yqaGAQDtmm6c4uLI',
+    appId: '1:488610187435:web:a3134cbed8746173c90fee',
     messagingSenderId: '488610187435',
     projectId: 'relaya-f7ba4',
     authDomain: 'relaya-f7ba4.firebaseapp.com',
     storageBucket: 'relaya-f7ba4.firebasestorage.app',
+    measurementId: 'G-W9ML83KL0H',
   );
 
   static const FirebaseOptions android = FirebaseOptions(

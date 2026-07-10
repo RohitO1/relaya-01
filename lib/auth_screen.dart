@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase;
 import 'services/doodle_theme.dart';
 import 'onboarding_screen.dart';
 import 'main.dart' show MainDashboard;
@@ -68,6 +69,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   int _countdown = 60;
   Timer? _timer;
   String _fullPhoneNumber = '';
+  String? _verificationId;
+  int? _resendToken;
 
   // Ambient Animations
   late AnimationController _orbCtrl;
@@ -165,20 +168,55 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     setState(() => _isLoading = true);
 
     try {
-      await Supabase.instance.client.auth.signInWithOtp(phone: _fullPhoneNumber);
-      if (mounted) {
-        _startTimer();
-        setState(() => _phoneStep = 1);
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) _otpFoci[0].requestFocus();
-        });
-      }
-    } on AuthException catch (e) {
-      if (mounted) _showError(e.message);
+      // To bypass reCAPTCHA during local testing with dummy phone numbers, uncomment below:
+      await firebase.FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: true);
+
+      await firebase.FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: _fullPhoneNumber,
+        forceResendingToken: _resendToken,
+        verificationCompleted: (firebase.PhoneAuthCredential credential) async {
+          try {
+            final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
+            if (userCred.user != null && mounted) {
+              await _handleFirebaseUserAuthenticated(userCred.user!);
+            }
+          } catch (e) {
+            debugPrint("Auto verification failed: $e");
+          }
+        },
+        verificationFailed: (firebase.FirebaseAuthException e) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            _showError(e.message ?? 'Verification failed.');
+          }
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          if (mounted) {
+            setState(() {
+              _verificationId = verificationId;
+              _resendToken = resendToken;
+              _isLoading = false;
+              _phoneStep = 1;
+            });
+            _startTimer();
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (mounted) _otpFoci[0].requestFocus();
+            });
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          if (mounted) {
+            setState(() {
+              _verificationId = verificationId;
+            });
+          }
+        },
+      );
     } catch (e) {
-      if (mounted) _showError('Failed to send OTP. Check your connection.');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError('Failed to send OTP. Check your connection.');
+      }
     }
   }
 
@@ -199,36 +237,69 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
   String get _otpVal => _otpCtrl.map((c) => c.text).join();
 
+  Future<void> _handleFirebaseUserAuthenticated(firebase.User firebaseUser) async {
+    final phone = firebaseUser.phoneNumber ?? _fullPhoneNumber;
+    final syntheticEmail = 'phone_${phone.replaceAll('+', '')}@relaya.app';
+    final syntheticPassword = 'phone_auth_${firebaseUser.uid}';
+
+    AuthResponse? sbRes;
+    try {
+      sbRes = await Supabase.instance.client.auth.signInWithPassword(
+        email: syntheticEmail,
+        password: syntheticPassword,
+      );
+    } on AuthException catch (e) {
+      if (e.message.contains('Invalid login credentials') || e.statusCode == '400' || e.message.contains('User not found')) {
+        // User does not exist in Supabase, sign them up
+        sbRes = await Supabase.instance.client.auth.signUp(
+          email: syntheticEmail,
+          password: syntheticPassword,
+        );
+      } else {
+        rethrow;
+      }
+    }
+
+    if (sbRes.user != null && mounted) {
+      final isNewUser = await _ensureProfile(sbRes.user!);
+      if (!mounted) return;
+      
+      if (isNewUser) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const _OnboardingWrapper()),
+          (route) => false,
+        );
+      } else {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const _DashboardWrapper()),
+          (route) => false,
+        );
+      }
+    }
+  }
+
   Future<void> _verifyOtp() async {
     if (_otpVal.length < 6) {
       _showError('Please enter all 6 digits.');
       return;
     }
+    if (_verificationId == null) {
+      _showError('Verification ID not found. Please resend code.');
+      return;
+    }
     setState(() => _isVerifying = true);
     try {
-      final res = await Supabase.instance.client.auth.verifyOTP(
-        phone: _fullPhoneNumber,
-        token: _otpVal,
-        type: OtpType.sms,
+      final credential = firebase.PhoneAuthProvider.credential(
+        verificationId: _verificationId!,
+        smsCode: _otpVal,
       );
 
-      if (res.user != null && mounted) {
-        final isNewUser = await _ensureProfile(res.user!);
-        if (!mounted) return;
-        
-        if (isNewUser) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const _OnboardingWrapper()),
-            (route) => false,
-          );
-        } else {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const _DashboardWrapper()),
-            (route) => false,
-          );
-        }
+      final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
+
+      if (userCred.user != null && mounted) {
+        await _handleFirebaseUserAuthenticated(userCred.user!);
       }
-    } on AuthException catch (e) {
+    } on firebase.FirebaseAuthException catch (e) {
       if (mounted) _showError('Invalid code: ${e.message}');
       for (final c in _otpCtrl) c.clear();
       if (mounted) _otpFoci[0].requestFocus();
@@ -273,13 +344,47 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     if (_countdown > 0 || _isResending) return;
     setState(() => _isResending = true);
     try {
-      await Supabase.instance.client.auth.signInWithOtp(phone: _fullPhoneNumber);
-      _startTimer();
-      if (mounted) {
-        _showSuccess('Code resent to $_fullPhoneNumber');
-      }
-      for (final c in _otpCtrl) c.clear();
-      if (mounted) _otpFoci[0].requestFocus();
+      // To bypass reCAPTCHA during local testing with dummy phone numbers, uncomment below:
+      // await firebase.FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: true);
+
+      await firebase.FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: _fullPhoneNumber,
+        forceResendingToken: _resendToken,
+        verificationCompleted: (firebase.PhoneAuthCredential credential) async {
+          try {
+            final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
+            if (userCred.user != null && mounted) {
+              await _handleFirebaseUserAuthenticated(userCred.user!);
+            }
+          } catch (e) {
+            debugPrint("Auto verification failed: $e");
+          }
+        },
+        verificationFailed: (firebase.FirebaseAuthException e) {
+          if (mounted) {
+            _showError(e.message ?? 'Failed to resend');
+          }
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          if (mounted) {
+            setState(() {
+              _verificationId = verificationId;
+              _resendToken = resendToken;
+            });
+            _startTimer();
+            _showSuccess('Code resent to $_fullPhoneNumber');
+            for (final c in _otpCtrl) c.clear();
+            _otpFoci[0].requestFocus();
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          if (mounted) {
+            setState(() {
+              _verificationId = verificationId;
+            });
+          }
+        },
+      );
     } catch (_) {
       if (mounted) _showError('Failed to resend. Try again.');
     } finally {
