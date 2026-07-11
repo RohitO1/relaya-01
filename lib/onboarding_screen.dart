@@ -2,6 +2,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'image_upload_service.dart';
 import 'feature_guide_screen.dart';
 import 'main.dart';
@@ -186,7 +188,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       case 2: return _gender.isNotEmpty;
       case 3: return _selectedInterests.length >= 3;
       case 4: return _selectedVibes.isNotEmpty;
-      case 5: return true; // location optional
+      case 5: return _lat != null && _lng != null;
       default: return true;
     }
   }
@@ -220,7 +222,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       'Select your gender to continue.',
       'Pick at least 3 interests to continue.',
       'Choose at least 1 vibe that describes you.',
-      '',
+      'Please pin your location to continue.',
     ];
     if (msgs[_step].isEmpty) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -359,7 +361,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
       if (_dobSet) payload['dob'] = _dobString;
       if (_selectedInterests.isNotEmpty) payload['interests'] = _selectedInterests.toList();
-      if (_selectedVibes.isNotEmpty) payload['personality_tags'] = _selectedVibes.toList();
+      if (_selectedVibes.isNotEmpty) payload['personality_traits'] = _selectedVibes.toList();
 
       // Try to save all fields; gracefully degrade if schema lacks optional columns
       try {
@@ -448,12 +450,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 Positioned(
                   top: -60 + 30 * math.sin(t * math.pi),
                   right: -80,
-                  child: _orb(300, _orange.withValues(alpha: 0.07)),
+                  child: _orb(350, _orange.withValues(alpha: 0.15)),
                 ),
                 Positioned(
                   bottom: 80 + 20 * math.cos(t * math.pi),
                   left: -60,
-                  child: _orb(250, _amber.withValues(alpha: 0.06)),
+                  child: _orb(300, _amber.withValues(alpha: 0.12)),
+                ),
+                Positioned.fill(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                    child: Container(color: Colors.transparent),
+                  ),
                 ),
               ]);
             },
@@ -488,25 +496,28 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
                 // ── Progress bar ─────────────────────────────────
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                  child: Row(
-                    children: List.generate(_totalSteps, (i) {
-                      final filled = i <= _step;
-                      final active = i == _step;
-                      return Expanded(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 400),
-                          curve: Curves.easeInOutCubic,
-                          height: 4,
-                          margin: EdgeInsets.only(right: i < _totalSteps - 1 ? 4 : 0),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(4),
-                            color: filled ? _orange : Colors.white.withValues(alpha: 0.08),
-                            boxShadow: active ? [BoxShadow(color: _orange.withValues(alpha: 0.5), blurRadius: 6)] : null,
-                          ),
-                        ),
-                      );
-                    }),
+                  padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+                  child: Container(
+                    height: 6,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    alignment: Alignment.centerLeft,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeOutQuint,
+                      height: 6,
+                      width: MediaQuery.of(context).size.width * ((_step + 1) / _totalSteps),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [_orange, _amber]),
+                        borderRadius: BorderRadius.circular(6),
+                        boxShadow: [
+                          BoxShadow(color: _orange.withValues(alpha: 0.5), blurRadius: 8, offset: const Offset(0, 2))
+                        ],
+                      ),
+                    ),
                   ),
                 ),
 
@@ -602,7 +613,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
       child: Column(
-        children: [
+        children: <Widget>[
           // Photo picker
           GestureDetector(
             onTap: _handlePhotoUpload,
@@ -637,7 +648,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           _usernameField(),
           const SizedBox(height: 14),
           _passwordFields(),
-        ],
+        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
       ),
     );
   }
@@ -770,7 +781,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           // DOB header
           Row(children: [
             const Icon(Icons.cake_outlined, color: _orange, size: 18),
@@ -865,7 +876,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ),
           ),
-        ],
+        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
       ),
     );
   }
@@ -917,7 +928,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
       child: Column(
-        children: [
+        children: <Widget>[
           Row(children: [
             Expanded(child: _genderCard(options[0])),
             const SizedBox(width: 14),
@@ -927,7 +938,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           _genderTile(options[2]),
           const SizedBox(height: 10),
           _genderTile(options[3]),
-        ],
+        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
       ),
     );
   }
@@ -988,7 +999,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           // counter
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -1028,7 +1039,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               const SizedBox(height: 20),
             ]);
           }),
-        ],
+        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
       ),
     );
   }
@@ -1041,7 +1052,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(10), border: Border.all(color: _gb)),
@@ -1082,7 +1093,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               );
             }).toList(),
           ),
-        ],
+        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
       ),
     );
   }
@@ -1098,7 +1109,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
-        children: [
+        children: <Widget>[
           // Detect button
           GestureDetector(
             onTap: _detectingLocation ? null : _detectMyLocation,
@@ -1215,9 +1226,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
 
           const SizedBox(height: 8),
-          Text('Tap the map to pin your location, or skip for now.',
-              style: GoogleFonts.inter(color: _muted, fontSize: 11), textAlign: TextAlign.center),
-        ],
+          Text('Tap the map to pin your location. It is required to find events near you.',
+              style: GoogleFonts.inter(color: _orange, fontSize: 11), textAlign: TextAlign.center),
+        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
       ),
     );
   }
