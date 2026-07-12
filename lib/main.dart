@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'firebase_options.dart';
 
 // ignore_for_file: avoid_print, unused_local_variable, unused_element, unused_field, use_build_context_synchronously, unused_element_parameter, prefer_final_fields
@@ -61,6 +62,14 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
   }
+
+  // Activate Firebase App Check
+  await FirebaseAppCheck.instance.activate(
+    // Web: reCAPTCHA Enterprise (registered in Firebase Console)
+    webProvider: ReCaptchaEnterpriseProvider('6LfRO08tAAAAADFbG9-YBQdcwOx1vXkbMkk7flCm'),
+    // Android: Play Integrity (already registered)
+    androidProvider: AndroidProvider.playIntegrity,
+  );
 
   // Initialize services
   await themeService.init();

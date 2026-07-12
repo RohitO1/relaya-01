@@ -42,6 +42,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   final _passwordCtrl = TextEditingController();
   bool _isSigningIn = false;
   bool _obscurePassword = true;
+  bool _isSendingReset = false;
   
   // Phone Entry
   final _phoneCtrl = TextEditingController();
@@ -124,6 +125,44 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     ));
   }
 
+  /// Shows a prominent banner when the phone number is already registered,
+  /// with an action button that switches the user to the login tab.
+  void _showAlreadyRegisteredBanner() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'This number is already registered with Relaya. Please login.',
+                style: TextStyle(color: Colors.white, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        action: SnackBarAction(
+          label: 'Login',
+          textColor: Colors.black,
+          onPressed: () {
+            if (mounted) {
+              setState(() {
+                _isPhoneMode = false; // switch to Username tab
+              });
+            }
+          },
+        ),
+        backgroundColor: const Color(0xFF1D4ED8), // info blue
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   // ── Username Auth Actions ─────────────────────────────────────────
   Future<void> _handleUsernameSignin() async {
     final rawInput = _usernameCtrl.text.trim();
@@ -141,13 +180,24 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     try {
       final res = await Supabase.instance.client.auth.signInWithPassword(email: email, password: pass);
       if (res.user != null && mounted) {
+        // Successful login — navigate to main dashboard
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const _DashboardWrapper()),
           (route) => false,
         );
+      } else {
+        if (mounted) _showError('Login failed. Please try again.');
       }
     } on AuthException catch (e) {
-      if (mounted) _showError('Invalid login: ${e.message}');
+      if (mounted) {
+        // Give a clear, user-friendly message regardless of Supabase error details
+        final msg = (e.message.toLowerCase().contains('invalid') ||
+                e.message.toLowerCase().contains('credentials') ||
+                e.message.toLowerCase().contains('not found'))
+            ? 'Username or password is incorrect. Please try again.'
+            : 'Login failed: ${e.message}';
+        _showError(msg);
+      }
     } catch (e) {
       if (mounted) _showError('Login failed. Please check your network.');
     } finally {
@@ -181,6 +231,27 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
     _fullPhoneNumber = '$_countryCode$phone';
     setState(() => _isLoading = true);
+
+    // ── Check if this phone number is already registered ──────────────
+    try {
+      final existing = await Supabase.instance.client
+          .from('profiles')
+          .select('id')
+          .eq('phone', _fullPhoneNumber)
+          .maybeSingle();
+
+      if (existing != null) {
+        // Phone already registered — tell the user to login instead
+        if (mounted) {
+          setState(() => _isLoading = false);
+          _showAlreadyRegisteredBanner();
+        }
+        return;
+      }
+    } catch (_) {
+      // If the check fails for any reason, proceed with OTP (fail-open)
+    }
+    // ─────────────────────────────────────────────────────────────────
 
     try {
       final isTest = _isTestPhoneNumber(_fullPhoneNumber);
@@ -630,7 +701,48 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             ),
           ),
         ),
+
+        // Forgot Password link
+        const SizedBox(height: 20),
+        GestureDetector(
+          onTap: _showForgotPasswordSheet,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_reset_rounded, color: _muted, size: 14),
+              const SizedBox(width: 6),
+              Text(
+                'Forgot Password?',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: _cyan,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.underline,
+                  decorationColor: _cyan.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
       ],
+    );
+  }
+
+  // ── Forgot Password — OTP-based reset ───────────────────────────────
+
+  void _showForgotPasswordSheet() {
+    // We push a full-screen route so the OTP boxes and keyboard don't fight
+    // with a bottom sheet.
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierDismissible: true,
+        barrierColor: Colors.black87,
+        pageBuilder: (_, __, ___) => const _ForgotPasswordFlow(),
+        transitionsBuilder: (_, anim, __, child) =>
+            FadeTransition(opacity: anim, child: child),
+      ),
     );
   }
 
@@ -998,6 +1110,596 @@ class YinYangCrescentPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FORGOT PASSWORD — OTP-based reset flow
+// ═══════════════════════════════════════════════════════════════════
+
+class _ForgotPasswordFlow extends StatefulWidget {
+  const _ForgotPasswordFlow();
+  @override
+  State<_ForgotPasswordFlow> createState() => _ForgotPasswordFlowState();
+}
+
+class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
+  // 0 = enter username/phone, 1 = OTP, 2 = new password, 3 = success
+  int _step = 0;
+
+  // Step 0
+  final _identityCtrl = TextEditingController();
+  bool _isLookingUp = false;
+  String _resolvedPhone = ''; // full phone with country code
+  String _resolvedSyntheticEmail = ''; // phone_XXX@relaya.app
+  String _resolvedSyntheticPassword = ''; // phone_auth_<uid>
+
+  // Step 1 — OTP
+  final List<TextEditingController> _otpCtrl = List.generate(6, (_) => TextEditingController());
+  final List<FocusNode> _otpFoci = List.generate(6, (_) => FocusNode());
+  String? _verificationId;
+  int? _resendToken;
+  bool _isVerifying = false;
+  bool _isResending = false;
+  int _countdown = 60;
+  Timer? _timer;
+
+  // Step 2 — new password
+  final _newPassCtrl = TextEditingController();
+  final _confirmPassCtrl = TextEditingController();
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
+  bool _isSaving = false;
+
+  @override
+  void dispose() {
+    _identityCtrl.dispose();
+    _newPassCtrl.dispose();
+    _confirmPassCtrl.dispose();
+    _timer?.cancel();
+    for (final c in _otpCtrl) c.dispose();
+    for (final f in _otpFoci) f.dispose();
+    super.dispose();
+  }
+
+  String get _otpVal => _otpCtrl.map((c) => c.text).join();
+
+  void _startTimer() {
+    _countdown = 60;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      if (_countdown == 0) { t.cancel(); } else { setState(() => _countdown--); }
+    });
+  }
+
+  void _showErr(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(children: [
+        const Icon(Icons.error_outline, color: Colors.white, size: 16),
+        const SizedBox(width: 8),
+        Expanded(child: Text(msg, style: const TextStyle(color: Colors.white, fontSize: 13))),
+      ]),
+      backgroundColor: _red,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 4),
+    ));
+  }
+
+  // ── Step 0: Look up user by username or phone ───────────────────
+  Future<void> _handleLookup() async {
+    final raw = _identityCtrl.text.trim();
+    if (raw.isEmpty) { _showErr('Please enter your username or phone number.'); return; }
+    setState(() => _isLookingUp = true);
+
+    // Detect if input is a phone number (starts with + or 10+ digits)
+    final isPhone = raw.startsWith('+') || RegExp(r'^\d{7,}$').hasMatch(raw);
+
+    if (isPhone) {
+      // ── Phone entered directly — no DB query needed (avoids RLS issues) ──
+      _resolvedPhone = raw.startsWith('+') ? raw : '+91$raw';
+      await _sendOtp();
+    } else {
+      // ── Username entered — must look up their phone number from profiles ──
+      try {
+        final profile = await Supabase.instance.client
+            .from('profiles')
+            .select('id, phone, username')
+            .eq('username', raw.toLowerCase())
+            .maybeSingle();
+
+        if (profile == null) {
+          _showErr('No account found with that username.');
+          setState(() => _isLookingUp = false);
+          return;
+        }
+
+        final phone = profile['phone'] as String?;
+        if (phone == null || phone.isEmpty) {
+          _showErr('No phone linked to this account. Enter your phone number directly instead.');
+          setState(() => _isLookingUp = false);
+          return;
+        }
+
+        _resolvedPhone = phone;
+        await _sendOtp();
+      } on PostgrestException catch (e) {
+        _showErr('Could not look up account: ${e.message}. Try entering your phone number directly.');
+        setState(() => _isLookingUp = false);
+      } catch (e) {
+        _showErr('Something went wrong. Try entering your phone number directly.');
+        setState(() => _isLookingUp = false);
+      }
+    }
+  }
+
+  // ── Step 1: Send Firebase OTP ────────────────────────────────────
+  Future<void> _sendOtp() async {
+    if (!mounted) return;
+    setState(() => _isLookingUp = true);
+    try {
+      await firebase.FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: _resolvedPhone,
+        forceResendingToken: _resendToken,
+        verificationCompleted: (firebase.PhoneAuthCredential cred) async {
+          final uc = await firebase.FirebaseAuth.instance.signInWithCredential(cred);
+          if (uc.user != null && mounted) await _afterOtpVerified(uc.user!);
+        },
+        verificationFailed: (firebase.FirebaseAuthException e) {
+          if (mounted) { setState(() => _isLookingUp = false); _showErr(e.message ?? 'OTP send failed.'); }
+        },
+        codeSent: (String vid, int? rToken) {
+          if (mounted) {
+            setState(() { _verificationId = vid; _resendToken = rToken; _isLookingUp = false; _step = 1; });
+            _startTimer();
+            Future.delayed(const Duration(milliseconds: 300), () { if (mounted) _otpFoci[0].requestFocus(); });
+          }
+        },
+        codeAutoRetrievalTimeout: (String vid) {
+          if (mounted) setState(() => _verificationId = vid);
+        },
+      );
+    } catch (e) {
+      if (mounted) { setState(() => _isLookingUp = false); _showErr('Failed to send OTP. Check your connection.'); }
+    }
+  }
+
+  // ── Step 1: Verify OTP ───────────────────────────────────────────
+  Future<void> _verifyOtp() async {
+    if (_otpVal.length < 6) { _showErr('Enter all 6 digits.'); return; }
+    if (_verificationId == null) { _showErr('Verification ID missing. Please resend.'); return; }
+    setState(() => _isVerifying = true);
+    try {
+      final cred = firebase.PhoneAuthProvider.credential(verificationId: _verificationId!, smsCode: _otpVal);
+      final uc = await firebase.FirebaseAuth.instance.signInWithCredential(cred);
+      if (uc.user != null && mounted) await _afterOtpVerified(uc.user!);
+    } on firebase.FirebaseAuthException catch (e) {
+      _showErr('Invalid code: ${e.message}');
+      for (final c in _otpCtrl) c.clear();
+      if (mounted) _otpFoci[0].requestFocus();
+    } finally {
+      if (mounted) setState(() => _isVerifying = false);
+    }
+  }
+
+  Future<void> _afterOtpVerified(firebase.User firebaseUser) async {
+    // Build the synthetic Supabase email used during original phone signup
+    final phone = firebaseUser.phoneNumber ?? _resolvedPhone;
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    _resolvedSyntheticEmail = 'phone_${digits}@relaya.app';
+    _resolvedSyntheticPassword = 'phone_auth_${firebaseUser.uid}';
+
+    // Try to sign into Supabase using the phone synthetic credentials
+    bool sessionOk = Supabase.instance.client.auth.currentUser != null;
+    if (!sessionOk) {
+      try {
+        await Supabase.instance.client.auth.signInWithPassword(
+          email: _resolvedSyntheticEmail,
+          password: _resolvedSyntheticPassword,
+        );
+        sessionOk = true;
+      } catch (e) {
+        debugPrint('[ForgotPw] Supabase sign-in failed: $e');
+      }
+    }
+
+    if (!sessionOk) {
+      if (mounted) {
+        _showErr('Could not authenticate your account. Please try again.');
+        setState(() { _isVerifying = false; });
+      }
+      return;
+    }
+
+    if (mounted) setState(() { _step = 2; _isVerifying = false; });
+  }
+
+  // ── Step 2: Save new password ────────────────────────────────────
+  Future<void> _saveNewPassword() async {
+    final newPass = _newPassCtrl.text.trim();
+    final confirm = _confirmPassCtrl.text.trim();
+    if (newPass.length < 6) { _showErr('Password must be at least 6 characters.'); return; }
+    if (newPass != confirm) { _showErr('Passwords do not match.'); return; }
+
+    // Guard: we must have an active Supabase session to call updateUser
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null) {
+      _showErr('Session expired. Please go back and verify OTP again.');
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      // Fetch the username linked to this account so we keep username login working
+      String? username;
+      try {
+        final prof = await Supabase.instance.client
+            .from('profiles')
+            .select('username')
+            .eq('id', uid)
+            .maybeSingle();
+        username = prof?['username'] as String?;
+      } catch (_) { /* non-fatal — we'll update without changing email */ }
+
+      // Update both the email alias (username@relaya.app) AND the password
+      final attrs = (username != null && username.isNotEmpty)
+          ? UserAttributes(email: '${username.toLowerCase()}@relaya.app', password: newPass)
+          : UserAttributes(password: newPass);
+
+      await Supabase.instance.client.auth.updateUser(attrs);
+      if (mounted) setState(() => _step = 3);
+    } on AuthException catch (e) {
+      _showErr('Could not update password: ${e.message}');
+    } catch (e) {
+      _showErr('Unexpected error. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  // ── Resend OTP ───────────────────────────────────────────────────
+  Future<void> _resendOtp() async {
+    if (_countdown > 0 || _isResending) return;
+    setState(() => _isResending = true);
+    try {
+      await firebase.FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: _resolvedPhone,
+        forceResendingToken: _resendToken,
+        verificationCompleted: (_) {},
+        verificationFailed: (e) { if (mounted) _showErr(e.message ?? 'Resend failed.'); },
+        codeSent: (vid, rToken) {
+          if (mounted) {
+            setState(() { _verificationId = vid; _resendToken = rToken; });
+            _startTimer();
+            for (final c in _otpCtrl) c.clear();
+            _otpFoci[0].requestFocus();
+          }
+        },
+        codeAutoRetrievalTimeout: (vid) { if (mounted) setState(() => _verificationId = vid); },
+      );
+    } catch (_) {
+      if (mounted) _showErr('Failed to resend. Try again.');
+    } finally {
+      if (mounted) setState(() => _isResending = false);
+    }
+  }
+
+  // ── UI ───────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.pop(context),
+      child: Material(
+        color: Colors.transparent,
+        child: Center(
+          child: GestureDetector(
+            onTap: () {}, // prevent tap-through
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 60),
+              decoration: BoxDecoration(
+                color: _card,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 40)],
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _buildStep(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStep() {
+    switch (_step) {
+      case 0: return _buildStepIdentity();
+      case 1: return _buildStepOtp();
+      case 2: return _buildStepNewPassword();
+      case 3: return _buildStepSuccess();
+      default: return const SizedBox.shrink();
+    }
+  }
+
+  // ── Header helper ────────────────────────────────────────────────
+  Widget _header(String title, String subtitle, IconData icon) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Container(
+          padding: const EdgeInsets.all(9),
+          decoration: BoxDecoration(
+            color: _cyan.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _cyan.withValues(alpha: 0.2)),
+          ),
+          child: Icon(icon, color: _cyan, size: 20),
+        ),
+        const Spacer(),
+        GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(color: _gb, borderRadius: BorderRadius.circular(8)),
+            child: const Icon(Icons.close_rounded, color: _muted, size: 18),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 18),
+      Text(title, style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.bold, color: _txt)),
+      const SizedBox(height: 6),
+      Text(subtitle, style: GoogleFonts.inter(fontSize: 13, color: _txt2, height: 1.4)),
+      const SizedBox(height: 24),
+    ]);
+  }
+
+  Widget _gradientBtn(String label, IconData icon, VoidCallback? onTap, bool loading) {
+    return GestureDetector(
+      onTap: loading ? null : onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        decoration: BoxDecoration(
+          gradient: loading ? null : const LinearGradient(colors: [_cyan, _pink]),
+          color: loading ? _muted.withValues(alpha: 0.25) : null,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: loading ? [] : [BoxShadow(color: _cyan.withValues(alpha: 0.3), blurRadius: 18, offset: const Offset(0, 6))],
+        ),
+        child: Center(
+          child: loading
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5))
+              : Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(icon, color: Colors.black, size: 16),
+                  const SizedBox(width: 8),
+                  Text(label, style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 15)),
+                ]),
+        ),
+      ),
+    );
+  }
+
+  // ── Step 0: Identity ─────────────────────────────────────────────
+  Widget _buildStepIdentity() {
+    return Column(key: const ValueKey(0), crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _header('Reset Password', 'Enter your username or phone number to receive a verification code.', Icons.lock_reset_rounded),
+      // Step dots
+      _stepDots(0),
+      const SizedBox(height: 24),
+      Text('USERNAME OR PHONE', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 1.2)),
+      const SizedBox(height: 8),
+      Container(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        child: TextField(
+          controller: _identityCtrl,
+          autofocus: true,
+          style: GoogleFonts.inter(color: _txt, fontSize: 15),
+          decoration: InputDecoration(
+            hintText: 'username  or  +91XXXXXXXXXX',
+            hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
+            prefixIcon: const Icon(Icons.person_search_rounded, color: _muted, size: 18),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+          onSubmitted: (_) => _handleLookup(),
+        ),
+      ),
+      const SizedBox(height: 24),
+      _gradientBtn('Send OTP', Icons.sms_rounded, _handleLookup, _isLookingUp),
+    ]);
+  }
+
+  // ── Step 1: OTP ──────────────────────────────────────────────────
+  Widget _buildStepOtp() {
+    return Column(key: const ValueKey(1), crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _header('Enter OTP', 'A 6-digit code was sent to\n$_resolvedPhone', Icons.phone_iphone_rounded),
+      _stepDots(1),
+      const SizedBox(height: 24),
+      // OTP boxes
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: List.generate(6, (i) => _otpBox(i)),
+      ),
+      const SizedBox(height: 30),
+      _gradientBtn('Verify Code', Icons.check_circle_outline_rounded, _verifyOtp, _isVerifying),
+      const SizedBox(height: 16),
+      Center(
+        child: _isResending
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: _cyan, strokeWidth: 2))
+            : GestureDetector(
+                onTap: _countdown == 0 ? _resendOtp : null,
+                child: RichText(
+                  text: TextSpan(
+                    text: "Didn't receive it? ",
+                    style: GoogleFonts.inter(fontSize: 13, color: _txt2),
+                    children: [
+                      TextSpan(
+                        text: _countdown > 0 ? 'Resend in ${_countdown}s' : 'Resend OTP',
+                        style: GoogleFonts.inter(fontSize: 13, color: _countdown > 0 ? _muted : _cyan, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+      ),
+    ]);
+  }
+
+  Widget _otpBox(int i) {
+    return SizedBox(
+      width: 44,
+      height: 54,
+      child: TextField(
+        controller: _otpCtrl[i],
+        focusNode: _otpFoci[i],
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.center,
+        maxLength: 1,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        style: GoogleFonts.inter(color: _txt, fontSize: 22, fontWeight: FontWeight.bold),
+        decoration: InputDecoration(
+          counterText: '',
+          filled: true,
+          fillColor: Colors.black.withValues(alpha: 0.25),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _cyan, width: 2)),
+        ),
+        onChanged: (val) {
+          if (val.isNotEmpty) {
+            if (i < 5) { _otpFoci[i + 1].requestFocus(); }
+            else { WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted && _otpVal.length == 6) _verifyOtp(); }); }
+          } else if (val.isEmpty && i > 0) { _otpFoci[i - 1].requestFocus(); }
+          setState(() {});
+        },
+      ),
+    );
+  }
+
+  // ── Step 2: New Password ─────────────────────────────────────────
+  Widget _buildStepNewPassword() {
+    return Column(key: const ValueKey(2), crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _header('Set New Password', 'Choose a strong password. You can use this with your username to log in.', Icons.lock_outline_rounded),
+      _stepDots(2),
+      const SizedBox(height: 24),
+      // New password
+      Text('NEW PASSWORD', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 1.2)),
+      const SizedBox(height: 8),
+      Container(
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withValues(alpha: 0.1))),
+        child: TextField(
+          controller: _newPassCtrl,
+          obscureText: _obscureNew,
+          style: GoogleFonts.inter(color: _txt, fontSize: 15),
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            hintText: 'Min. 6 characters',
+            hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
+            prefixIcon: const Icon(Icons.lock_outline, color: _muted, size: 18),
+            suffixIcon: GestureDetector(
+              onTap: () => setState(() => _obscureNew = !_obscureNew),
+              child: Icon(_obscureNew ? Icons.visibility_off : Icons.visibility, color: _muted, size: 18),
+            ),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+        ),
+      ),
+      const SizedBox(height: 14),
+      // Confirm password
+      Text('CONFIRM PASSWORD', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 1.2)),
+      const SizedBox(height: 8),
+      Container(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _confirmPassCtrl.text.isEmpty
+                ? Colors.white.withValues(alpha: 0.1)
+                : (_newPassCtrl.text == _confirmPassCtrl.text ? _green.withValues(alpha: 0.5) : _red.withValues(alpha: 0.5)),
+            width: _confirmPassCtrl.text.isEmpty ? 1 : 1.5,
+          ),
+        ),
+        child: TextField(
+          controller: _confirmPassCtrl,
+          obscureText: _obscureConfirm,
+          style: GoogleFonts.inter(color: _txt, fontSize: 15),
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) => _saveNewPassword(),
+          decoration: InputDecoration(
+            hintText: 'Re-enter password',
+            hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
+            prefixIcon: const Icon(Icons.lock_outline, color: _muted, size: 18),
+            suffixIcon: GestureDetector(
+              onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
+              child: Icon(_obscureConfirm ? Icons.visibility_off : Icons.visibility, color: _muted, size: 18),
+            ),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+        ),
+      ),
+      if (_confirmPassCtrl.text.isNotEmpty && _newPassCtrl.text != _confirmPassCtrl.text)
+        Padding(
+          padding: const EdgeInsets.only(top: 6, left: 4),
+          child: Text('Passwords do not match', style: GoogleFonts.inter(color: _red, fontSize: 11)),
+        ),
+      const SizedBox(height: 26),
+      _gradientBtn('Save Password', Icons.check_rounded, _saveNewPassword, _isSaving),
+    ]);
+  }
+
+  // ── Step 3: Success ──────────────────────────────────────────────
+  Widget _buildStepSuccess() {
+    return Column(key: const ValueKey(3), children: [
+      const SizedBox(height: 10),
+      Container(
+        width: 72, height: 72,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [_green.withValues(alpha: 0.3), Colors.transparent]),
+          border: Border.all(color: _green.withValues(alpha: 0.5), width: 2),
+        ),
+        child: const Icon(Icons.check_rounded, color: _green, size: 36),
+      ),
+      const SizedBox(height: 22),
+      Text('Password Updated!', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.bold, color: _txt)),
+      const SizedBox(height: 10),
+      Text(
+        'Your password has been saved.\nYou can now sign in with your username and new password.',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.inter(fontSize: 13, color: _txt2, height: 1.5),
+      ),
+      const SizedBox(height: 30),
+      _gradientBtn('Sign In Now', Icons.login_rounded, () => Navigator.pop(context), false),
+    ]);
+  }
+
+  // ── Step progress dots ───────────────────────────────────────────
+  Widget _stepDots(int current) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(3, (i) => AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        width: i == current ? 22 : 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: i <= current ? _cyan : Colors.white.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(4),
+        ),
+      )),
+    );
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════

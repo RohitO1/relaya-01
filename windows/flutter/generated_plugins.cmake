@@ -9,13 +9,13 @@ list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
   emoji_picker_flutter
   file_selector_windows
+  firebase_app_check
   firebase_auth
   firebase_core
   flutter_webrtc
   geolocator_windows
   iris_method_channel
   livekit_client
-  passkeys_windows
   permission_handler_windows
   record_windows
   share_plus
