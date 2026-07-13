@@ -9,7 +9,8 @@
       "client_info": {
         "mobilesdk_app_id": "1:488610187435:android:11ded936dcc1580ac90fee",
         "android_client_info": {
-          "package_name": "relaya.in"
+          "package_name": "relaya.in",
+          "certificate_hash": []
         }
       },
       "oauth_client": [],

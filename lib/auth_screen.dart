@@ -173,30 +173,70 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       return;
     }
 
-    // Map username to hidden email format
-    final email = rawInput.contains('@') ? rawInput : '${rawInput.toLowerCase()}@relaya.app';
-
     setState(() => _isSigningIn = true);
     try {
-      final res = await Supabase.instance.client.auth.signInWithPassword(email: email, password: pass);
-      if (res.user != null && mounted) {
-        // Successful login — navigate to main dashboard
+      // ── Tier 1: Try username@relaya.app (the email set during onboarding) ──
+      final usernameEmail = rawInput.contains('@') ? rawInput : '${rawInput.toLowerCase()}@relaya.app';
+      bool loggedIn = false;
+      
+      try {
+        final res = await Supabase.instance.client.auth.signInWithPassword(
+          email: usernameEmail,
+          password: pass,
+        );
+        if (res.user != null) loggedIn = true;
+      } on AuthException catch (_) {
+        // Tier 1 failed — try fallback
+      }
+
+      // ── Tier 2: If Supabase email update was pending/unconfirmed, the account may
+      // still be registered as phone_<digits>@relaya.app. Look up the phone and try that. ──
+      if (!loggedIn) {
+        try {
+          final profile = await Supabase.instance.client
+              .from('profiles')
+              .select('phone')
+              .eq('username', rawInput.toLowerCase())
+              .maybeSingle();
+
+          final phone = profile?['phone'] as String?;
+          if (phone != null && phone.isNotEmpty) {
+            final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+            final phoneEmail = 'phone_$digits@relaya.app';
+            try {
+              final res = await Supabase.instance.client.auth.signInWithPassword(
+                email: phoneEmail,
+                password: pass,
+              );
+              if (res.user != null) {
+                loggedIn = true;
+                // Now that we successfully logged in, migrate the email so future 
+                // logins with username@relaya.app also work
+                try {
+                  await Supabase.instance.client.auth.updateUser(
+                    UserAttributes(email: usernameEmail),
+                  );
+                  debugPrint('[Login] Migrated auth email to $usernameEmail');
+                } catch (migrateErr) {
+                  debugPrint('[Login] Email migration failed (non-fatal): $migrateErr');
+                }
+              }
+            } on AuthException catch (_) {
+              // Tier 2 also failed
+            }
+          }
+        } catch (_) {
+          // Profile lookup failed — continue to show error
+        }
+      }
+
+      if (loggedIn && mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const _DashboardWrapper()),
           (route) => false,
         );
-      } else {
-        if (mounted) _showError('Login failed. Please try again.');
-      }
-    } on AuthException catch (e) {
-      if (mounted) {
-        // Give a clear, user-friendly message regardless of Supabase error details
-        final msg = (e.message.toLowerCase().contains('invalid') ||
-                e.message.toLowerCase().contains('credentials') ||
-                e.message.toLowerCase().contains('not found'))
-            ? 'Username or password is incorrect. Please try again.'
-            : 'Login failed: ${e.message}';
-        _showError(msg);
+      } else if (mounted) {
+        _showError('Username or password is incorrect. Please try again.');
       }
     } catch (e) {
       if (mounted) _showError('Login failed. Please check your network.');
@@ -253,6 +293,15 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     }
     // ─────────────────────────────────────────────────────────────────
 
+    // Safety timeout — Firebase can hang silently if Play Integrity or reCAPTCHA fails
+    bool otpResolved = false;
+    Future.delayed(const Duration(seconds: 15), () {
+      if (mounted && !otpResolved && _isLoading) {
+        setState(() => _isLoading = false);
+        _showError('OTP request timed out. Check your internet connection and try again.');
+      }
+    });
+
     try {
       final isTest = _isTestPhoneNumber(_fullPhoneNumber);
       await firebase.FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: isTest);
@@ -261,6 +310,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         phoneNumber: _fullPhoneNumber,
         forceResendingToken: _resendToken,
         verificationCompleted: (firebase.PhoneAuthCredential credential) async {
+          otpResolved = true;
           try {
             final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
             if (userCred.user != null && mounted) {
@@ -271,12 +321,14 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           }
         },
         verificationFailed: (firebase.FirebaseAuthException e) {
+          otpResolved = true;
           if (mounted) {
             setState(() => _isLoading = false);
             _showError(e.message ?? 'Verification failed.');
           }
         },
         codeSent: (String verificationId, int? resendToken) {
+          otpResolved = true;
           if (mounted) {
             setState(() {
               _verificationId = verificationId;
@@ -291,14 +343,17 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           }
         },
         codeAutoRetrievalTimeout: (String verificationId) {
+          otpResolved = true;
           if (mounted) {
             setState(() {
               _verificationId = verificationId;
+              _isLoading = false;
             });
           }
         },
       );
     } catch (e) {
+      otpResolved = true;
       if (mounted) {
         setState(() => _isLoading = false);
         _showError('Failed to send OTP. Check your connection.');
@@ -429,6 +484,14 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   Future<void> _resendOtp() async {
     if (_countdown > 0 || _isResending) return;
     setState(() => _isResending = true);
+    bool resendResolved = false;
+    // Safety timeout for resend
+    Future.delayed(const Duration(seconds: 15), () {
+      if (mounted && !resendResolved && _isResending) {
+        setState(() => _isResending = false);
+        _showError('Resend timed out. Please try again.');
+      }
+    });
     try {
       final isTest = _isTestPhoneNumber(_fullPhoneNumber);
       await firebase.FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: isTest);
@@ -437,6 +500,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         phoneNumber: _fullPhoneNumber,
         forceResendingToken: _resendToken,
         verificationCompleted: (firebase.PhoneAuthCredential credential) async {
+          resendResolved = true;
           try {
             final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
             if (userCred.user != null && mounted) {
@@ -447,11 +511,14 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           }
         },
         verificationFailed: (firebase.FirebaseAuthException e) {
+          resendResolved = true;
           if (mounted) {
+            setState(() => _isResending = false);
             _showError(e.message ?? 'Failed to resend');
           }
         },
         codeSent: (String verificationId, int? resendToken) {
+          resendResolved = true;
           if (mounted) {
             setState(() {
               _verificationId = verificationId;
@@ -464,14 +531,17 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           }
         },
         codeAutoRetrievalTimeout: (String verificationId) {
+          resendResolved = true;
           if (mounted) {
             setState(() {
               _verificationId = verificationId;
+              _isResending = false;
             });
           }
         },
       );
     } catch (_) {
+      resendResolved = true;
       if (mounted) _showError('Failed to resend. Try again.');
     } finally {
       if (mounted) setState(() => _isResending = false);
@@ -1238,18 +1308,31 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
   Future<void> _sendOtp() async {
     if (!mounted) return;
     setState(() => _isLookingUp = true);
+    
+    // Safety timeout in case Firebase hangs (e.g., due to Play Integrity or reCAPTCHA failure)
+    bool otpResolved = false;
+    Future.delayed(const Duration(seconds: 15), () {
+      if (mounted && !otpResolved && _isLookingUp) {
+        setState(() => _isLookingUp = false);
+        _showErr('OTP request timed out. Please try again or check Play Integrity / reCAPTCHA setup.');
+      }
+    });
+
     try {
       await firebase.FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: _resolvedPhone,
         forceResendingToken: _resendToken,
         verificationCompleted: (firebase.PhoneAuthCredential cred) async {
+          otpResolved = true;
           final uc = await firebase.FirebaseAuth.instance.signInWithCredential(cred);
           if (uc.user != null && mounted) await _afterOtpVerified(uc.user!);
         },
         verificationFailed: (firebase.FirebaseAuthException e) {
+          otpResolved = true;
           if (mounted) { setState(() => _isLookingUp = false); _showErr(e.message ?? 'OTP send failed.'); }
         },
         codeSent: (String vid, int? rToken) {
+          otpResolved = true;
           if (mounted) {
             setState(() { _verificationId = vid; _resendToken = rToken; _isLookingUp = false; _step = 1; });
             _startTimer();
@@ -1257,10 +1340,15 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
           }
         },
         codeAutoRetrievalTimeout: (String vid) {
-          if (mounted) setState(() => _verificationId = vid);
+          otpResolved = true;
+          if (mounted) setState(() { 
+            _verificationId = vid; 
+            _isLookingUp = false; 
+          });
         },
       );
     } catch (e) {
+      otpResolved = true;
       if (mounted) { setState(() => _isLookingUp = false); _showErr('Failed to send OTP. Check your connection.'); }
     }
   }

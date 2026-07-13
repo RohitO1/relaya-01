@@ -67,8 +67,8 @@ void main() async {
   await FirebaseAppCheck.instance.activate(
     // Web: reCAPTCHA Enterprise (registered in Firebase Console)
     webProvider: ReCaptchaEnterpriseProvider('6LfRO08tAAAAADFbG9-YBQdcwOx1vXkbMkk7flCm'),
-    // Android: Play Integrity (already registered)
-    androidProvider: AndroidProvider.playIntegrity,
+    // Android: Use debug provider for local testing (Play Integrity fails on emulators)
+    androidProvider: AndroidProvider.debug,
   );
 
   // Initialize services

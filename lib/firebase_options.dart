@@ -55,6 +55,7 @@ class DefaultFirebaseOptions {
     appId: '1:488610187435:android:11ded936dcc1580ac90fee',
     messagingSenderId: '488610187435',
     projectId: 'relaya-f7ba4',
+    authDomain: 'relaya-f7ba4.firebaseapp.com',
     storageBucket: 'relaya-f7ba4.firebasestorage.app',
   );
 

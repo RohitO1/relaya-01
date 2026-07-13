@@ -44,7 +44,7 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen>
     with TickerProviderStateMixin {
   int _step = 0;
-  static const int _totalSteps = 6;
+  static const int _totalSteps = 4;
   bool _saving = false;
   final PageController _pageCtrl = PageController();
   late AnimationController _pulseCtrl;
@@ -186,9 +186,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         return isNameValid && isUsernameValid && isPasswordValid;
       case 1: return _dobSet;
       case 2: return _gender.isNotEmpty;
-      case 3: return _selectedInterests.length >= 3;
-      case 4: return _selectedVibes.isNotEmpty;
-      case 5: return _lat != null && _lng != null;
+      // Step 3 is now Location (was step 5)
+      case 3: return _lat != null && _lng != null;
       default: return true;
     }
   }
@@ -220,8 +219,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       'Please enter your name, username, and a valid password.',
       'Pick your birthday to continue.',
       'Select your gender to continue.',
-      'Pick at least 3 interests to continue.',
-      'Choose at least 1 vibe that describes you.',
       'Please pin your location to continue.',
     ];
     if (msgs[_step].isEmpty) return;
@@ -330,57 +327,56 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           : 'user_${uid.substring(0, 8)}';
 
       if (_passwordCtrl.text.trim().isNotEmpty && _passwordCtrl.text == _confirmPasswordCtrl.text) {
+        // Step 1: Update PASSWORD first — this is always immediate in Supabase (no confirmation needed)
         try {
           await Supabase.instance.client.auth.updateUser(
-            UserAttributes(
-              email: '$finalUsername@relaya.app',
-              password: _passwordCtrl.text.trim(),
-            ),
+            UserAttributes(password: _passwordCtrl.text.trim()),
           );
+          debugPrint('[Onboarding] Password updated successfully.');
         } catch (e) {
-          debugPrint('Auth updateUser failed (email/password setup): $e');
+          debugPrint('[Onboarding] Password update failed: $e');
+        }
+
+        // Step 2: Update EMAIL separately — this may require confirmation depending on Supabase settings.
+        // Even if this fails, the user can still log in via the phone fallback + their new password.
+        try {
+          await Supabase.instance.client.auth.updateUser(
+            UserAttributes(email: '$finalUsername@relaya.app'),
+          );
+          debugPrint('[Onboarding] Email updated to $finalUsername@relaya.app');
+        } catch (e) {
+          debugPrint('[Onboarding] Email update failed (user can still login via phone fallback): $e');
         }
       }
 
-      final payload = <String, dynamic>{
+      // ── ALWAYS save these core fields first so onboarding_complete is never missed ──
+      // This is the guaranteed minimal upsert that must succeed for the loop to stop.
+      await Supabase.instance.client.from('profiles').upsert({
         'id': uid,
         'name': _nameCtrl.text.trim(),
         'full_name': _nameCtrl.text.trim(),
         'username': finalUsername,
         'gender': _gender,
-        'bio': _bioCtrl.text.trim(),
         'city': _cityCtrl.text.trim(),
         'district': _cityCtrl.text.trim(),
         'state': _stateCtrl.text.trim(),
         'lat': _lat ?? 0,
         'lng': _lng ?? 0,
         'avatar_url': _photoUrl ?? '',
-        'onboarding_complete': true,
         'is_public': true,
-      };
+        'onboarding_complete': true,  // ← Critical: this must always be saved
+      }, onConflict: 'id');
 
-      if (_dobSet) payload['dob'] = _dobString;
-      if (_selectedInterests.isNotEmpty) payload['interests'] = _selectedInterests.toList();
-      if (_selectedVibes.isNotEmpty) payload['personality_traits'] = _selectedVibes.toList();
-
-      // Try to save all fields; gracefully degrade if schema lacks optional columns
+      // ── Try to save optional fields (bio, dob) — non-fatal if they fail ──
       try {
-        await Supabase.instance.client.from('profiles').upsert(payload, onConflict: 'id');
-      } on PostgrestException catch (e) {
-        // Retry with only core fields if optional columns don't exist yet
-        debugPrint('Full upsert failed ($e), retrying with core fields...');
-        await Supabase.instance.client.from('profiles').upsert({
-          'id': uid,
-          'name': _nameCtrl.text.trim(),
-          'full_name': _nameCtrl.text.trim(),
-          'username': finalUsername,
-          'gender': _gender,
-          'city': _cityCtrl.text.trim(),
-          'lat': _lat ?? 0,
-          'lng': _lng ?? 0,
-          'avatar_url': _photoUrl ?? '',
-          'onboarding_complete': true,
-        }, onConflict: 'id');
+        final optionals = <String, dynamic>{'id': uid};
+        if (_bioCtrl.text.trim().isNotEmpty) optionals['bio'] = _bioCtrl.text.trim();
+        if (_dobSet) optionals['dob'] = _dobString;
+        if (optionals.length > 1) {
+          await Supabase.instance.client.from('profiles').upsert(optionals, onConflict: 'id');
+        }
+      } catch (e) {
+        debugPrint('Optional fields upsert failed (non-fatal): $e');
       }
 
       if (_lat != null && _lng != null) {
@@ -424,16 +420,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       'Create your identity',
       'Your birthday & bio',
       'How do you identify?',
-      'What do you love?',
-      'Your vibe',
       'Where are you?',
     ];
     final stepSubtitles = [
       'Set up your public profile',
       'Help us personalise your experience',
       'This helps us tailor your feed',
-      'Pick up to 7 interests',
-      'Pick up to 4 words that describe you',
       'Find people & events near you',
     ];
 
@@ -547,9 +539,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       _step0Identity(),
                       _step1BioAndDob(),
                       _step2Gender(),
-                      _step3Interests(),
-                      _step4Vibes(),
-                      _step5Location(),
+                      _step5Location(), // now step 3 (interests & vibes deferred to explore)
                     ],
                   ),
                 ),
