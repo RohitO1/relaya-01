@@ -10,6 +10,7 @@ import 'firebase_options.dart';
 // ignore_for_file: avoid_print, unused_local_variable, unused_element, unused_field, use_build_context_synchronously, unused_element_parameter, prefer_final_fields
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -63,13 +64,12 @@ void main() async {
     );
   }
 
-  // Activate Firebase App Check
-  await FirebaseAppCheck.instance.activate(
-    // Web: reCAPTCHA Enterprise (registered in Firebase Console)
-    webProvider: ReCaptchaEnterpriseProvider('6LfRO08tAAAAADFbG9-YBQdcwOx1vXkbMkk7flCm'),
-    // Android: Use debug provider for local testing (Play Integrity fails on emulators)
-    androidProvider: AndroidProvider.debug,
-  );
+  // Force Play Integrity API for Android Phone Auth device verification
+  if (!kIsWeb) {
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.playIntegrity,
+    );
+  }
 
   // Initialize services
   await themeService.init();

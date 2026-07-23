@@ -76,6 +76,11 @@ class LocationService {
         }
       }
     }
+
+    // Set isLocationGrantedNotifier to true if we loaded a valid cached location
+    if (_activeLat != null && _activeLng != null && activeDistrictNotifier.value.isNotEmpty && activeDistrictNotifier.value != 'Unknown') {
+      isLocationGrantedNotifier.value = true;
+    }
     
     // Check if permission is already granted and auto-fetch
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -86,10 +91,14 @@ class LocationService {
         // Run in background without blocking init
         fetchLiveLocation(forceReverseGeocode: false).catchError((e) { debugPrint('Auto-fetch error: $e'); return false; });
       } else {
-        isLocationGrantedNotifier.value = false;
+        if (_activeLat == null || _activeLng == null) {
+          isLocationGrantedNotifier.value = false;
+        }
       }
     } else {
-      isLocationGrantedNotifier.value = false;
+      if (_activeLat == null || _activeLng == null) {
+        isLocationGrantedNotifier.value = false;
+      }
     }
     
     coordinatesUpdateNotifier.value++;
@@ -199,6 +208,10 @@ class LocationService {
     
     activeDistrictNotifier.value = finalDistrict;
     activeStateNotifier.value = finalState;
+
+    if (_activeLat != null && _activeLng != null && finalDistrict.isNotEmpty && finalDistrict != 'Unknown') {
+      isLocationGrantedNotifier.value = true;
+    }
     
     if (lat != null && lng != null) {
       final prefs = await SharedPreferences.getInstance();
@@ -282,7 +295,9 @@ class LocationService {
   Future<bool> fetchLiveLocation({bool forceReverseGeocode = false}) async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      isLocationGrantedNotifier.value = false;
+      if (_activeLat == null || _activeLng == null) {
+        isLocationGrantedNotifier.value = false;
+      }
       return false;
     }
 
@@ -290,13 +305,17 @@ class LocationService {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        isLocationGrantedNotifier.value = false;
+        if (_activeLat == null || _activeLng == null) {
+          isLocationGrantedNotifier.value = false;
+        }
         return false;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      isLocationGrantedNotifier.value = false;
+      if (_activeLat == null || _activeLng == null) {
+        isLocationGrantedNotifier.value = false;
+      }
       return false;
     }
 
@@ -329,7 +348,9 @@ class LocationService {
       return true;
     } catch (e) {
       debugPrint('LocationService fetchLiveLocation error: $e');
-      isLocationGrantedNotifier.value = false;
+      if (_activeLat == null || _activeLng == null) {
+        isLocationGrantedNotifier.value = false;
+      }
       return false;
     }
   }

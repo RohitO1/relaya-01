@@ -16,6 +16,13 @@
   -->
   <base href="$FLUTTER_BASE_HREF">
 
+  <!-- Conditional Firebase App Check Debug Token for localhost development -->
+  <script>
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    }
+  </script>
+
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">

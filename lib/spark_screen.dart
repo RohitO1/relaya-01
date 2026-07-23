@@ -177,6 +177,9 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
   // Overlays
   OverlayEntry? _toastEntry;
 
+  final Set<String> _optimisticPendingIds = {};
+  final Set<String> _optimisticApprovedIds = {};
+
   RealtimeChannel? _activitiesChannel;
   RealtimeChannel? _requestsChannel;
 
@@ -440,8 +443,8 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
           hostAvatar: hostAvatarUrl.isNotEmpty ? hostAvatarUrl : (hostName.isNotEmpty ? hostName[0].toUpperCase() : '?'),
           hostColor: isRushIn ? [SparkColors.purple, SparkColors.pink] : [SparkColors.actPrimary, SparkColors.actSecondary],
           members: [],
-          isApproved: isApproved || (uid == row['user_id']),
-          hasRequested: hasRequested,
+          isApproved: isApproved || (uid == row['user_id']) || _optimisticApprovedIds.contains(id),
+          hasRequested: hasRequested || _optimisticPendingIds.contains(id),
           isAnonymous: isAnonymous,
           imageUrl: extractedImageUrl,
           hostId: row['user_id']?.toString(),
@@ -605,7 +608,7 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
       MaterialPageRoute(
         builder: (context) => SparkDetailScreen(
           item: item,
-          onJoin: _handleJoin,
+          onJoin: (itm) => _handleJoin(itm, fromSheet: true),
           onHide: _handleHide,
         ),
       ),
@@ -627,8 +630,26 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     });
   }
 
-  Future<void> _handleJoin(SparkItem item) async {
-    Navigator.pop(context); // Close sheet
+  Future<void> _handleJoin(SparkItem item, {bool fromSheet = false}) async {
+    if (item.isApproved) {
+      _showCustomDialog(
+        title: 'Already Joined!',
+        message: 'You are already a participant in "${item.title}". You can access the chat and details inside this Rush-In.',
+        icon: Icons.check_circle,
+        color: const Color(0xFF10B981),
+      );
+      return;
+    }
+
+    if (item.hasRequested) {
+      _showCustomDialog(
+        title: 'Request Pending',
+        message: 'Your request to join "${item.title}" is currently pending approval from the host.',
+        icon: Icons.hourglass_empty,
+        color: const Color(0xFFFF9F0A),
+      );
+      return;
+    }
     
     try {
       final sb = Supabase.instance.client;
@@ -640,6 +661,19 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         return;
       }
 
+      // Optimistically update to pending
+      setState(() {
+        _optimisticPendingIds.add(item.id);
+      });
+
+      // Show Join Request Sent popup immediately
+      _showCustomDialog(
+        title: 'Join Request Sent!',
+        message: 'Your request to join "${item.title}" has been sent to the host. You will be notified once they approve.',
+        icon: Icons.electric_bolt_rounded,
+        color: const Color(0xFFFF6B00),
+      );
+
       await sb.from('requests').insert({
         'sender_id': uid,
         'target_id': item.id,
@@ -647,13 +681,12 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
         'status': 'pending',
       });
 
-      if (!mounted) return;
-
-      final title = '⚡ Request Sent!';
-      final desc = 'The anonymous host will review your request. You\'ll be notified!';
-      _showToast(title, desc);
-      _refreshAll(); // Refresh to show "Requested" status
+      _refreshAll(); // Refresh to sync database status
     } catch (e) {
+      // Revert optimistic update
+      setState(() {
+        _optimisticPendingIds.remove(item.id);
+      });
       _showToast('Error', 'Failed to send request: $e');
     }
   }
@@ -687,6 +720,84 @@ class _SparkScreenState extends State<SparkScreen> with TickerProviderStateMixin
     if (entry != null) {
       Overlay.of(context).insert(entry);
     }
+  }
+
+  void _showCustomDialog({
+    required String title,
+    required String message,
+    required IconData icon,
+    required Color color,
+  }) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black.withValues(alpha: 0.75),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (context, anim1, anim2) => const SizedBox.shrink(),
+      transitionBuilder: (context, anim1, anim2, child) {
+        final curve = Curves.easeInOut.transform(anim1.value);
+        return Transform.scale(
+          scale: 0.85 + 0.15 * curve,
+          child: Opacity(
+            opacity: anim1.value,
+            child: AlertDialog(
+              backgroundColor: const Color(0xFF151821),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: color, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: GoogleFonts.plusJakartaSans(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                message,
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFFF6B00),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                  child: Text(
+                    'OK',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // --- Main Build ---

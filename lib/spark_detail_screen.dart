@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,6 +6,7 @@ import 'spark_screen.dart';
 import 'services/doodle_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'widgets/profile_detail_sheet.dart';
+import 'rush_in_chat_room_screen.dart';
 
 
 class SparkDetailScreen extends StatefulWidget {
@@ -193,8 +193,7 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
           ),
         );
       }
-      
-      _fetchParticipants();
+      await _fetchParticipants();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -220,8 +219,7 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
           ),
         );
       }
-      
-      _fetchParticipants();
+      await _fetchParticipants();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -475,19 +473,33 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
     final accentColor = isRush ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00);
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
 
-    // ANONYMOUS LOGIC: Hide identity if anonymous AND not yet approved
-    final bool shouldHideIdentity = item.isAnonymous && !_isApproved;
-    final String displayHostName = shouldHideIdentity ? 'Anonymous Host' : item.host;
-    final bool isUserHost = currentUserId != null && item.hostId == currentUserId;
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: currentUserId == null
+          ? const Stream.empty()
+          : Supabase.instance.client
+              .from('requests')
+              .stream(primaryKey: ['id'])
+              .eq('target_id', item.id),
+      builder: (context, snapshot) {
+        final requests = snapshot.data ?? [];
+        final hasRequested = currentUserId != null &&
+            (requests.any((r) => r['sender_id'] == currentUserId && r['status'] == 'pending') || _hasRequested);
+        final isApproved = currentUserId != null &&
+            (requests.any((r) => r['sender_id'] == currentUserId && r['status'] == 'approved') || _isApproved);
 
-    // LOCATION LOGIC: Hidden for anonymous/ghost-mode until approved
-    final bool isLocationHidden = item.isAnonymous && !_isApproved && !isUserHost;
-    final String displayLocation = isLocationHidden
-        ? 'Location Hidden (Join to reveal)'
-        : (item.location ?? 'TBD');
+        // ANONYMOUS LOGIC: Hide identity if anonymous AND not yet approved
+        final bool shouldHideIdentity = item.isAnonymous && !isApproved;
+        final String displayHostName = shouldHideIdentity ? 'Anonymous Host' : item.host;
+        final bool isUserHost = currentUserId != null && item.hostId == currentUserId;
 
-    return Scaffold(
-      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF000000),
+        // LOCATION LOGIC: Hidden for anonymous/ghost-mode until approved
+        final bool isLocationHidden = item.isAnonymous && !isApproved && !isUserHost;
+        final String displayLocation = isLocationHidden
+            ? 'Location Hidden (Join to reveal)'
+            : (item.location ?? 'TBD');
+
+        return Scaffold(
+          backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF000000),
       body: Stack(
         children: [
           CustomScrollView(
@@ -597,7 +609,30 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                             );
                             if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
                           } : null,
-                          child: _buildMetaRow(Icons.location_on_outlined, displayLocation, isAccent: isLocationHidden),
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              children: [
+                                Icon(Icons.location_on_outlined, color: isLocationHidden ? const Color(0xFFFF5C00) : const Color(0xFF9E9E9E), size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    displayLocation,
+                                    style: GoogleFonts.inter(color: isLocationHidden ? const Color(0xFFFF5C00) : Colors.white, fontSize: 14, fontWeight: isLocationHidden ? FontWeight.bold : FontWeight.w500),
+                                  ),
+                                ),
+                                if (!isLocationHidden) 
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFF5C00).withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text('Show in map', style: TextStyle(color: Color(0xFFFF5C00), fontSize: 10, fontWeight: FontWeight.bold)),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
                         _buildMetaRow(Icons.people_outline, '${item.slots} people going'),
 
@@ -672,13 +707,10 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                             ]),
                           ),
                         ),
-                        const SizedBox(height: 28),
-
-                        // Attendees
+                        const SizedBox(height: 28),                        // Attendees Section
                         GestureDetector(
-                          onTap: _showParticipantsSheet,
+                          onTap: shouldHideIdentity ? null : _showParticipantsSheet,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
                             color: Colors.transparent,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -690,7 +722,7 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                                     if (_loadingParticipants)
                                       const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54))
                                     else
-                                      Text('View List', style: GoogleFonts.inter(color: accentColor, fontSize: 12, fontWeight: FontWeight.w600)),
+                                      Text('View List', style: GoogleFonts.inter(color: isRush ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00), fontSize: 12, fontWeight: FontWeight.w600)),
                                   ],
                                 ),
                                 const SizedBox(height: 12),
@@ -750,11 +782,11 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                                             child: member['avatar'] != null && member['avatar'].toString().isNotEmpty
                                                 ? Image.network(member['avatar'], fit: BoxFit.cover)
                                                 : Container(
-                                                    color: accentColor.withValues(alpha: 0.2),
+                                                    color: (isRush ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00)).withValues(alpha: 0.2),
                                                     alignment: Alignment.center,
                                                     child: Text(
                                                       member['name'].isNotEmpty ? member['name'][0].toUpperCase() : '?',
-                                                      style: GoogleFonts.inter(color: accentColor, fontWeight: FontWeight.bold, fontSize: 14),
+                                                      style: GoogleFonts.inter(color: isRush ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00), fontWeight: FontWeight.bold, fontSize: 14),
                                                     ),
                                                   ),
                                           ),
@@ -814,31 +846,278 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
           // ── Sticky Join Button ──
           Positioned(
             bottom: 20, left: 20, right: 20,
-            child: GestureDetector(
-              onTap: (_hasRequested || _isApproved) ? null : () {
-                widget.onJoin(item);
-                setState(() => _hasRequested = true);
-              },
-              child: Container(
-                height: 56,
-                decoration: BoxDecoration(
-                  gradient: (_isApproved || _hasRequested) ? null : const LinearGradient(colors: [Color(0xFFFF5C00), Color(0xFFFF8A00)]),
-                  color: _isApproved ? const Color(0xFF10B981) : (_hasRequested ? Colors.white.withValues(alpha: 0.1) : null),
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: [
-                    if (!_hasRequested && !_isApproved) BoxShadow(color: const Color(0xFFFF5C00).withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 6)),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  _isApproved ? 'Joined ✓' : (_hasRequested ? 'Requested' : 'Join Event'),
-                  style: GoogleFonts.inter(color: _hasRequested && !_isApproved ? Colors.white30 : Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
-                ),
-              ),
-            ),
+            child: _buildStickyActionButton(isApproved: isApproved, hasRequested: hasRequested),
           ),
         ],
       ),
+    );
+      },
+    );
+  }
+
+  Widget _buildStickyActionButton({required bool isApproved, required bool hasRequested}) {
+    final item = widget.item;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final bool isHost = currentUserId != null && item.hostId == currentUserId;
+
+    // If it is a Rush-In, and either approved, requested, or host, show Enter Chatroom flow
+    if (item.type == 'rush' && (isApproved || hasRequested || isHost)) {
+      if (currentUserId == null) return const SizedBox.shrink();
+
+      return StreamBuilder<List<Map<String, dynamic>>>(
+        stream: Supabase.instance.client
+            .from('rush_in_chat_status')
+            .stream(primaryKey: ['id'])
+            .eq('activity_id', item.id),
+        builder: (context, snapshot) {
+          final rows = snapshot.data ?? [];
+          final myRow = rows.firstWhere(
+            (r) => r['user_id'] == currentUserId,
+            orElse: () => <String, dynamic>{},
+          );
+          final myChatStatus = myRow['status'];
+
+          return GestureDetector(
+            onTap: () {
+              if (myChatStatus == 'removed') {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: const Color(0xFF0D0B14),
+                    title: Text(
+                      'Removed from Chat',
+                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                    content: Text(
+                      'You have been removed from this chat room by the host. Would you like to request re-entry?',
+                      style: GoogleFonts.plusJakartaSans(color: Colors.white70),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.plusJakartaSans(color: Colors.white38),
+                        ),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF7A00),
+                        ),
+                        onPressed: () async {
+                          Navigator.pop(ctx);
+                          try {
+                            await Supabase.instance.client
+                                .from('rush_in_chat_status')
+                                .upsert({
+                                  'activity_id': item.id,
+                                  'user_id': currentUserId,
+                                  'status': 'requested',
+                                  'updated_at': DateTime.now().toUtc().toIso8601String(),
+                                }, onConflict: 'activity_id,user_id');
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Re-entry request sent to the host.'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Failed to send request: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        child: Text(
+                          'Request Re-entry',
+                          style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              } else if (myChatStatus == 'requested') {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: const Color(0xFF0D0B14),
+                    title: Text(
+                      'Request Pending',
+                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                    content: Text(
+                      'Your request to re-join the chat room is pending host approval.',
+                      style: GoogleFonts.plusJakartaSans(color: Colors.white70),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text(
+                          'OK',
+                          style: GoogleFonts.plusJakartaSans(color: const Color(0xFFFF7A00)),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RushInChatRoomScreen(
+                      activityId: item.id,
+                      activityTitle: item.title,
+                      hostId: item.hostId ?? '',
+                    ),
+                  ),
+                );
+              }
+            },
+            child: Container(
+              height: 56,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFFFF5C00), Color(0xFFFF8A00)]),
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(color: const Color(0xFFFF5C00).withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 6)),
+                ],
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                'ENTER CHATROOM',
+                style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    return GestureDetector(
+      onTap: (hasRequested || isApproved)
+          ? () {
+              if (isApproved) {
+                _showCustomDialog(
+                  title: 'Already Joined!',
+                  message: 'You are already a participant in "${item.title}". You can access the chat and details inside this Rush-In.',
+                  icon: Icons.check_circle,
+                  color: const Color(0xFF10B981),
+                );
+              } else {
+                _showCustomDialog(
+                  title: 'Request Pending',
+                  message: 'Your request to join "${item.title}" is currently pending approval from the host.',
+                  icon: Icons.hourglass_empty,
+                  color: const Color(0xFFFF9F0A),
+                );
+              }
+            }
+          : () {
+              widget.onJoin(item);
+              setState(() {
+                _hasRequested = true;
+              });
+            },
+      child: Container(
+        height: 56,
+        decoration: BoxDecoration(
+          gradient: (isApproved || hasRequested) ? null : const LinearGradient(colors: [Color(0xFFFF5C00), Color(0xFFFF8A00)]),
+          color: isApproved ? const Color(0xFF10B981) : (hasRequested ? Colors.white.withValues(alpha: 0.1) : null),
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            if (!hasRequested && !isApproved) BoxShadow(color: const Color(0xFFFF5C00).withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 6)),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          isApproved ? 'Joined ✓' : (hasRequested ? 'Requested' : 'Join Event'),
+          style: GoogleFonts.inter(color: hasRequested && !isApproved ? Colors.white30 : Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+        ),
+      ),
+    );
+  }
+
+  void _showCustomDialog({
+    required String title,
+    required String message,
+    required IconData icon,
+    required Color color,
+  }) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black.withValues(alpha: 0.75),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (context, anim1, anim2) => const SizedBox.shrink(),
+      transitionBuilder: (context, anim1, anim2, child) {
+        final curve = Curves.easeInOut.transform(anim1.value);
+        return Transform.scale(
+          scale: 0.85 + 0.15 * curve,
+          child: Opacity(
+            opacity: anim1.value,
+            child: AlertDialog(
+              backgroundColor: const Color(0xFF151821),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: color, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: GoogleFonts.plusJakartaSans(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                message,
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFFF6B00),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                  child: Text(
+                    'OK',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
