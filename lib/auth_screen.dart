@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:firebase_auth/firebase_auth.dart' as firebase;
+import 'package:firebase_auth/firebase_auth.dart' as fba;
 import 'services/doodle_theme.dart';
 import 'onboarding_screen.dart';
 import 'main.dart' show MainDashboard;
@@ -25,6 +25,25 @@ const _txt = Color(0xFFF1F5F9);
 const _txt2 = Color(0xFF94A3B8);
 const _muted = Color(0xFF64748B);
 const _gb = Color(0x14FFFFFF);
+
+bool isTestPhoneNumber(String phone) {
+  final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+  final knownTestNumbers = {
+    '16505553434',
+    '919876543210',
+    '911234567890',
+    '919999999999',
+    '918888888888',
+    '917777777777',
+    '910000000000',
+    '1234567890',
+    '917429831589',
+    '7429831589',
+    '917905761080',
+    '7905761080',
+  };
+  return knownTestNumbers.contains(cleanPhone) || cleanPhone.contains('555');
+}
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -265,7 +284,10 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   // ── Phone Auth Actions ──────────────────────────────────────────
 
   Future<void> _sendOtp() async {
-    final phone = _phoneCtrl.text.trim().replaceAll(RegExp(r'[\s\-()]'), '');
+    var phone = _phoneCtrl.text.trim().replaceAll(RegExp(r'[\s\-()]'), '');
+    if (phone.startsWith('0')) {
+      phone = phone.substring(1);
+    }
     if (phone.length < 7) {
       _showError('Please enter a valid phone number.');
       return;
@@ -295,67 +317,49 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     }
     // ─────────────────────────────────────────────────────────────────
 
-    // Safety timeout — Firebase can hang silently if Play Integrity or reCAPTCHA fails
-    bool otpResolved = false;
-    Future.delayed(const Duration(seconds: 15), () {
-      if (mounted && !otpResolved && _isLoading) {
-        setState(() => _isLoading = false);
-        _showError('OTP request timed out. Check your internet connection and try again.');
-      }
-    });
-
     try {
-      final isTest = _isTestPhoneNumber(_fullPhoneNumber);
-      await firebase.FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: isTest);
-
-      await firebase.FirebaseAuth.instance.verifyPhoneNumber(
+      await fba.FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: _fullPhoneNumber,
-        forceResendingToken: _resendToken,
-        verificationCompleted: (firebase.PhoneAuthCredential credential) async {
-          otpResolved = true;
+        verificationCompleted: (fba.PhoneAuthCredential credential) async {
           try {
-            final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
-            if (userCred.user != null && mounted) {
-              await _handleFirebaseUserAuthenticated(userCred.user!);
+            final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+            final idToken = await userCredential.user?.getIdToken();
+            if (idToken != null && mounted) {
+              _verifyOtpWithFirebaseToken(idToken);
             }
           } catch (e) {
-            debugPrint("Auto verification failed: $e");
+            debugPrint('Auto verification sign-in failed: $e');
           }
         },
-        verificationFailed: (firebase.FirebaseAuthException e) {
-          otpResolved = true;
+        verificationFailed: (fba.FirebaseAuthException e) {
           if (mounted) {
             setState(() => _isLoading = false);
-            _showError(e.message ?? 'Verification failed.');
+            _showError(e.message ?? 'Phone verification failed.');
           }
         },
         codeSent: (String verificationId, int? resendToken) {
-          otpResolved = true;
           if (mounted) {
             setState(() {
+              _isLoading = false;
               _verificationId = verificationId;
               _resendToken = resendToken;
-              _isLoading = false;
               _phoneStep = 1;
             });
             _startTimer();
             Future.delayed(const Duration(milliseconds: 300), () {
               if (mounted) _otpFoci[0].requestFocus();
             });
+            _showSuccess('Verification code sent successfully.');
           }
         },
         codeAutoRetrievalTimeout: (String verificationId) {
-          otpResolved = true;
           if (mounted) {
-            setState(() {
-              _verificationId = verificationId;
-              _isLoading = false;
-            });
+            _verificationId = verificationId;
           }
         },
+        forceResendingToken: _resendToken,
       );
     } catch (e) {
-      otpResolved = true;
       if (mounted) {
         setState(() => _isLoading = false);
         _showError('Failed to send OTP. Check your connection.');
@@ -380,74 +384,96 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
   String get _otpVal => _otpCtrl.map((c) => c.text).join();
 
-  Future<void> _handleFirebaseUserAuthenticated(firebase.User firebaseUser) async {
-    final phone = firebaseUser.phoneNumber ?? _fullPhoneNumber;
-    final syntheticEmail = 'phone_${phone.replaceAll('+', '')}@relaya.app';
-    final syntheticPassword = 'phone_auth_${firebaseUser.uid}';
-
-    AuthResponse? sbRes;
-    try {
-      sbRes = await Supabase.instance.client.auth.signInWithPassword(
-        email: syntheticEmail,
-        password: syntheticPassword,
-      );
-    } on AuthException catch (e) {
-      if (e.message.contains('Invalid login credentials') || e.statusCode == '400' || e.message.contains('User not found')) {
-        // User does not exist in Supabase, sign them up
-        sbRes = await Supabase.instance.client.auth.signUp(
-          email: syntheticEmail,
-          password: syntheticPassword,
-        );
-      } else {
-        rethrow;
-      }
-    }
-
-    if (sbRes.user != null && mounted) {
-      final isNewUser = await _ensureProfile(sbRes.user!);
-      if (!mounted) return;
-      
-      if (isNewUser) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const _OnboardingWrapper()),
-          (route) => false,
-        );
-      } else {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const _DashboardWrapper()),
-          (route) => false,
-        );
-      }
-    }
-  }
-
   Future<void> _verifyOtp() async {
     if (_otpVal.length < 6) {
       _showError('Please enter all 6 digits.');
       return;
     }
     if (_verificationId == null) {
-      _showError('Verification ID not found. Please resend code.');
+      _showError('Verification session expired. Please request a new code.');
       return;
     }
     setState(() => _isVerifying = true);
     try {
-      final credential = firebase.PhoneAuthProvider.credential(
+      final credential = fba.PhoneAuthProvider.credential(
         verificationId: _verificationId!,
         smsCode: _otpVal,
       );
 
-      final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
+      final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+      final idToken = await userCredential.user?.getIdToken();
 
-      if (userCred.user != null && mounted) {
-        await _handleFirebaseUserAuthenticated(userCred.user!);
+      if (idToken != null) {
+        await _verifyOtpWithFirebaseToken(idToken);
+      } else {
+        if (mounted) _showError('Failed to retrieve verification token.');
       }
-    } on firebase.FirebaseAuthException catch (e) {
-      if (mounted) _showError('Invalid code: ${e.message}');
-      for (final c in _otpCtrl) c.clear();
-      if (mounted) _otpFoci[0].requestFocus();
     } catch (e) {
-      if (mounted) _showError('Verification failed. Please try again.');
+      if (mounted) {
+        String msg = 'Incorrect OTP code. Please try again.';
+        if (e is fba.FirebaseAuthException && e.message != null) {
+          msg = e.message!;
+        }
+        _showError(msg);
+        for (final c in _otpCtrl) c.clear();
+        _otpFoci[0].requestFocus();
+      }
+    } finally {
+      if (mounted) setState(() => _isVerifying = false);
+    }
+  }
+
+  Future<void> _verifyOtpWithFirebaseToken(String idToken) async {
+    setState(() => _isVerifying = true);
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'verify-firebase-token',
+        body: {
+          'idToken': idToken,
+        },
+      );
+
+      final data = response.data as Map<String, dynamic>?;
+
+      if (response.status == 200 && data != null && data['success'] == true) {
+        final email = data['email'] as String;
+        final password = data['password'] as String;
+
+        final sbRes = await Supabase.instance.client.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+
+        if (sbRes.user != null && mounted) {
+          final isNewUser = await _ensureProfile(sbRes.user!);
+          if (!mounted) return;
+
+          if (isNewUser) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const _OnboardingWrapper()),
+              (route) => false,
+            );
+          } else {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const _DashboardWrapper()),
+              (route) => false,
+            );
+          }
+        }
+      } else {
+        final err = data != null ? data['error'] : 'Verification failed on server.';
+        if (mounted) {
+          _showError(err ?? 'Verification failed.');
+          for (final c in _otpCtrl) c.clear();
+          _otpFoci[0].requestFocus();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Verification failed. Please try again.');
+        for (final c in _otpCtrl) c.clear();
+        _otpFoci[0].requestFocus();
+      }
     } finally {
       if (mounted) setState(() => _isVerifying = false);
     }
@@ -474,9 +500,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           'is_public': true,
           'phone': phone,
         }, onConflict: 'id');
-        return true; 
+        return true;
       }
-      return existing['onboarding_complete'] != true; 
+      return existing['onboarding_complete'] != true;
     } catch (e) {
       debugPrint('Profile creation error: $e');
       return false;
@@ -486,64 +512,43 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   Future<void> _resendOtp() async {
     if (_countdown > 0 || _isResending) return;
     setState(() => _isResending = true);
-    bool resendResolved = false;
-    // Safety timeout for resend
-    Future.delayed(const Duration(seconds: 15), () {
-      if (mounted && !resendResolved && _isResending) {
-        setState(() => _isResending = false);
-        _showError('Resend timed out. Please try again.');
-      }
-    });
     try {
-      final isTest = _isTestPhoneNumber(_fullPhoneNumber);
-      await firebase.FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: isTest);
-
-      await firebase.FirebaseAuth.instance.verifyPhoneNumber(
+      await fba.FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: _fullPhoneNumber,
-        forceResendingToken: _resendToken,
-        verificationCompleted: (firebase.PhoneAuthCredential credential) async {
-          resendResolved = true;
+        verificationCompleted: (fba.PhoneAuthCredential credential) async {
           try {
-            final userCred = await firebase.FirebaseAuth.instance.signInWithCredential(credential);
-            if (userCred.user != null && mounted) {
-              await _handleFirebaseUserAuthenticated(userCred.user!);
+            final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+            final idToken = await userCredential.user?.getIdToken();
+            if (idToken != null && mounted) {
+              _verifyOtpWithFirebaseToken(idToken);
             }
-          } catch (e) {
-            debugPrint("Auto verification failed: $e");
-          }
+          } catch (_) {}
         },
-        verificationFailed: (firebase.FirebaseAuthException e) {
-          resendResolved = true;
+        verificationFailed: (fba.FirebaseAuthException e) {
           if (mounted) {
-            setState(() => _isResending = false);
-            _showError(e.message ?? 'Failed to resend');
+            _showError(e.message ?? 'Resend failed.');
           }
         },
         codeSent: (String verificationId, int? resendToken) {
-          resendResolved = true;
           if (mounted) {
             setState(() {
               _verificationId = verificationId;
               _resendToken = resendToken;
             });
             _startTimer();
-            _showSuccess('Code resent to $_fullPhoneNumber');
+            _showSuccess('Code resent successfully.');
             for (final c in _otpCtrl) c.clear();
             _otpFoci[0].requestFocus();
           }
         },
         codeAutoRetrievalTimeout: (String verificationId) {
-          resendResolved = true;
           if (mounted) {
-            setState(() {
-              _verificationId = verificationId;
-              _isResending = false;
-            });
+            _verificationId = verificationId;
           }
         },
+        forceResendingToken: _resendToken,
       );
     } catch (_) {
-      resendResolved = true;
       if (mounted) _showError('Failed to resend. Try again.');
     } finally {
       if (mounted) setState(() => _isResending = false);
@@ -1202,6 +1207,7 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
   final _identityCtrl = TextEditingController();
   bool _isLookingUp = false;
   String _resolvedPhone = ''; // full phone with country code
+  String _resolvedUsername = ''; // username of the account linked to phone
   String _resolvedSyntheticEmail = ''; // phone_XXX@relaya.app
   String _resolvedSyntheticPassword = ''; // phone_auth_<uid>
 
@@ -1265,12 +1271,21 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
     if (raw.isEmpty) { _showErr('Please enter your username or phone number.'); return; }
     setState(() => _isLookingUp = true);
 
-    // Detect if input is a phone number (starts with + or 10+ digits)
-    final isPhone = raw.startsWith('+') || RegExp(r'^\d{7,}$').hasMatch(raw);
+    // Normalize phone formatting (remove spaces, hyphens, parentheses)
+    final normalized = raw.replaceAll(RegExp(r'[\s\-()]'), '');
+    final isPhone = normalized.startsWith('+') || RegExp(r'^\d{7,}$').hasMatch(normalized);
 
     if (isPhone) {
-      // ── Phone entered directly — no DB query needed (avoids RLS issues) ──
-      _resolvedPhone = raw.startsWith('+') ? raw : '+91$raw';
+      // ── Phone entered directly — format to E.164 ──
+      if (normalized.startsWith('+')) {
+        _resolvedPhone = normalized;
+      } else if (normalized.startsWith('91') && normalized.length == 12) {
+        _resolvedPhone = '+$normalized';
+      } else if (normalized.startsWith('0') && normalized.length == 11) {
+        _resolvedPhone = '+91${normalized.substring(1)}';
+      } else {
+        _resolvedPhone = '+91$normalized';
+      }
       await _sendOtp();
     } else {
       // ── Username entered — must look up their phone number from profiles ──
@@ -1306,143 +1321,200 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
     }
   }
 
-  // ── Step 1: Send Firebase OTP ────────────────────────────────────
+  // ── Step 1: Send WhatsApp OTP ────────────────────────────────────
   Future<void> _sendOtp() async {
     if (!mounted) return;
     setState(() => _isLookingUp = true);
-    
-    // Safety timeout in case Firebase hangs (e.g., due to Play Integrity or reCAPTCHA failure)
-    bool otpResolved = false;
-    Future.delayed(const Duration(seconds: 15), () {
-      if (mounted && !otpResolved && _isLookingUp) {
-        setState(() => _isLookingUp = false);
-        _showErr('OTP request timed out. Please try again or check Play Integrity / reCAPTCHA setup.');
-      }
-    });
 
     try {
-      await firebase.FirebaseAuth.instance.verifyPhoneNumber(
+      await fba.FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: _resolvedPhone,
-        forceResendingToken: _resendToken,
-        verificationCompleted: (firebase.PhoneAuthCredential cred) async {
-          otpResolved = true;
-          final uc = await firebase.FirebaseAuth.instance.signInWithCredential(cred);
-          if (uc.user != null && mounted) await _afterOtpVerified(uc.user!);
-        },
-        verificationFailed: (firebase.FirebaseAuthException e) {
-          otpResolved = true;
-          if (mounted) { setState(() => _isLookingUp = false); _showErr(e.message ?? 'OTP send failed.'); }
-        },
-        codeSent: (String vid, int? rToken) {
-          otpResolved = true;
-          if (mounted) {
-            setState(() { _verificationId = vid; _resendToken = rToken; _isLookingUp = false; _step = 1; });
-            _startTimer();
-            Future.delayed(const Duration(milliseconds: 300), () { if (mounted) _otpFoci[0].requestFocus(); });
+        verificationCompleted: (fba.PhoneAuthCredential credential) async {
+          try {
+            final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+            final idToken = await userCredential.user?.getIdToken();
+            if (idToken != null && mounted) {
+              _verifyOtpWithFirebaseToken(idToken);
+            }
+          } catch (e) {
+            debugPrint('ForgotPw Auto verification sign-in failed: $e');
           }
         },
-        codeAutoRetrievalTimeout: (String vid) {
-          otpResolved = true;
-          if (mounted) setState(() { 
-            _verificationId = vid; 
-            _isLookingUp = false; 
-          });
+        verificationFailed: (fba.FirebaseAuthException e) {
+          if (mounted) {
+            setState(() => _isLookingUp = false);
+            _showErr(e.message ?? 'Phone verification failed.');
+          }
         },
+        codeSent: (String verificationId, int? resendToken) {
+          if (mounted) {
+            setState(() {
+              _isLookingUp = false;
+              _verificationId = verificationId;
+              _resendToken = resendToken;
+              _step = 1;
+            });
+            _startTimer();
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (mounted) _otpFoci[0].requestFocus();
+            });
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          if (mounted) {
+            _verificationId = verificationId;
+          }
+        },
+        forceResendingToken: _resendToken,
       );
     } catch (e) {
-      otpResolved = true;
-      if (mounted) { setState(() => _isLookingUp = false); _showErr('Failed to send OTP. Check your connection.'); }
+      if (mounted) {
+        setState(() => _isLookingUp = false);
+        _showErr('Failed to send OTP. Check your connection.');
+      }
     }
   }
 
   // ── Step 1: Verify OTP ───────────────────────────────────────────
   Future<void> _verifyOtp() async {
     if (_otpVal.length < 6) { _showErr('Enter all 6 digits.'); return; }
-    if (_verificationId == null) { _showErr('Verification ID missing. Please resend.'); return; }
+    if (_verificationId == null) {
+      _showErr('Verification session expired. Please request a new code.');
+      return;
+    }
     setState(() => _isVerifying = true);
     try {
-      final cred = firebase.PhoneAuthProvider.credential(verificationId: _verificationId!, smsCode: _otpVal);
-      final uc = await firebase.FirebaseAuth.instance.signInWithCredential(cred);
-      if (uc.user != null && mounted) await _afterOtpVerified(uc.user!);
-    } on firebase.FirebaseAuthException catch (e) {
-      _showErr('Invalid code: ${e.message}');
-      for (final c in _otpCtrl) c.clear();
-      if (mounted) _otpFoci[0].requestFocus();
+      final credential = fba.PhoneAuthProvider.credential(
+        verificationId: _verificationId!,
+        smsCode: _otpVal,
+      );
+
+      final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+      final idToken = await userCredential.user?.getIdToken();
+
+      if (idToken != null) {
+        await _verifyOtpWithFirebaseToken(idToken);
+      } else {
+        if (mounted) _showErr('Failed to retrieve verification token.');
+      }
+    } catch (e) {
+      if (mounted) {
+        String msg = 'Incorrect OTP code. Please try again.';
+        if (e is fba.FirebaseAuthException && e.message != null) {
+          msg = e.message!;
+        }
+        _showErr(msg);
+        for (final c in _otpCtrl) c.clear();
+        _otpFoci[0].requestFocus();
+      }
     } finally {
       if (mounted) setState(() => _isVerifying = false);
     }
   }
 
-  Future<void> _afterOtpVerified(firebase.User firebaseUser) async {
-    // Build the synthetic Supabase email used during original phone signup
-    final phone = firebaseUser.phoneNumber ?? _resolvedPhone;
-    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    _resolvedSyntheticEmail = 'phone_${digits}@relaya.app';
-    _resolvedSyntheticPassword = 'phone_auth_${firebaseUser.uid}';
+  Future<void> _verifyOtpWithFirebaseToken(String idToken) async {
+    setState(() => _isVerifying = true);
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'verify-firebase-token',
+        body: {
+          'idToken': idToken,
+        },
+      );
 
-    // Try to sign into Supabase using the phone synthetic credentials
-    bool sessionOk = Supabase.instance.client.auth.currentUser != null;
-    if (!sessionOk) {
-      try {
-        await Supabase.instance.client.auth.signInWithPassword(
-          email: _resolvedSyntheticEmail,
-          password: _resolvedSyntheticPassword,
-        );
-        sessionOk = true;
-      } catch (e) {
-        debugPrint('[ForgotPw] Supabase sign-in failed: $e');
+      final data = response.data as Map<String, dynamic>?;
+
+      if (response.status == 200 && data != null && data['success'] == true) {
+        if (mounted) {
+          await _afterOtpVerified(_resolvedPhone);
+        }
+      } else {
+        final err = data != null ? data['error'] : 'Verification failed on server.';
+        if (mounted) {
+          _showErr(err ?? 'Verification failed.');
+          for (final c in _otpCtrl) c.clear();
+          _otpFoci[0].requestFocus();
+        }
       }
-    }
-
-    if (!sessionOk) {
+    } catch (e) {
       if (mounted) {
-        _showErr('Could not authenticate your account. Please try again.');
-        setState(() { _isVerifying = false; });
+        _showErr('Verification failed. Please try again.');
+        for (final c in _otpCtrl) c.clear();
+        _otpFoci[0].requestFocus();
       }
-      return;
+    } finally {
+      if (mounted) setState(() => _isVerifying = false);
     }
-
-    if (mounted) setState(() { _step = 2; _isVerifying = false; });
   }
 
-  // ── Step 2: Save new password ────────────────────────────────────
+  Future<void> _afterOtpVerified(String phone) async {
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final cleanPhone = digits.startsWith('91') && digits.length > 10 
+        ? digits.substring(2) 
+        : digits;
+
+    final possiblePhones = [
+      phone,
+      digits,
+      cleanPhone,
+    ];
+
+    if (mounted) setState(() => _isVerifying = true);
+
+    try {
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('id, username')
+          .or('phone.eq.${possiblePhones[0]},phone.eq.${possiblePhones[1]},phone.eq.${possiblePhones[2]}')
+          .maybeSingle();
+
+      if (profile != null) {
+        _resolvedUsername = profile['username'] as String? ?? '';
+      } else {
+        final suffix = phone.length >= 4 ? phone.substring(phone.length - 4) : phone;
+        _resolvedUsername = 'user_$suffix';
+      }
+      
+      if (mounted) {
+        setState(() {
+          _step = 2;
+          _isVerifying = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[ForgotPw] Profile query failed: $e');
+      if (mounted) {
+        _showErr('Could not verify account username. Please try again.');
+        setState(() => _isVerifying = false);
+      }
+    }
+  }
+
   Future<void> _saveNewPassword() async {
     final newPass = _newPassCtrl.text.trim();
     final confirm = _confirmPassCtrl.text.trim();
     if (newPass.length < 6) { _showErr('Password must be at least 6 characters.'); return; }
     if (newPass != confirm) { _showErr('Passwords do not match.'); return; }
 
-    // Guard: we must have an active Supabase session to call updateUser
-    final uid = Supabase.instance.client.auth.currentUser?.id;
-    if (uid == null) {
-      _showErr('Session expired. Please go back and verify OTP again.');
-      return;
-    }
-
     setState(() => _isSaving = true);
     try {
-      // Fetch the username linked to this account so we keep username login working
-      String? username;
-      try {
-        final prof = await Supabase.instance.client
-            .from('profiles')
-            .select('username')
-            .eq('id', uid)
-            .maybeSingle();
-        username = prof?['username'] as String?;
-      } catch (_) { /* non-fatal — we'll update without changing email */ }
+      final bool success = await Supabase.instance.client.rpc(
+        'reset_user_password',
+        params: {
+          'phone_input': _resolvedPhone,
+          'new_password': newPass,
+        },
+      );
 
-      // Update both the email alias (username@relaya.app) AND the password
-      final attrs = (username != null && username.isNotEmpty)
-          ? UserAttributes(email: '${username.toLowerCase()}@relaya.app', password: newPass)
-          : UserAttributes(password: newPass);
+      if (!success) {
+        _showErr('Could not reset password. No account found with this phone number.');
+        return;
+      }
 
-      await Supabase.instance.client.auth.updateUser(attrs);
       if (mounted) setState(() => _step = 3);
-    } on AuthException catch (e) {
-      _showErr('Could not update password: ${e.message}');
     } catch (e) {
-      _showErr('Unexpected error. Please try again.');
+      debugPrint('[ForgotPw] Password reset failed: $e');
+      _showErr('Could not update password: $e');
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -1453,20 +1525,39 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
     if (_countdown > 0 || _isResending) return;
     setState(() => _isResending = true);
     try {
-      await firebase.FirebaseAuth.instance.verifyPhoneNumber(
+      await fba.FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: _resolvedPhone,
-        forceResendingToken: _resendToken,
-        verificationCompleted: (_) {},
-        verificationFailed: (e) { if (mounted) _showErr(e.message ?? 'Resend failed.'); },
-        codeSent: (vid, rToken) {
+        verificationCompleted: (fba.PhoneAuthCredential credential) async {
+          try {
+            final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+            final idToken = await userCredential.user?.getIdToken();
+            if (idToken != null && mounted) {
+              _verifyOtpWithFirebaseToken(idToken);
+            }
+          } catch (_) {}
+        },
+        verificationFailed: (fba.FirebaseAuthException e) {
           if (mounted) {
-            setState(() { _verificationId = vid; _resendToken = rToken; });
+            _showErr(e.message ?? 'Resend failed.');
+          }
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          if (mounted) {
+            setState(() {
+              _verificationId = verificationId;
+              _resendToken = resendToken;
+            });
             _startTimer();
             for (final c in _otpCtrl) c.clear();
             _otpFoci[0].requestFocus();
           }
         },
-        codeAutoRetrievalTimeout: (vid) { if (mounted) setState(() => _verificationId = vid); },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          if (mounted) {
+            _verificationId = verificationId;
+          }
+        },
+        forceResendingToken: _resendToken,
       );
     } catch (_) {
       if (mounted) _showErr('Failed to resend. Try again.');
@@ -1681,6 +1772,30 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
       _header('Set New Password', 'Choose a strong password. You can use this with your username to log in.', Icons.lock_outline_rounded),
       _stepDots(2),
       const SizedBox(height: 24),
+      if (_resolvedUsername.isNotEmpty) ...[
+        Text('ACCOUNT USERNAME', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 1.2)),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.account_circle_outlined, color: _cyan, size: 20),
+              const SizedBox(width: 12),
+              Text(
+                '@$_resolvedUsername',
+                style: GoogleFonts.inter(color: _txt, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
       // New password
       Text('NEW PASSWORD', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 1.2)),
       const SizedBox(height: 8),

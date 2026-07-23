@@ -131,8 +131,23 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
   Future<void> _callGeminiApi(String query, {int attempt = 1}) async {
     if (!mounted) return;
     if (_geminiApiKey.isEmpty) {
-      debugPrint('[AI] Gemini API key not configured via --dart-define=GEMINI_API_KEY=...');
-      if (mounted) setState(() => _isGeneratingSuggestions = false);
+      debugPrint('[AI] Gemini API key not configured. Falling back to local filtering.');
+      if (mounted) {
+        setState(() {
+          final q = query.toLowerCase();
+          _filteredAiSuggestions = _defaultAiSuggestions.where((s) {
+            return (s['title'] as String).toLowerCase().contains(q) ||
+                   (s['desc'] as String).toLowerCase().contains(q);
+          }).toList();
+          // Always show at least 5 if possible by padding with defaults
+          if (_filteredAiSuggestions.length < 5) {
+            final existingTitles = _filteredAiSuggestions.map((e) => e['title']).toSet();
+            final extras = _defaultAiSuggestions.where((e) => !existingTitles.contains(e['title']));
+            _filteredAiSuggestions.addAll(extras.take(5 - _filteredAiSuggestions.length));
+          }
+          _isGeneratingSuggestions = false;
+        });
+      }
       return;
     }
     const maxAttempts = 3;
@@ -204,19 +219,13 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
           if (parsed is Map && parsed.containsKey('suggestions')) {
             final list = parsed['suggestions'] as List;
             debugPrint('[AI] Parsed ${list.length} suggestions');
-            if (mounted) {
-              setState(() {
-                _filteredAiSuggestions = list.map<Map<String, dynamic>>((e) {
-                  return {
-                    'title': e['title']?.toString() ?? '',
-                    'tags': List<String>.from((e['tags'] as List?) ?? []),
-                    'desc': e['desc']?.toString() ?? '',
-                  };
-                }).where((s) => (s['title'] as String).isNotEmpty).toList();
-                _isGeneratingSuggestions = false;
-              });
-              return;
-            }
+            _filteredAiSuggestions = list.map<Map<String, dynamic>>((e) {
+              return {
+                'title': e['title']?.toString() ?? '',
+                'tags': List<String>.from((e['tags'] as List?) ?? []),
+                'desc': e['desc']?.toString() ?? '',
+              };
+            }).where((s) => (s['title'] as String).isNotEmpty).toList();
           } else {
             debugPrint('[AI] Response JSON does not contain "suggestions" key. Keys: ${parsed is Map ? parsed.keys.toList() : "not a map"}');
           }
@@ -230,7 +239,26 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
     }
 
     if (mounted) {
-      setState(() => _isGeneratingSuggestions = false);
+      setState(() {
+        if (_filteredAiSuggestions.length < 5) {
+          final q = query.toLowerCase();
+          final existingTitles = _filteredAiSuggestions.map((e) => e['title']).toSet();
+          
+          final localMatches = _defaultAiSuggestions.where((s) {
+            return !existingTitles.contains(s['title']) &&
+                   ((s['title'] as String).toLowerCase().contains(q) ||
+                    (s['desc'] as String).toLowerCase().contains(q));
+          });
+          
+          _filteredAiSuggestions.addAll(localMatches.take(5 - _filteredAiSuggestions.length));
+          
+          if (_filteredAiSuggestions.length < 5) {
+            final extras = _defaultAiSuggestions.where((e) => !_filteredAiSuggestions.map((x) => x['title']).contains(e['title']));
+            _filteredAiSuggestions.addAll(extras.take(5 - _filteredAiSuggestions.length));
+          }
+        }
+        _isGeneratingSuggestions = false;
+      });
     }
   }
   
@@ -684,39 +712,14 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => Center(
-        child: Container(
-          margin: const EdgeInsets.all(40),
-          padding: const EdgeInsets.all(40),
-          decoration: BoxDecoration(
-            color: const Color(0xFF101015),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: const Color(0xFFFF007F).withValues(alpha: 0.5)),
-            boxShadow: [BoxShadow(color: const Color(0xFFFF007F).withValues(alpha: 0.3), blurRadius: 40)],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('⚡', style: TextStyle(fontSize: 60)),
-              const SizedBox(height: 16),
-              Text(_isRushIn ? 'RUSH-IN IS LIVE!' : 'ACTIVITY DEPLOYED!', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: 2)),
-              const SizedBox(height: 8),
-              const Text('Your signal is now broadcasting.', style: TextStyle(color: Colors.white54, fontSize: 14)),
-              const SizedBox(height: 30),
-              GestureDetector(
-                onTap: () { Navigator.pop(context); Navigator.pop(context, true); },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFFFF007F), Color(0xFFFF7E40)]),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: const Text('RETURN TO MAP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                ),
-              ),
-            ],
-          ),
-        ),
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      builder: (_) => _SuccessDialogContent(
+        isRushIn: _isRushIn,
+        accentColor: _isRushIn ? const Color(0xFFFF6B00) : const Color(0xFFFF6B00),
+        onReturn: () {
+          Navigator.pop(context); // pop dialog
+          Navigator.pop(context, true); // pop host screen
+        },
       ),
     );
   }
@@ -1015,7 +1018,14 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
               final vibe = _vibeData[cat]!;
               final clr = vibe['color'] as Color;
               return GestureDetector(
-                onTap: () => setState(() { sel ? _selectedVibes.remove(cat) : _selectedVibes.add(cat); }),
+                onTap: () => setState(() {
+                  if (sel) {
+                    _selectedVibes.remove(cat);
+                  } else {
+                    _selectedVibes.clear();
+                    _selectedVibes.add(cat);
+                  }
+                }),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1078,6 +1088,34 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          
+          // Radius slider
+          Row(
+            children: [
+              const Icon(Icons.radar, color: Color(0xFFFF6B00), size: 18),
+              const SizedBox(width: 10),
+              Text('Broadcast Radius: ${_radiusKm.round()} km', style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 13)),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: const Color(0xFFFF6B00),
+              inactiveTrackColor: Colors.white.withValues(alpha: 0.05),
+              thumbColor: const Color(0xFFFF6B00),
+              overlayColor: const Color(0xFFFF6B00).withValues(alpha: 0.2),
+              trackHeight: 4.0,
+            ),
+            child: Slider(
+              value: _radiusKm,
+              min: 1.0,
+              max: 50.0,
+              divisions: 49,
+              onChanged: (val) {
+                setState(() => _radiusKm = val);
+              },
+            ),
+          ),
           const SizedBox(height: 32),
 
           _buildBannerImageSection(accent),
@@ -1133,14 +1171,45 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
           ),
         ),
 
-        // 🎯 Fixed Center Crosshair
+        // 🎯 Fixed Static Center Pin (Prevents clipping and stays exactly centered)
         IgnorePointer(
           child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            child: Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
               children: [
-                Icon(Icons.center_focus_strong, color: accent, size: 32, shadows: [Shadow(color: accent, blurRadius: 15)]),
-                const SizedBox(height: 24), // Offset for visual center
+                // Ground indicator (a small glowing dot at the exact center)
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accent,
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.8),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+                // The static Location Pin shifted up so its tip points exactly to the center dot
+                Transform.translate(
+                  offset: const Offset(0, -22), // Shift up by half of icon height
+                  child: Icon(
+                    Icons.location_on_rounded,
+                    color: accent,
+                    size: 44,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        offset: const Offset(0, 4),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -1825,22 +1894,6 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
         children: [
           TileLayer(userAgentPackageName: 'com.meetra.app', urlTemplate: baseUrl, subdomains: const ['a', 'b', 'c', 'd']),
-          MarkerLayer(markers: [
-            Marker(
-              point: _pinLocation, 
-              width: 60, height: 60, 
-              child: AnimatedBuilder(
-                animation: _pulseAnim, 
-                builder: (_, __) => Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(width: 40 * _pulseAnim.value, height: 40 * _pulseAnim.value, decoration: BoxDecoration(shape: BoxShape.circle, color: accent.withValues(alpha: 0.3))),
-                    Icon(Icons.location_on, color: accent, size: 40, shadows: [Shadow(color: accent, blurRadius: 15)]),
-                  ],
-                ),
-              ),
-            ),
-          ]),
         ],
       );
   }
@@ -1967,7 +2020,7 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
 
   Widget _buildBottomNav(Color accent, Color secondary) {
     final isLast = _currentStep == _stepTitles.length - 1;
-    final isLight = _currentStep == 3 ? _isLightMode : isDoodleMode(context);
+    final isLight = _currentStep == 1 ? _isLightMode : isDoodleMode(context);
     final disabledBg = isLight ? Colors.black.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.04);
     final disabledText = isLight ? Colors.black38 : Colors.white30;
 
@@ -2005,6 +2058,200 @@ class _HostActivityScreenState extends State<HostActivityScreen> with TickerProv
                     ],
                   ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SuccessDialogContent extends StatefulWidget {
+  final bool isRushIn;
+  final VoidCallback onReturn;
+  final Color accentColor;
+
+  const _SuccessDialogContent({
+    required this.isRushIn,
+    required this.onReturn,
+    required this.accentColor,
+  });
+
+  @override
+  State<_SuccessDialogContent> createState() => _SuccessDialogContentState();
+}
+
+class _SuccessDialogContentState extends State<_SuccessDialogContent> with SingleTickerProviderStateMixin {
+  late AnimationController _animCtrl;
+  late Animation<double> _scaleAnim;
+  late Animation<double> _fadeAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+
+    _scaleAnim = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic),
+    );
+    _fadeAnim = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: const Color(0xFF101015),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: widget.accentColor.withValues(alpha: 0.3), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: widget.accentColor.withValues(alpha: 0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Radar signal animation
+              SizedBox(
+                height: 140,
+                width: 140,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Pulse ring 1
+                    AnimatedBuilder(
+                      animation: _animCtrl,
+                      builder: (context, child) {
+                        return Transform.scale(
+                          scale: _scaleAnim.value * 1.5,
+                          child: Opacity(
+                            opacity: _fadeAnim.value,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: widget.accentColor, width: 2),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    // Pulse ring 2 (delayed offset)
+                    AnimatedBuilder(
+                      animation: _animCtrl,
+                      builder: (context, child) {
+                        final val = (_animCtrl.value + 0.5) % 1.0;
+                        final scale = 0.8 + 0.7 * val;
+                        final opacity = 1.0 - val;
+                        return Transform.scale(
+                          scale: scale,
+                          child: Opacity(
+                            opacity: opacity,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: widget.accentColor, width: 1.5),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    // Central glowing beacon
+                    Container(
+                      width: 70,
+                      height: 70,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: widget.accentColor.withValues(alpha: 0.1),
+                        border: Border.all(color: widget.accentColor, width: 3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: widget.accentColor,
+                            blurRadius: 20,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        widget.isRushIn ? '⚡' : '🎉',
+                        style: const TextStyle(fontSize: 32),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                widget.isRushIn ? 'RUSH-IN IS LIVE!' : 'ACTIVITY DEPLOYED!',
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Your signal is now broadcasting nearby.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white60,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 32),
+              GestureDetector(
+                onTap: widget.onReturn,
+                child: Container(
+                  width: double.infinity,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [widget.accentColor, widget.accentColor.withValues(alpha: 0.8)],
+                    ),
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.accentColor.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    'RETURN TO MAP',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

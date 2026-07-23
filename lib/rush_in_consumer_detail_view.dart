@@ -4,12 +4,10 @@ import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart' hide Path;
-import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'profile_screen.dart';
+import 'rush_in_chat_room_screen.dart';
 import 'services/notification_service.dart';
 import 'services/doodle_theme.dart';
 ImageProvider _safeImageProvider(String url) {
@@ -424,10 +422,18 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheet) {
-            return DefaultTabController(
-              length: 2,
-              child: Container(
-                height: MediaQuery.of(ctx).size.height * 0.78,
+            return StreamBuilder<List<Map<String, dynamic>>>(
+              stream: Supabase.instance.client.from('requests').stream(primaryKey: ['id']).eq('target_id', widget.activity['id']),
+              builder: (context, snapshot) {
+                final requests = snapshot.data ?? [...approvedRequests, ...pendingRequests];
+                final currentApproved = requests.where((r) => r['status'] == 'approved').toList();
+                final currentPending = requests.where((r) => r['status'] == 'pending').toList();
+                _loadProfilesForRequests([...currentApproved, ...currentPending]);
+
+                return DefaultTabController(
+                  length: 2,
+                  child: Container(
+                    height: MediaQuery.of(ctx).size.height * 0.78,
                 decoration: const BoxDecoration(
                   color: Color(0xFF0C0E14),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -483,8 +489,8 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                       indicatorSize: TabBarIndicatorSize.tab,
                       labelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 13),
                       tabs: [
-                        Tab(text: 'APPROVED (${approvedRequests.length})'),
-                        Tab(text: 'WAITLIST (${pendingRequests.length})'),
+                        Tab(text: 'APPROVED (${currentApproved.length})'),
+                        Tab(text: 'WAITLIST (${currentPending.length})'),
                       ],
                     ),
 
@@ -493,13 +499,13 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                       child: TabBarView(
                         children: [
                           // ── APPROVED TAB ──
-                          approvedRequests.isEmpty
+                          currentApproved.isEmpty
                               ? _buildEmptyTabState('No approved attendees yet.', Icons.people_alt_outlined)
                               : ListView.builder(
                                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                                  itemCount: approvedRequests.length,
+                                  itemCount: currentApproved.length,
                                   itemBuilder: (_, i) {
-                                    final r = approvedRequests[i];
+                                    final r = currentApproved[i];
                                     final sid = r['sender_id'].toString();
                                     final rid = r['id'].toString();
                                     final cached = _profileCache[sid];
@@ -529,13 +535,13 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                                 ),
 
                           // ── WAITLIST TAB ──
-                          pendingRequests.isEmpty
+                          currentPending.isEmpty
                               ? _buildEmptyTabState('No candidates in the waitlist.', Icons.hourglass_empty_outlined)
                               : ListView.builder(
                                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                                  itemCount: pendingRequests.length,
+                                  itemCount: currentPending.length,
                                   itemBuilder: (_, i) {
-                                    final r = pendingRequests[i];
+                                    final r = currentPending[i];
                                     final sid = r['sender_id'].toString();
                                     final rid = r['id'].toString();
                                     final cached = _profileCache[sid];
@@ -599,7 +605,9 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
         );
       },
     );
-  }
+  },
+);
+}
 
   Widget _buildEmptyTabState(String msg, IconData icon) {
     return Center(
@@ -731,6 +739,7 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
     required VoidCallback onJoin,
     required VoidCallback onViewMap,
     required VoidCallback onManage,
+    required VoidCallback onEnterChat,
   }) {
     String text = 'Join Event';
     VoidCallback? onPressed = onJoin;
@@ -740,11 +749,11 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
       text = 'Manage Participants';
       onPressed = onManage;
     } else if (iAmApproved) {
-      text = 'View Exact Location';
-      onPressed = onViewMap;
+      text = 'Enter Chatroom ✓';
+      onPressed = onEnterChat;
     } else if (iAmPending) {
-      text = 'Request Pending...';
-      onPressed = null;
+      text = 'Enter Chatroom (Pending)';
+      onPressed = onEnterChat;
       isGradient = false;
     }
 
@@ -798,6 +807,110 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
         ),
       ),
     );
+  }
+
+  void _handleChatButtonPress(
+    BuildContext context, {
+    required String activityId,
+    required String title,
+    required String hostId,
+    required String? myChatStatus,
+  }) {
+    if (myChatStatus == 'removed') {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF0D0B14),
+          title: Text(
+            'Removed from Chat',
+            style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'You have been removed from this chat room by the host. Would you like to request re-entry?',
+            style: GoogleFonts.plusJakartaSans(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.plusJakartaSans(color: Colors.white38),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF7A00),
+              ),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                try {
+                  await Supabase.instance.client
+                      .from('rush_in_chat_status')
+                      .upsert({
+                        'activity_id': activityId,
+                        'user_id': _currentUid,
+                        'status': 'requested',
+                        'updated_at': DateTime.now().toUtc().toIso8601String(),
+                      }, onConflict: 'activity_id,user_id');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Re-entry request sent to the host.'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to send request: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              child: Text(
+                'Request Re-entry',
+                style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (myChatStatus == 'requested') {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF0D0B14),
+          title: Text(
+            'Request Pending',
+            style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Your request to re-join the chat room is pending host approval.',
+            style: GoogleFonts.plusJakartaSans(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'OK',
+                style: GoogleFonts.plusJakartaSans(color: const Color(0xFFFF7A00)),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => RushInChatRoomScreen(
+            activityId: activityId,
+            activityTitle: title,
+            hostId: hostId,
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -950,6 +1063,45 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                             ),
                             Row(
                               children: [
+                                if (isHost || iAmApproved || iAmPending) ...[
+                                  StreamBuilder<List<Map<String, dynamic>>>(
+                                    stream: Supabase.instance.client
+                                        .from('rush_in_chat_status')
+                                        .stream(primaryKey: ['id'])
+                                        .eq('activity_id', act['id']),
+                                    builder: (context, chatStatusSnapshot) {
+                                      final chatStatusRows = chatStatusSnapshot.data ?? [];
+                                      final myRow = chatStatusRows.firstWhere(
+                                        (row) => row['user_id'] == _currentUid,
+                                        orElse: () => <String, dynamic>{},
+                                      );
+                                      final myChatStatus = myRow['status'];
+
+                                      return GestureDetector(
+                                        onTap: () {
+                                          _handleChatButtonPress(
+                                            context,
+                                            activityId: act['id'],
+                                            title: title,
+                                            hostId: act['user_id'] ?? '',
+                                            myChatStatus: myChatStatus,
+                                          );
+                                        },
+                                        child: Container(
+                                          width: 40,
+                                          height: 40,
+                                          margin: const EdgeInsets.only(right: 8),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFF7A00).withValues(alpha: 0.2),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: const Color(0xFFFF7A00).withValues(alpha: 0.4)),
+                                          ),
+                                          child: const Icon(Icons.chat_bubble_outline, color: Color(0xFFFF7A00), size: 20),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
                                 if (isHost)
                                   GestureDetector(
                                     onTap: _isDeleting ? null : _deleteRushIn,
@@ -1077,7 +1229,15 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                                 style: GoogleFonts.plusJakartaSans(color: (!shouldHideLocation) ? Colors.white : Colors.white38, fontSize: 15, fontWeight: FontWeight.w500),
                               ),
                             ),
-                            if (!shouldHideLocation) const Icon(Icons.chevron_right, color: Colors.white24, size: 16),
+                            if (!shouldHideLocation) 
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFF7A00).withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text('Show in map', style: TextStyle(color: Color(0xFFFF7A00), fontSize: 10, fontWeight: FontWeight.bold)),
+                              ),
                           ],
                         ),
                       );
@@ -1155,7 +1315,6 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                         );
                       },
                     ),
-
                     const SizedBox(height: 24),
 
                     // Attendees Section — tappable
@@ -1359,6 +1518,13 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                       }
                     },
                     onManage: () => _showAttendeesModal(approvedList, waitlist, isHost),
+                    onEnterChat: () => _handleChatButtonPress(
+                      context,
+                      activityId: act['id'].toString(),
+                      title: act['title']?.toString() ?? 'Rush-In',
+                      hostId: act['user_id']?.toString() ?? '',
+                      myChatStatus: null,
+                    ),
                   ),
                 ),
               ),
