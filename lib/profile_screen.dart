@@ -49,8 +49,10 @@ class ProfileColors {
   static const pink = Color(0xFFFF3D00);
   static const orange = Color(0xFFFF6B00);
   static const teal = Color(0xFF14B8A6);
-  static const amber = Color(0xFFF4A926); // kept for backward compat in dashboard
-  static const coral = Color(0xFFE8735A); // kept for backward compat in dashboard
+  static const amber =
+      Color(0xFFF4A926); // kept for backward compat in dashboard
+  static const coral =
+      Color(0xFFE8735A); // kept for backward compat in dashboard
   static const violet = Color(0xFFFF7E40); // alias
   static const textPrimary = Color(0xFFFFFFFF);
   static const textSecondary = Color(0xFF9E9E9E);
@@ -81,13 +83,15 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateMixin {
+class _ProfileScreenState extends State<ProfileScreen>
+    with TickerProviderStateMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  
+
   // Logic Variables
   Map<String, dynamic>? _profile;
   bool _loadingProfile = true;
   List<Map<String, dynamic>> _userPosts = [];
+  List<Map<String, dynamic>> _savedPosts = [];
   int _followersCount = 0;
   int _followingCount = 0;
   bool _isFollowing = false;
@@ -124,11 +128,31 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   void initState() {
     super.initState();
     _orbController = AnimationController(
-       vsync: this,
-       duration: const Duration(seconds: 12),
+      vsync: this,
+      duration: const Duration(seconds: 12),
     )..repeat(reverse: true);
     _loadProfile();
+    _loadSavedPosts();
     _loadBolRoomAnonSettings();
+  }
+
+  Future<void> _loadSavedPosts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedIds = prefs.getStringList('home_bookmarks') ?? [];
+    if (savedIds.isEmpty) return;
+
+    try {
+      final postsRes = await Supabase.instance.client
+          .from('posts')
+          .select()
+          .inFilter('id', savedIds)
+          .order('created_at', ascending: false);
+      if (mounted) {
+        setState(() {
+          _savedPosts = List<Map<String, dynamic>>.from(postsRes);
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadBolRoomAnonSettings() async {
@@ -153,33 +177,92 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       final uid = widget.userId ?? _myUid;
       if (uid.isEmpty) return;
 
-      final pRes = await Supabase.instance.client.from('profiles').select().eq('id', uid).maybeSingle();
-      final followersReq = await Supabase.instance.client.from('requests').select('id').eq('target_id', uid).eq('target_type', 'follow').eq('status', 'approved');
-      final followingReq = await Supabase.instance.client.from('requests').select('id').eq('sender_id', uid).eq('target_type', 'follow').eq('status', 'approved');
-      final postsRes = await Supabase.instance.client.from('posts').select().eq('user_id', uid).order('created_at', ascending: false);
-      
+      final pRes = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', uid)
+          .maybeSingle();
+      final followersReq = await Supabase.instance.client
+          .from('requests')
+          .select('id')
+          .eq('target_id', uid)
+          .eq('target_type', 'follow')
+          .eq('status', 'approved');
+      final followingReq = await Supabase.instance.client
+          .from('requests')
+          .select('id')
+          .eq('sender_id', uid)
+          .eq('target_type', 'follow')
+          .eq('status', 'approved');
+      final postsRes = await Supabase.instance.client
+          .from('posts')
+          .select()
+          .eq('user_id', uid)
+          .order('created_at', ascending: false);
+
       bool isFollowing = false;
       if (widget.userId != null && widget.userId != _myUid) {
-        final check = await Supabase.instance.client.from('requests').select('id').eq('sender_id', _myUid).eq('target_id', uid).eq('target_type', 'follow').maybeSingle();
+        final check = await Supabase.instance.client
+            .from('requests')
+            .select('id')
+            .eq('sender_id', _myUid)
+            .eq('target_id', uid)
+            .eq('target_type', 'follow')
+            .maybeSingle();
         isFollowing = check != null;
       }
-      
-      final rushInsRes = await Supabase.instance.client.from('activities').select('id').eq('user_id', uid).eq('is_rush_in', true);
-      final knocksRes = await Supabase.instance.client.from('requests').select('id').eq('sender_id', uid).eq('target_type', 'knock');
-      final knocksAcceptedRes = await Supabase.instance.client.from('requests').select('id').eq('target_id', uid).eq('target_type', 'knock').eq('status', 'approved');
-      final joinedRushInsRes = await Supabase.instance.client.from('requests').select('id').eq('sender_id', uid).inFilter('target_type', ['rush_in', 'activity']).eq('status', 'approved');
-      final likesRes = await Supabase.instance.client.from('post_likes').select('post_id').eq('user_id', uid);
-      final commentsRes = await Supabase.instance.client.from('post_comments').select('id').eq('user_id', uid);
-      final messagesRes = await Supabase.instance.client.from('messages').select('id').eq('sender_id', uid).limit(500);
-      
-      final membersRes = await Supabase.instance.client.from('text_camp_members').select('camp_id').eq('user_id', uid);
-      final campIds = (membersRes as List).map((m) => m['camp_id'].toString()).toList();
+
+      final rushInsRes = await Supabase.instance.client
+          .from('activities')
+          .select('id')
+          .eq('user_id', uid)
+          .eq('is_rush_in', true);
+      final knocksRes = await Supabase.instance.client
+          .from('requests')
+          .select('id')
+          .eq('sender_id', uid)
+          .eq('target_type', 'knock');
+      final knocksAcceptedRes = await Supabase.instance.client
+          .from('requests')
+          .select('id')
+          .eq('target_id', uid)
+          .eq('target_type', 'knock')
+          .eq('status', 'approved');
+      final joinedRushInsRes = await Supabase.instance.client
+          .from('requests')
+          .select('id')
+          .eq('sender_id', uid)
+          .inFilter('target_type', ['rush_in', 'activity']).eq(
+              'status', 'approved');
+      final likesRes = await Supabase.instance.client
+          .from('post_likes')
+          .select('post_id')
+          .eq('user_id', uid);
+      final commentsRes = await Supabase.instance.client
+          .from('post_comments')
+          .select('id')
+          .eq('user_id', uid);
+      final messagesRes = await Supabase.instance.client
+          .from('messages')
+          .select('id')
+          .eq('sender_id', uid)
+          .limit(500);
+
+      final membersRes = await Supabase.instance.client
+          .from('text_camp_members')
+          .select('camp_id')
+          .eq('user_id', uid);
+      final campIds =
+          (membersRes as List).map((m) => m['camp_id'].toString()).toList();
       List<Map<String, dynamic>> joinedCamps = [];
       if (campIds.isNotEmpty) {
-        final campsRes = await Supabase.instance.client.from('text_camps').select().inFilter('id', campIds);
+        final campsRes = await Supabase.instance.client
+            .from('text_camps')
+            .select()
+            .inFilter('id', campIds);
         joinedCamps = List<Map<String, dynamic>>.from(campsRes);
       }
-      
+
       final int score = 100 +
           (postsRes.length * 10) +
           (rushInsRes.length * 15) +
@@ -190,7 +273,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           (likesRes.length * 2) +
           (commentsRes.length * 5) +
           (messagesRes.length * 1);
-      
+
       final prefs = await SharedPreferences.getInstance();
 
       if (mounted) {
@@ -204,7 +287,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           _isPublic = _profile?['is_public'] ?? true;
           _contributionScore = score;
           _joinedCommunities = joinedCamps;
-          
+
           _pushNotifications = prefs.getBool('push_notifications') ?? true;
           _emailNotifications = prefs.getBool('email_notifications') ?? true;
           _locationServices = prefs.getBool('location_services') ?? true;
@@ -232,12 +315,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   Future<void> _toggleFollow() async {
     final uid = widget.userId;
     if (_myUid.isEmpty || uid == null) return;
-    
+
     setState(() {
       _isFollowing = !_isFollowing;
       _followersCount += _isFollowing ? 1 : -1;
     });
-    
+
     try {
       if (_isFollowing) {
         await Supabase.instance.client.from('requests').upsert({
@@ -247,7 +330,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           'status': 'approved',
         });
       } else {
-        await Supabase.instance.client.from('requests').delete().eq('sender_id', _myUid).eq('target_id', uid).eq('target_type', 'follow');
+        await Supabase.instance.client
+            .from('requests')
+            .delete()
+            .eq('sender_id', _myUid)
+            .eq('target_id', uid)
+            .eq('target_type', 'follow');
       }
     } catch (_) {
       setState(() {
@@ -259,14 +347,16 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   ImageProvider _buildSafeImageProvider(String? urlStr) {
     if (urlStr == null || urlStr.isEmpty) {
-      return const NetworkImage('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop');
+      return const NetworkImage(
+          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop');
     }
     if (urlStr.startsWith('http')) return NetworkImage(urlStr);
     try {
       final base64Str = urlStr.contains(',') ? urlStr.split(',').last : urlStr;
       return MemoryImage(base64Decode(base64Str));
     } catch (_) {
-      return const NetworkImage('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop');
+      return const NetworkImage(
+          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop');
     }
   }
 
@@ -282,7 +372,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   void _onEditProfile() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => EditProfileScreen(initialProfile: _profile ?? {})),
+      MaterialPageRoute(
+          builder: (_) => EditProfileScreen(initialProfile: _profile ?? {})),
     );
     if (result == true) {
       _loadProfile(); // Refresh profile data
@@ -294,13 +385,17 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     final username = _profile?['username'] ?? '';
     final url = 'https://meetra.app/profile/$username';
     Share.share('Check out $name on Relaya!\n$url');
-  }  @override
+  }
+
+  @override
   Widget build(BuildContext context) {
     final doodle = isDoodleMode(context);
     if (_loadingProfile) {
       return Scaffold(
         backgroundColor: doodle ? DoodleColors.cream : ProfileColors.bgPrimary,
-        body: SafeArea(child: SkeletonLoaders.genericListSkeleton(doodle: isDoodleMode(context))),
+        body: SafeArea(
+            child: SkeletonLoaders.genericListSkeleton(
+                doodle: isDoodleMode(context))),
       );
     }
 
@@ -326,16 +421,21 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       body: Stack(
         children: [
           // Doodle background decorations
-          if (doodle) Positioned.fill(
-            child: IgnorePointer(
-              child: Stack(
-                children: [
-                  Container(decoration: DoodleDecorations.parchmentBg()),
-                  CustomPaint(painter: ScatteredDoodlesPainter(seed: 99, density: 0.3, color: const Color(0x18B8956E))),
-                ],
+          if (doodle)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Stack(
+                  children: [
+                    Container(decoration: DoodleDecorations.parchmentBg()),
+                    CustomPaint(
+                        painter: ScatteredDoodlesPainter(
+                            seed: 99,
+                            density: 0.3,
+                            color: const Color(0x18B8956E))),
+                  ],
+                ),
               ),
             ),
-          ),
           SafeArea(
             bottom: false,
             child: Column(
@@ -346,8 +446,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     physics: const BouncingScrollPhysics(),
                     child: Column(
                       children: [
-                        TiltableHeroSection(child: _buildHeroSection(name, username, bio, location, avatarUrl, isMe, dob, gender)),
-                        _buildPostsTabs(),
+                        TiltableHeroSection(
+                            child: _buildHeroSection(name, username, bio,
+                                location, avatarUrl, isMe, dob, gender)),
+                        _buildPostsTabs(isMe),
                         _buildPostsContent(canViewContent, isMe),
                         const SizedBox(height: 100),
                       ],
@@ -370,7 +472,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: const BoxDecoration(
           color: DoodleColors.cream,
-          border: Border(bottom: BorderSide(color: DoodleColors.cardBorder, width: 1)),
+          border: Border(
+              bottom: BorderSide(color: DoodleColors.cardBorder, width: 1)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -379,26 +482,30 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               GestureDetector(
                 onTap: () => _scaffoldKey.currentState?.openDrawer(),
                 child: Container(
-                  width: 40, height: 40,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     color: DoodleColors.paper,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: DoodleColors.cardBorder),
                   ),
-                  child: const Icon(Icons.grid_view_rounded, color: DoodleColors.textSecondary, size: 18),
+                  child: const Icon(Icons.grid_view_rounded,
+                      color: DoodleColors.textSecondary, size: 18),
                 ),
               )
             else
               GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: Container(
-                  width: 40, height: 40,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     color: DoodleColors.paper,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: DoodleColors.cardBorder),
                   ),
-                  child: const Icon(Icons.arrow_back_ios_new, color: DoodleColors.textSecondary, size: 18),
+                  child: const Icon(Icons.arrow_back_ios_new,
+                      color: DoodleColors.textSecondary, size: 18),
                 ),
               ),
             Container(
@@ -406,20 +513,23 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               decoration: DoodleDecorations.card(color: DoodleColors.orange),
               child: Text(
                 'MY PROFILE',
-                style: DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown),
+                style: DoodleFonts.heading(
+                    fontSize: 20, color: DoodleColors.brown),
               ),
             ),
             if (isMe)
               GestureDetector(
                 onTap: () => _scaffoldKey.currentState?.openEndDrawer(),
                 child: Container(
-                  width: 40, height: 40,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     color: DoodleColors.paper,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: DoodleColors.cardBorder),
                   ),
-                  child: const Icon(Icons.settings_outlined, color: DoodleColors.textSecondary, size: 18),
+                  child: const Icon(Icons.settings_outlined,
+                      color: DoodleColors.textSecondary, size: 18),
                 ),
               )
             else
@@ -435,7 +545,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: const BoxDecoration(
             color: ProfileColors.bgGlass,
-            border: Border(bottom: BorderSide(color: ProfileColors.borderSubtle, width: 0.5)),
+            border: Border(
+                bottom:
+                    BorderSide(color: ProfileColors.borderSubtle, width: 0.5)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -443,14 +555,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               if (isMe)
                 GestureDetector(
                   onTap: () => _scaffoldKey.currentState?.openDrawer(),
-                  child: _buildNavIconBtn(Icons.grid_view_rounded, hasBadge: true),
+                  child:
+                      _buildNavIconBtn(Icons.grid_view_rounded, hasBadge: true),
                 )
               else
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: _buildNavIconBtn(Icons.arrow_back_ios_new),
                 ),
-              
               ShaderMask(
                 shaderCallback: (bounds) => neonGradient.createShader(bounds),
                 child: Text(
@@ -463,7 +575,6 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   ),
                 ),
               ),
-
               if (isMe)
                 GestureDetector(
                   onTap: () => _scaffoldKey.currentState?.openEndDrawer(),
@@ -480,13 +591,15 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   Widget _buildNavIconBtn(IconData icon, {bool hasBadge = false}) {
     return Container(
-      width: 40, height: 40,
+      width: 40,
+      height: 40,
       decoration: BoxDecoration(
         color: ProfileColors.glass,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: ProfileColors.cyan.withValues(alpha: 0.12)),
         boxShadow: [
-          BoxShadow(color: ProfileColors.cyan.withValues(alpha: 0.06), blurRadius: 8),
+          BoxShadow(
+              color: ProfileColors.cyan.withValues(alpha: 0.06), blurRadius: 8),
         ],
       ),
       child: Stack(
@@ -495,16 +608,30 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           Icon(icon, color: ProfileColors.textSecondary, size: 18),
           if (hasBadge)
             Positioned(
-              top: 7, right: 7,
+              top: 7,
+              right: 7,
               child: Container(
-                width: 7, height: 7,
+                width: 7,
+                height: 7,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(colors: [ProfileColors.pink, ProfileColors.orange]),
-                  border: Border.all(color: ProfileColors.bgPrimary, width: 1.5),
-                  boxShadow: [BoxShadow(color: ProfileColors.pink.withValues(alpha: 0.6), blurRadius: 6)],
+                  gradient: const LinearGradient(
+                      colors: [ProfileColors.pink, ProfileColors.orange]),
+                  border:
+                      Border.all(color: ProfileColors.bgPrimary, width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                        color: ProfileColors.pink.withValues(alpha: 0.6),
+                        blurRadius: 6)
+                  ],
                 ),
-              ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(duration: 2.seconds, begin: const Offset(1, 1), end: const Offset(1.3, 1.3)).fade(end: 0.5),
+              )
+                  .animate(onPlay: (c) => c.repeat(reverse: true))
+                  .scale(
+                      duration: 2.seconds,
+                      begin: const Offset(1, 1),
+                      end: const Offset(1.3, 1.3))
+                  .fade(end: 0.5),
             ),
         ],
       ),
@@ -512,9 +639,23 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   // ============== 2. PROFILE HERO ==============
-  Widget _buildHeroSection(String name, String username, String bio, String location, String avatarUrl, bool isMe, String? dob, String? gender) {
+  Widget _buildHeroSection(
+      String name,
+      String username,
+      String bio,
+      String location,
+      String avatarUrl,
+      bool isMe,
+      String? dob,
+      String? gender) {
     final doodle = isDoodleMode(context);
-    String initials = name.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase();
+    String initials = name
+        .trim()
+        .split(' ')
+        .map((e) => e.isNotEmpty ? e[0] : '')
+        .take(2)
+        .join()
+        .toUpperCase();
     if (initials.isEmpty) initials = 'U';
 
     return Column(
@@ -526,71 +667,91 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             children: [
               // 1. Avatar — doodle hand-drawn circle in light, neon ring in dark
               doodle
-                ? SizedBox(
-                    width: 110,
-                    height: 110,
-                    child: CustomPaint(
-                      painter: SketchCirclePainter(color: DoodleColors.orange, strokeWidth: 3),
-                      child: Center(
-                        child: ClipOval(
-                          child: SizedBox(
-                            width: 96, height: 96,
-                            child: avatarUrl.isNotEmpty
-                              ? Image(image: _buildSafeImageProvider(avatarUrl), fit: BoxFit.cover)
-                              : Container(
-                                  color: DoodleColors.pastelPeach,
-                                  child: Center(
-                                    child: Text(initials, style: DoodleFonts.heading(fontSize: 32, color: DoodleColors.orange)),
-                                  ),
-                                ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                : Container(
-                    width: 106,
-                    height: 106,
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFFFF6B00),
-                        width: 3,
-                      ),
-                    ),
-                    child: avatarUrl.isNotEmpty 
-                      ? CircleAvatar(
-                          backgroundImage: _buildSafeImageProvider(avatarUrl),
-                          backgroundColor: Colors.transparent,
-                        )
-                      : Container(
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFF1E1E1E),
-                          ),
+                  ? SizedBox(
+                      width: 110,
+                      height: 110,
+                      child: GestureDetector(
+                        onTap: () =>
+                            _showPhotoPreview(context, avatarUrl, initials),
+                        child: CustomPaint(
+                          painter: SketchCirclePainter(
+                              color: DoodleColors.orange, strokeWidth: 3),
                           child: Center(
-                            child: Text(
-                              initials,
-                              style: GoogleFonts.inter(
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFFFF6B00),
+                            child: ClipOval(
+                              child: SizedBox(
+                                width: 96,
+                                height: 96,
+                                child: avatarUrl.isNotEmpty
+                                    ? Image(
+                                        image:
+                                            _buildSafeImageProvider(avatarUrl),
+                                        fit: BoxFit.cover)
+                                    : Container(
+                                        color: DoodleColors.pastelPeach,
+                                        child: Center(
+                                          child: Text(initials,
+                                              style: DoodleFonts.heading(
+                                                  fontSize: 32,
+                                                  color: DoodleColors.orange)),
+                                        ),
+                                      ),
                               ),
                             ),
                           ),
                         ),
-                  ),
+                      ),
+                    )
+                  : GestureDetector(
+                      onTap: () =>
+                          _showPhotoPreview(context, avatarUrl, initials),
+                      child: Container(
+                        width: 106,
+                        height: 106,
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFFFF6B00),
+                            width: 3,
+                          ),
+                        ),
+                        child: avatarUrl.isNotEmpty
+                            ? CircleAvatar(
+                                backgroundImage:
+                                    _buildSafeImageProvider(avatarUrl),
+                                backgroundColor: Colors.transparent,
+                              )
+                            : Container(
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFF1E1E1E),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    initials,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.bold,
+                                      color: const Color(0xFFFF6B00),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
               const SizedBox(height: 16),
 
               // 2. Centered Name
               Text(
                 name,
-                style: doodle ? DoodleFonts.heading(fontSize: 28, color: DoodleColors.brown) : GoogleFonts.inter(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
+                style: doodle
+                    ? DoodleFonts.heading(
+                        fontSize: 28, color: DoodleColors.brown)
+                    : GoogleFonts.inter(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
               ),
               const SizedBox(height: 4),
 
@@ -602,23 +763,28 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     final bdate = DateTime.parse(dob);
                     final today = DateTime.now();
                     age = today.year - bdate.year;
-                    if (today.month < bdate.month || (today.month == bdate.month && today.day < bdate.day)) {
+                    if (today.month < bdate.month ||
+                        (today.month == bdate.month && today.day < bdate.day)) {
                       age = age - 1;
                     }
                   } catch (_) {}
                 }
-                
+
                 String subtitle = '@${username.toLowerCase()}';
                 if (age != null) subtitle += ' • $age';
-                if (gender != null && gender.isNotEmpty) subtitle += ' • $gender';
-                
+                if (gender != null && gender.isNotEmpty)
+                  subtitle += ' • $gender';
+
                 return Text(
                   subtitle,
-                  style: doodle ? DoodleFonts.body(fontSize: 16, color: DoodleColors.brown) : GoogleFonts.inter(
-                    fontSize: 14,
-                    color: Colors.white54,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: doodle
+                      ? DoodleFonts.body(
+                          fontSize: 16, color: DoodleColors.brown)
+                      : GoogleFonts.inter(
+                          fontSize: 14,
+                          color: Colors.white54,
+                          fontWeight: FontWeight.w500,
+                        ),
                 );
               }),
               const SizedBox(height: 8),
@@ -627,23 +793,31 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               ValueListenableBuilder<String>(
                 valueListenable: locationService.activeLocationNotifier,
                 builder: (context, activeLoc, _) {
-                  final displayLoc = (activeLoc.isNotEmpty && isMe) ? activeLoc : location;
+                  final displayLoc =
+                      (activeLoc.isNotEmpty && isMe) ? activeLoc : location;
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         Icons.location_on,
-                        color: doodle ? DoodleColors.brown : const Color(0xFFFF6B00),
+                        color: doodle
+                            ? DoodleColors.brown
+                            : const Color(0xFFFF6B00),
                         size: 14,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         displayLoc.isEmpty ? 'New York, NY' : displayLoc,
-                        style: doodle ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown.withValues(alpha: 0.8)) : GoogleFonts.inter(
-                          fontSize: 12,
-                          color: Colors.white54,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: doodle
+                            ? DoodleFonts.body(
+                                fontSize: 14,
+                                color:
+                                    DoodleColors.brown.withValues(alpha: 0.8))
+                            : GoogleFonts.inter(
+                                fontSize: 12,
+                                color: Colors.white54,
+                                fontWeight: FontWeight.w600,
+                              ),
                       ),
                     ],
                   );
@@ -655,14 +829,19 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Text(
-                  bio.isEmpty ? 'Adventure seeker | Event host | Music lover' : bio,
+                  bio.isEmpty
+                      ? 'Adventure seeker | Event host | Music lover'
+                      : bio,
                   textAlign: TextAlign.center,
-                  style: doodle ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown) : GoogleFonts.inter(
-                    fontSize: 13,
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
+                  style: doodle
+                      ? DoodleFonts.body(
+                          fontSize: 14, color: DoodleColors.brown)
+                      : GoogleFonts.inter(
+                          fontSize: 13,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w500,
+                          height: 1.4,
+                        ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -671,7 +850,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               GestureDetector(
                 onTap: isMe ? _onEditProfile : () {},
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
                   decoration: BoxDecoration(
                     color: Colors.transparent,
                     borderRadius: BorderRadius.circular(20),
@@ -751,9 +931,13 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               : BoxDecoration(
                   color: const Color(0xFF13131A),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.05)),
                   boxShadow: [
-                    BoxShadow(color: iconColor.withValues(alpha: 0.08), blurRadius: 12, offset: const Offset(0, 4)),
+                    BoxShadow(
+                        color: iconColor.withValues(alpha: 0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4)),
                   ],
                 ),
           child: Column(
@@ -770,25 +954,31 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               const SizedBox(height: 10),
               Text(
                 val,
-                style: doodle ? DoodleFonts.heading(fontSize: 22, color: DoodleColors.brown) : GoogleFonts.inter(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
+                style: doodle
+                    ? DoodleFonts.heading(
+                        fontSize: 22, color: DoodleColors.brown)
+                    : GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
               ),
               const SizedBox(height: 2),
               Text(
                 label,
-                style: doodle ? DoodleFonts.body(fontSize: 11, color: DoodleColors.brown) : GoogleFonts.inter(
-                  fontSize: 9,
-                  letterSpacing: 0.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white54,
-                ),
+                style: doodle
+                    ? DoodleFonts.body(fontSize: 11, color: DoodleColors.brown)
+                    : GoogleFonts.inter(
+                        fontSize: 9,
+                        letterSpacing: 0.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white54,
+                      ),
               ),
             ],
           ),
-        ).animate(onPlay: (c) => c.repeat(reverse: true)).shimmer(duration: 3000.ms, color: Colors.white.withValues(alpha: 0.05)),
+        ).animate(onPlay: (c) => c.repeat(reverse: true)).shimmer(
+            duration: 3000.ms, color: Colors.white.withValues(alpha: 0.05)),
       ),
     );
   }
@@ -801,9 +991,11 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         return Container(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.45),
+          constraints:
+              BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.45),
           decoration: doodle
-              ? DoodleDecorations.card(color: DoodleColors.cream, borderColor: DoodleColors.brown)
+              ? DoodleDecorations.card(
+                  color: DoodleColors.cream, borderColor: DoodleColors.brown)
               : const BoxDecoration(
                   color: Color(0xFF0F0F0F),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -816,9 +1008,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             children: [
               Center(
                 child: Container(
-                  width: 40, height: 4,
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
-                    color: doodle ? DoodleColors.brown.withValues(alpha: 0.3) : Colors.white24,
+                    color: doodle
+                        ? DoodleColors.brown.withValues(alpha: 0.3)
+                        : Colors.white24,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -829,19 +1024,28 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 children: [
                   Text(
                     'Contributions',
-                    style: doodle ? DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.inter(
-                      fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white,
-                    ),
+                    style: doodle
+                        ? DoodleFonts.heading(
+                            fontSize: 20, color: DoodleColors.brown)
+                        : GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFFD54F).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       '$_contributionScore',
-                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFFFFD54F)),
+                      style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFFFFD54F)),
                     ),
                   ),
                 ],
@@ -849,9 +1053,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               const SizedBox(height: 6),
               Text(
                 'Your community contribution score',
-                style: doodle ? DoodleFonts.body(fontSize: 12, color: DoodleColors.brown.withValues(alpha: 0.7)) : GoogleFonts.inter(
-                  fontSize: 12, color: Colors.white54,
-                ),
+                style: doodle
+                    ? DoodleFonts.body(
+                        fontSize: 12,
+                        color: DoodleColors.brown.withValues(alpha: 0.7))
+                    : GoogleFonts.inter(
+                        fontSize: 12,
+                        color: Colors.white54,
+                      ),
               ),
               const SizedBox(height: 24),
               Expanded(
@@ -859,12 +1068,19 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.auto_awesome, size: 64, color: const Color(0xFFFFD54F).withValues(alpha: 0.4)),
+                      Icon(Icons.auto_awesome,
+                          size: 64,
+                          color:
+                              const Color(0xFFFFD54F).withValues(alpha: 0.4)),
                       const SizedBox(height: 16),
                       Text(
                         'Keep hosting and joining activities to increase your contribution score and unlock premium badges!',
                         textAlign: TextAlign.center,
-                        style: doodle ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown) : GoogleFonts.inter(fontSize: 14, color: Colors.white70),
+                        style: doodle
+                            ? DoodleFonts.body(
+                                fontSize: 14, color: DoodleColors.brown)
+                            : GoogleFonts.inter(
+                                fontSize: 14, color: Colors.white70),
                       ),
                     ],
                   ),
@@ -885,9 +1101,11 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         return Container(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.65),
+          constraints:
+              BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.65),
           decoration: doodle
-              ? DoodleDecorations.card(color: DoodleColors.cream, borderColor: DoodleColors.brown)
+              ? DoodleDecorations.card(
+                  color: DoodleColors.cream, borderColor: DoodleColors.brown)
               : const BoxDecoration(
                   color: Color(0xFF0F0F0F),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -900,9 +1118,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             children: [
               Center(
                 child: Container(
-                  width: 40, height: 4,
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
-                    color: doodle ? DoodleColors.brown.withValues(alpha: 0.3) : Colors.white24,
+                    color: doodle
+                        ? DoodleColors.brown.withValues(alpha: 0.3)
+                        : Colors.white24,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -913,19 +1134,28 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 children: [
                   Text(
                     'Active In Communities',
-                    style: doodle ? DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.inter(
-                      fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white,
-                    ),
+                    style: doodle
+                        ? DoodleFonts.heading(
+                            fontSize: 20, color: DoodleColors.brown)
+                        : GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: const Color(0xFF4E8BFF).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       '${_joinedCommunities.length}',
-                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFF4E8BFF)),
+                      style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF4E8BFF)),
                     ),
                   ),
                 ],
@@ -933,9 +1163,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               const SizedBox(height: 6),
               Text(
                 'Real-world social loops joined across Meetra',
-                style: doodle ? DoodleFonts.body(fontSize: 12, color: DoodleColors.brown.withValues(alpha: 0.7)) : GoogleFonts.inter(
-                  fontSize: 12, color: Colors.white54,
-                ),
+                style: doodle
+                    ? DoodleFonts.body(
+                        fontSize: 12,
+                        color: DoodleColors.brown.withValues(alpha: 0.7))
+                    : GoogleFonts.inter(
+                        fontSize: 12,
+                        color: Colors.white54,
+                      ),
               ),
               const SizedBox(height: 16),
               if (_joinedCommunities.isEmpty)
@@ -944,11 +1179,19 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   child: Center(
                     child: Column(
                       children: [
-                        Icon(Icons.groups_outlined, size: 48, color: doodle ? DoodleColors.brown.withValues(alpha: 0.4) : Colors.white24),
+                        Icon(Icons.groups_outlined,
+                            size: 48,
+                            color: doodle
+                                ? DoodleColors.brown.withValues(alpha: 0.4)
+                                : Colors.white24),
                         const SizedBox(height: 12),
                         Text(
                           'Not active in any communities yet',
-                          style: doodle ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown) : GoogleFonts.inter(fontSize: 14, color: Colors.white60),
+                          style: doodle
+                              ? DoodleFonts.body(
+                                  fontSize: 14, color: DoodleColors.brown)
+                              : GoogleFonts.inter(
+                                  fontSize: 14, color: Colors.white60),
                         ),
                       ],
                     ),
@@ -964,9 +1207,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       final row = _joinedCommunities[i];
                       final name = row['name']?.toString() ?? 'Community';
                       final cat = row['category']?.toString() ?? 'General';
-                      final avatar = row['avatar_url']?.toString() ?? 'https://images.unsplash.com/photo-1516862523118-a3724eb136d7?auto=format&fit=crop&w=150&q=80';
+                      final avatar = row['avatar_url']?.toString() ??
+                          'https://images.unsplash.com/photo-1516862523118-a3724eb136d7?auto=format&fit=crop&w=150&q=80';
                       final members = row['member_count'] ?? 1;
-                      
+
                       return GestureDetector(
                         onTap: () {
                           Navigator.pop(ctx);
@@ -975,25 +1219,40 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                             name: name,
                             category: cat,
                             creatorId: row['creator_id']?.toString() ?? '',
-                            memberCount: members is int ? members : int.tryParse(members.toString()) ?? 1,
+                            memberCount: members is int
+                                ? members
+                                : int.tryParse(members.toString()) ?? 1,
                             avatar: avatar,
                             lastMessage: 'Welcome to $name!',
                             lastMessageTime: 'Active',
                             unreadCount: 0,
-                            locationDistrict: row['location_district']?.toString() ?? 'Unknown',
-                            channels: [CommunityChannel(name: 'general', messages: [])],
+                            locationDistrict:
+                                row['location_district']?.toString() ??
+                                    'Unknown',
+                            channels: [
+                              CommunityChannel(name: 'general', messages: [])
+                            ],
                             isPrivate: row['is_private'] ?? false,
                           );
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => CommunityChatRoomScreen(community: comm)));
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => CommunityChatRoomScreen(
+                                      community: comm)));
                         },
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: doodle
-                              ? DoodleDecorations.card(color: DoodleColors.paper, borderColor: DoodleColors.cardBorder, radius: 14)
+                              ? DoodleDecorations.card(
+                                  color: DoodleColors.paper,
+                                  borderColor: DoodleColors.cardBorder,
+                                  radius: 14)
                               : BoxDecoration(
                                   color: const Color(0xFF16161D),
                                   borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                                  border: Border.all(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.08)),
                                 ),
                           child: Row(
                             children: [
@@ -1001,10 +1260,15 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                 borderRadius: BorderRadius.circular(12),
                                 child: Image.network(
                                   avatar,
-                                  width: 48, height: 48, fit: BoxFit.cover,
+                                  width: 48,
+                                  height: 48,
+                                  fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) => Container(
-                                    width: 48, height: 48, color: const Color(0xFF27272A),
-                                    child: const Icon(Icons.groups, color: Colors.white54),
+                                    width: 48,
+                                    height: 48,
+                                    color: const Color(0xFF27272A),
+                                    child: const Icon(Icons.groups,
+                                        color: Colors.white54),
                                   ),
                                 ),
                               ),
@@ -1015,33 +1279,49 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                   children: [
                                     Text(
                                       name,
-                                      style: doodle ? DoodleFonts.heading(fontSize: 16, color: DoodleColors.brown) : GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                                      style: doodle
+                                          ? DoodleFonts.heading(
+                                              fontSize: 16,
+                                              color: DoodleColors.brown)
+                                          : GoogleFonts.inter(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.white),
                                     ),
                                     const SizedBox(height: 4),
                                     Row(
                                       children: [
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 2),
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
-                                            borderRadius: BorderRadius.circular(8),
+                                            color: const Color(0xFFFF6B00)
+                                                .withValues(alpha: 0.15),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
                                           ),
                                           child: Text(
                                             cat,
-                                            style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: const Color(0xFFFF6B00)),
+                                            style: GoogleFonts.inter(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: const Color(0xFFFF6B00)),
                                           ),
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
                                           '$members members',
-                                          style: GoogleFonts.inter(fontSize: 11, color: Colors.white54),
+                                          style: GoogleFonts.inter(
+                                              fontSize: 11,
+                                              color: Colors.white54),
                                         ),
                                       ],
                                     ),
                                   ],
                                 ),
                               ),
-                              const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.white38),
+                              const Icon(Icons.arrow_forward_ios_rounded,
+                                  size: 16, color: Colors.white38),
                             ],
                           ),
                         ),
@@ -1059,16 +1339,18 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   void _showAllRushInsSheet() {
     final doodle = isDoodleMode(context);
     final uid = widget.userId ?? _myUid;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         return Container(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.75),
+          constraints:
+              BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.75),
           decoration: doodle
-              ? DoodleDecorations.card(color: DoodleColors.cream, borderColor: DoodleColors.brown)
+              ? DoodleDecorations.card(
+                  color: DoodleColors.cream, borderColor: DoodleColors.brown)
               : const BoxDecoration(
                   color: Color(0xFF0F0F0F),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1081,9 +1363,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             children: [
               Center(
                 child: Container(
-                  width: 40, height: 4,
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
-                    color: doodle ? DoodleColors.brown.withValues(alpha: 0.3) : Colors.white24,
+                    color: doodle
+                        ? DoodleColors.brown.withValues(alpha: 0.3)
+                        : Colors.white24,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -1094,19 +1379,28 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 children: [
                   Text(
                     'Rush-In History',
-                    style: doodle ? DoodleFonts.heading(fontSize: 20, color: DoodleColors.brown) : GoogleFonts.inter(
-                      fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white,
-                    ),
+                    style: doodle
+                        ? DoodleFonts.heading(
+                            fontSize: 20, color: DoodleColors.brown)
+                        : GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       '$_totalRushInsCount',
-                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFFFF6B00)),
+                      style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFFFF6B00)),
                     ),
                   ),
                 ],
@@ -1114,9 +1408,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               const SizedBox(height: 6),
               Text(
                 'All rush-ins hosted and joined',
-                style: doodle ? DoodleFonts.body(fontSize: 12, color: DoodleColors.brown.withValues(alpha: 0.7)) : GoogleFonts.inter(
-                  fontSize: 12, color: Colors.white54,
-                ),
+                style: doodle
+                    ? DoodleFonts.body(
+                        fontSize: 12,
+                        color: DoodleColors.brown.withValues(alpha: 0.7))
+                    : GoogleFonts.inter(
+                        fontSize: 12,
+                        color: Colors.white54,
+                      ),
               ),
               const SizedBox(height: 16),
               Expanded(
@@ -1125,10 +1424,11 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     // Fetch Hosted Rush-ins
                     final hostedRes = await Supabase.instance.client
                         .from('activities')
-                        .select('*, profiles!activities_user_id_fkey(name, avatar_url)')
+                        .select(
+                            '*, profiles!activities_user_id_fkey(name, avatar_url)')
                         .eq('user_id', uid)
                         .eq('is_rush_in', true);
-                    
+
                     // Fetch Joined Rush-ins
                     final reqsRes = await Supabase.instance.client
                         .from('requests')
@@ -1136,13 +1436,16 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                         .eq('sender_id', uid)
                         .eq('status', 'approved')
                         .inFilter('target_type', ['rush_in', 'activity']);
-                        
-                    final targetIds = (reqsRes as List).map((r) => r['target_id'].toString()).toList();
+
+                    final targetIds = (reqsRes as List)
+                        .map((r) => r['target_id'].toString())
+                        .toList();
                     List<dynamic> joinedRes = [];
                     if (targetIds.isNotEmpty) {
                       final acts = await Supabase.instance.client
                           .from('activities')
-                          .select('*, profiles!activities_user_id_fkey(name, avatar_url)')
+                          .select(
+                              '*, profiles!activities_user_id_fkey(name, avatar_url)')
                           .inFilter('id', targetIds)
                           .eq('is_rush_in', true);
                       joinedRes = acts as List;
@@ -1162,18 +1465,24 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                         combined.add(m);
                       }
                     }
-                    
+
                     combined.sort((a, b) {
-                      final dtA = DateTime.tryParse(a['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
-                      final dtB = DateTime.tryParse(b['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+                      final dtA = DateTime.tryParse(
+                              a['created_at']?.toString() ?? '') ??
+                          DateTime.fromMillisecondsSinceEpoch(0);
+                      final dtB = DateTime.tryParse(
+                              b['created_at']?.toString() ?? '') ??
+                          DateTime.fromMillisecondsSinceEpoch(0);
                       return dtB.compareTo(dtA);
                     });
-                    
+
                     return combined;
                   }(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return Center(child: CircularProgressIndicator(color: const Color(0xFFFF6B00)));
+                      return Center(
+                          child: CircularProgressIndicator(
+                              color: const Color(0xFFFF6B00)));
                     }
                     final list = snapshot.data ?? [];
                     if (list.isEmpty) {
@@ -1182,18 +1491,27 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                         child: Center(
                           child: Column(
                             children: [
-                              Icon(Icons.flash_off, size: 48, color: doodle ? DoodleColors.brown.withValues(alpha: 0.4) : Colors.white24),
+                              Icon(Icons.flash_off,
+                                  size: 48,
+                                  color: doodle
+                                      ? DoodleColors.brown
+                                          .withValues(alpha: 0.4)
+                                      : Colors.white24),
                               const SizedBox(height: 12),
                               Text(
                                 'No rush-ins found',
-                                style: doodle ? DoodleFonts.body(fontSize: 14, color: DoodleColors.brown) : GoogleFonts.inter(fontSize: 14, color: Colors.white60),
+                                style: doodle
+                                    ? DoodleFonts.body(
+                                        fontSize: 14, color: DoodleColors.brown)
+                                    : GoogleFonts.inter(
+                                        fontSize: 14, color: Colors.white60),
                               ),
                             ],
                           ),
                         ),
                       );
                     }
-                    
+
                     final now = DateTime.now().toUtc();
                     return ListView.separated(
                       physics: const BouncingScrollPhysics(),
@@ -1202,13 +1520,18 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       itemBuilder: (ctx, i) {
                         final act = list[i];
                         final isHosted = act['relation'] == 'hosted';
-                        
+
                         // Status logic
-                        final actStr = act['activity_time'] as String? ?? act['created_at'] as String?;
+                        final actStr = act['activity_time'] as String? ??
+                            act['created_at'] as String?;
                         final expStr = act['expires_at'] as String?;
-                        final start = actStr != null ? DateTime.tryParse(actStr) : null;
-                        final end = expStr != null ? DateTime.tryParse(expStr) : start?.add(Duration(hours: act['duration_hours'] as int? ?? 6));
-                        
+                        final start =
+                            actStr != null ? DateTime.tryParse(actStr) : null;
+                        final end = expStr != null
+                            ? DateTime.tryParse(expStr)
+                            : start?.add(Duration(
+                                hours: act['duration_hours'] as int? ?? 6));
+
                         String statusLabel = 'UNKNOWN';
                         Color sColor = Colors.white38;
                         if (start != null && end != null) {
@@ -1226,27 +1549,40 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
                         final title = act['title']?.toString() ?? 'Untitled';
                         final loc = act['location_name']?.toString() ?? '';
-                        final hostMap = act['profiles'] as Map<String, dynamic>?;
+                        final hostMap =
+                            act['profiles'] as Map<String, dynamic>?;
                         final hostName = hostMap?['name']?.toString() ?? 'Host';
-                        
+
                         return GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: () {
                             Navigator.pop(ctx);
-                            Future.delayed(const Duration(milliseconds: 150), () {
+                            Future.delayed(const Duration(milliseconds: 150),
+                                () {
                               if (mounted) {
-                                Navigator.push(context, MaterialPageRoute(builder: (_) => RushInConsumerDetailView(activity: act, onInteraction: () {})));
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            RushInConsumerDetailView(
+                                                activity: act,
+                                                onInteraction: () {})));
                               }
                             });
                           },
                           child: Container(
                             padding: const EdgeInsets.all(14),
                             decoration: doodle
-                                ? DoodleDecorations.card(color: DoodleColors.paper, borderColor: DoodleColors.cardBorder, radius: 14)
+                                ? DoodleDecorations.card(
+                                    color: DoodleColors.paper,
+                                    borderColor: DoodleColors.cardBorder,
+                                    radius: 14)
                                 : BoxDecoration(
                                     color: const Color(0xFF16161D),
                                     borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                                    border: Border.all(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.08)),
                                   ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1254,19 +1590,29 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                 Row(
                                   children: [
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: (isHosted ? const Color(0xFFFF6B00) : const Color(0xFF4E8BFF)).withValues(alpha: 0.15),
+                                        color: (isHosted
+                                                ? const Color(0xFFFF6B00)
+                                                : const Color(0xFF4E8BFF))
+                                            .withValues(alpha: 0.15),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
                                         isHosted ? 'HOSTED' : 'JOINED',
-                                        style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: isHosted ? const Color(0xFFFF6B00) : const Color(0xFF4E8BFF)),
+                                        style: GoogleFonts.inter(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: isHosted
+                                                ? const Color(0xFFFF6B00)
+                                                : const Color(0xFF4E8BFF)),
                                       ),
                                     ),
                                     const Spacer(),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
                                         color: sColor.withValues(alpha: 0.15),
                                         borderRadius: BorderRadius.circular(8),
@@ -1274,10 +1620,19 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                       child: Row(
                                         children: [
                                           if (statusLabel == 'LIVE NOW') ...[
-                                            Container(width: 6, height: 6, decoration: BoxDecoration(color: sColor, shape: BoxShape.circle)),
+                                            Container(
+                                                width: 6,
+                                                height: 6,
+                                                decoration: BoxDecoration(
+                                                    color: sColor,
+                                                    shape: BoxShape.circle)),
                                             const SizedBox(width: 4),
                                           ],
-                                          Text(statusLabel, style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: sColor)),
+                                          Text(statusLabel,
+                                              style: GoogleFonts.inter(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: sColor)),
                                         ],
                                       ),
                                     ),
@@ -1286,23 +1641,38 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                 const SizedBox(height: 10),
                                 Text(
                                   title,
-                                  style: doodle ? DoodleFonts.heading(fontSize: 16, color: DoodleColors.brown) : GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                                  style: doodle
+                                      ? DoodleFonts.heading(
+                                          fontSize: 16,
+                                          color: DoodleColors.brown)
+                                      : GoogleFonts.inter(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white),
                                 ),
                                 const SizedBox(height: 4),
                                 if (loc.isNotEmpty)
                                   Row(
                                     children: [
-                                      const Icon(Icons.location_on, size: 12, color: Colors.white38),
+                                      const Icon(Icons.location_on,
+                                          size: 12, color: Colors.white38),
                                       const SizedBox(width: 4),
-                                      Text(loc, style: GoogleFonts.inter(fontSize: 12, color: Colors.white54)),
+                                      Text(loc,
+                                          style: GoogleFonts.inter(
+                                              fontSize: 12,
+                                              color: Colors.white54)),
                                     ],
                                   ),
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    const Icon(Icons.person, size: 12, color: Colors.white38),
+                                    const Icon(Icons.person,
+                                        size: 12, color: Colors.white38),
                                     const SizedBox(width: 4),
-                                    Text('by $hostName', style: GoogleFonts.inter(fontSize: 12, color: Colors.white54)),
+                                    Text('by $hostName',
+                                        style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            color: Colors.white54)),
                                   ],
                                 ),
                               ],
@@ -1321,14 +1691,19 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     );
   }
 
-  Widget _buildStatCol(String val, String label, Color color, VoidCallback? onTap) {
+  Widget _buildStatCol(
+      String val, String label, Color color, VoidCallback? onTap) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: Column(
           children: [
-            Text(val, style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+            Text(val,
+                style: GoogleFonts.plusJakartaSans(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white)),
             const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -1336,7 +1711,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(label, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+              child: Text(label,
+                  style: GoogleFonts.inter(
+                      fontSize: 11, fontWeight: FontWeight.w600, color: color)),
             ),
           ],
         ),
@@ -1358,9 +1735,16 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           children: [
             Text(icon, style: const TextStyle(fontSize: 20)),
             const SizedBox(height: 6),
-            Text(val, style: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
+            Text(val,
+                style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15, fontWeight: FontWeight.w800, color: color)),
             const SizedBox(height: 4),
-            Text(label, style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w600, color: ProfileColors.textMuted, letterSpacing: 0.5)),
+            Text(label,
+                style: GoogleFonts.inter(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: ProfileColors.textMuted,
+                    letterSpacing: 0.5)),
           ],
         ),
       ),
@@ -1368,19 +1752,20 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   // ============== 3. POSTS LAYOUT ==============
-  Widget _buildPostsTabs() {
+  Widget _buildPostsTabs(bool isMe) {
     final doodle = isDoodleMode(context);
     if (doodle) {
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         padding: const EdgeInsets.all(4),
-        decoration: DoodleDecorations.card(color: DoodleColors.amber.withValues(alpha: 0.3)),
+        decoration: DoodleDecorations.card(
+            color: DoodleColors.amber.withValues(alpha: 0.3)),
         child: Row(
           children: [
             _buildTabBtn(0, 'GRID'),
             _buildTabBtn(1, 'REELS'),
             _buildTabBtn(2, 'VIBES'),
-            _buildTabBtn(3, 'TAGGED'),
+            _buildTabBtn(3, isMe ? 'SAVED' : 'TAGGED'),
           ],
         ),
       );
@@ -1394,7 +1779,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           _buildTabBtn(0, 'GRID'),
           _buildTabBtn(1, 'REELS'),
           _buildTabBtn(2, 'VIBES'),
-          _buildTabBtn(3, 'TAGGED'),
+          _buildTabBtn(3, isMe ? 'SAVED' : 'TAGGED'),
         ],
       ),
     );
@@ -1403,7 +1788,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   Widget _buildTabBtn(int index, String title) {
     bool active = _activeTabIndex == index;
     final doodle = isDoodleMode(context);
-    
+
     if (doodle) {
       return Expanded(
         child: GestureDetector(
@@ -1412,8 +1797,15 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 12),
             alignment: Alignment.center,
-            decoration: active ? DoodleDecorations.card(color: DoodleColors.orange, radius: 4) : null,
-            child: Text(title, style: DoodleFonts.heading(fontSize: 14, color: active ? DoodleColors.brown : DoodleColors.brown.withValues(alpha: 0.5))),
+            decoration: active
+                ? DoodleDecorations.card(color: DoodleColors.orange, radius: 4)
+                : null,
+            child: Text(title,
+                style: DoodleFonts.heading(
+                    fontSize: 14,
+                    color: active
+                        ? DoodleColors.brown
+                        : DoodleColors.brown.withValues(alpha: 0.5))),
           ),
         ),
       );
@@ -1427,9 +1819,18 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           padding: const EdgeInsets.symmetric(vertical: 16),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            border: active ? const Border(bottom: BorderSide(color: ProfileColors.cyan, width: 2)) : null,
+            border: active
+                ? const Border(
+                    bottom: BorderSide(color: ProfileColors.cyan, width: 2))
+                : null,
           ),
-          child: Text(title, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: active ? ProfileColors.cyan : ProfileColors.textMuted)),
+          child: Text(title,
+              style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                  color:
+                      active ? ProfileColors.cyan : ProfileColors.textMuted)),
         ),
       ),
     );
@@ -1442,40 +1843,56 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         alignment: Alignment.center,
         child: Column(
           children: [
-            const Icon(Icons.lock_outline, size: 48, color: ProfileColors.textMuted),
+            const Icon(Icons.lock_outline,
+                size: 48, color: ProfileColors.textMuted),
             const SizedBox(height: 16),
-            Text('Private Account', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text('Private Account',
+                style: GoogleFonts.inter(
+                    fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Text("Follow this user to see their content.", style: GoogleFonts.inter(color: ProfileColors.textMuted, fontSize: 13)),
+            Text("Follow this user to see their content.",
+                style: GoogleFonts.inter(
+                    color: ProfileColors.textMuted, fontSize: 13)),
           ],
         ),
       );
     }
-    
-    if (_activeTabIndex != 0) {
-      // Empty state for Reels, Experiencs, Tagged
+
+    if (_activeTabIndex != 0 && _activeTabIndex != 3) {
+      // Empty state for Reels, Experiencs
       return Container(
         padding: const EdgeInsets.all(60),
         alignment: Alignment.center,
         child: Column(
           children: [
             Container(
-              width: 64, height: 64,
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: ProfileColors.borderLight, width: 2)),
-              child: const Icon(Icons.filter_none, color: ProfileColors.textMuted),
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border:
+                      Border.all(color: ProfileColors.borderLight, width: 2)),
+              child:
+                  const Icon(Icons.filter_none, color: ProfileColors.textMuted),
             ),
             const SizedBox(height: 16),
-            Text('No Content Yet', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text('No Content Yet',
+                style: GoogleFonts.inter(
+                    fontSize: 18, fontWeight: FontWeight.w600)),
           ],
         ),
       );
     }
 
-    if (_userPosts.isEmpty) {
+    final displayPosts = _activeTabIndex == 3 ? _savedPosts : _userPosts;
+
+    if (displayPosts.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(60),
         alignment: Alignment.center,
-        child: Text('No posts yet', style: GoogleFonts.inter(color: ProfileColors.textMuted, fontSize: 14)),
+        child: Text(_activeTabIndex == 3 ? 'No saved posts' : 'No posts yet',
+            style: GoogleFonts.inter(
+                color: ProfileColors.textMuted, fontSize: 14)),
       );
     }
 
@@ -1485,25 +1902,32 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       padding: const EdgeInsets.all(2),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 2, mainAxisSpacing: 2,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
       ),
-      itemCount: _userPosts.length,
+      itemCount: displayPosts.length,
       itemBuilder: (context, index) {
-        final post = _userPosts[index];
+        final post = displayPosts[index];
         final img = post['image_url']?.toString();
         ImageProvider? provider = _buildSafeImageProvider(img);
 
         return GestureDetector(
           onLongPress: () {
-             // For deleting post logic
+            // For deleting post logic
           },
           child: ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: Container(
               color: ProfileColors.bgTertiary,
-              child: (img != null && img.isNotEmpty) ? Image(image: provider, fit: BoxFit.cover) : Center(
-                child: Text(post['content'] ?? '', maxLines: 2, style: const TextStyle(fontSize: 10, color: Colors.white54), textAlign: TextAlign.center),
-              ),
+              child: (img != null && img.isNotEmpty)
+                  ? Image(image: provider, fit: BoxFit.cover)
+                  : Center(
+                      child: Text(post['content'] ?? '',
+                          maxLines: 2,
+                          style: const TextStyle(
+                              fontSize: 10, color: Colors.white54),
+                          textAlign: TextAlign.center),
+                    ),
             ),
           ),
         );
@@ -1516,29 +1940,48 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     final uid = Supabase.instance.client.auth.currentUser?.id ?? '';
     return Drawer(
       backgroundColor: ProfileColors.bgSecondary,
-      width: MediaQuery.of(context).size.width * 0.88 > 380 ? 380 : MediaQuery.of(context).size.width * 0.88,
+      width: MediaQuery.of(context).size.width * 0.88 > 380
+          ? 380
+          : MediaQuery.of(context).size.width * 0.88,
       child: SafeArea(
         child: Column(
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
               decoration: BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [ProfileColors.cyan.withValues(alpha: 0.08), Colors.transparent]),
-                border: const Border(bottom: BorderSide(color: ProfileColors.borderSubtle)),
+                gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      ProfileColors.cyan.withValues(alpha: 0.08),
+                      Colors.transparent
+                    ]),
+                border: const Border(
+                    bottom: BorderSide(color: ProfileColors.borderSubtle)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   ShaderMask(
-                    shaderCallback: (bounds) => neonGradient.createShader(bounds),
-                    child: Text('⬡ Dashboard', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+                    shaderCallback: (bounds) =>
+                        neonGradient.createShader(bounds),
+                    child: Text('⬡ Dashboard',
+                        style: GoogleFonts.inter(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white)),
                   ),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: Container(
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(color: ProfileColors.glass, shape: BoxShape.circle, border: Border.all(color: ProfileColors.gborder)),
-                      child: const Icon(Icons.close, size: 18, color: ProfileColors.textSecondary),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                          color: ProfileColors.glass,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: ProfileColors.gborder)),
+                      child: const Icon(Icons.close,
+                          size: 18, color: ProfileColors.textSecondary),
                     ),
                   )
                 ],
@@ -1546,66 +1989,162 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             ),
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: Supabase.instance.client.from('requests').stream(primaryKey: ['id']),
+                stream: Supabase.instance.client
+                    .from('requests')
+                    .stream(primaryKey: ['id']),
                 builder: (context, reqSnap) {
                   final allReqs = reqSnap.data ?? [];
                   // Counts
-                  final followCount = allReqs.where((r) => r['target_id'] == uid && r['target_type'] == 'follow' && r['status'] == 'pending').length;
-                  final msgCount = allReqs.where((r) => r['target_id'] == uid && r['target_type'] == 'message' && r['status'] == 'pending').length;
+                  final followCount = allReqs
+                      .where((r) =>
+                          r['target_id'] == uid &&
+                          r['target_type'] == 'follow' &&
+                          r['status'] == 'pending')
+                      .length;
+                  final msgCount = allReqs
+                      .where((r) =>
+                          r['target_id'] == uid &&
+                          r['target_type'] == 'message' &&
+                          r['status'] == 'pending')
+                      .length;
 
                   return ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
                       // ── SECTION 1: YOUR ECOSYSTEM ──
                       _buildSectionTitle('🏠 YOUR ECOSYSTEM'),
-                      _buildDashItem(Icons.campaign, 'amber', 'Hosted by You', 'Manage participants across your rush-ins, activities & events',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HostedByYouScreen()))),
-                      _buildDashItem(Icons.how_to_reg, 'teal', 'Joined by You', 'Track your participation status across all categories',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JoinedByYouScreen()))),
-                      _buildDashItem(Icons.person_add_alt_1, 'coral', 'Follow Requests', 'Approve or deny incoming follow requests',
-                        badge: followCount > 0 ? '$followCount' : null,
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FollowRequestsScreen()))),
-                      const Divider(color: ProfileColors.borderSubtle, height: 40),
+                      _buildDashItem(Icons.campaign, 'amber', 'Hosted by You',
+                          'Manage participants across your rush-ins, activities & events',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const HostedByYouScreen()))),
+                      _buildDashItem(Icons.how_to_reg, 'teal', 'Joined by You',
+                          'Track your participation status across all categories',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const JoinedByYouScreen()))),
+                      _buildDashItem(
+                          Icons.person_add_alt_1,
+                          'coral',
+                          'Follow Requests',
+                          'Approve or deny incoming follow requests',
+                          badge: followCount > 0 ? '$followCount' : null,
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      const FollowRequestsScreen()))),
+                      const Divider(
+                          color: ProfileColors.borderSubtle, height: 40),
 
                       // ── SECTION 2: CONTENT MANAGEMENT ──
                       _buildSectionTitle('📦 CONTENT MANAGEMENT'),
-                      _buildDashItem(Icons.photo_library, 'teal', 'My Posts', 'Manage, archive or delete posts',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyPostsScreen()))),
-                      _buildDashItem(Icons.bookmark_border, 'violet', 'Saved Collections', 'Posts, places & experiences saved',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedCollectionsScreen()))),
-                      _buildDashItem(Icons.star_border, 'amber', 'Reviews & Ratings', 'Manage your reviews across app',
-                        onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coming soon!')))),
-                      _buildDashItem(Icons.chat_bubble_outline, 'blue', 'Messages & Chats', 'All conversations & chat groups',
-                        badge: msgCount > 0 ? '$msgCount' : null,
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen()))),
-                      const Divider(color: ProfileColors.borderSubtle, height: 40),
+                      _buildDashItem(Icons.photo_library, 'teal', 'My Posts',
+                          'Manage, archive or delete posts',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const MyPostsScreen()))),
+                      _buildDashItem(
+                          Icons.bookmark_border,
+                          'violet',
+                          'Saved Collections',
+                          'Posts, places & experiences saved',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      const SavedCollectionsScreen()))),
+                      _buildDashItem(Icons.star_border, 'amber',
+                          'Reviews & Ratings', 'Manage your reviews across app',
+                          onTap: () => ScaffoldMessenger.of(context)
+                              .showSnackBar(const SnackBar(
+                                  content: Text('Coming soon!')))),
+                      _buildDashItem(Icons.chat_bubble_outline, 'blue',
+                          'Messages & Chats', 'All conversations & chat groups',
+                          badge: msgCount > 0 ? '$msgCount' : null,
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const ChatScreen()))),
+                      const Divider(
+                          color: ProfileColors.borderSubtle, height: 40),
 
                       // ── SECTION 3: ANALYTICS & INSIGHTS ──
                       _buildSectionTitle('📊 ANALYTICS & INSIGHTS'),
-                      _buildDashItem(Icons.bar_chart, 'green', 'Profile Insights', 'Views, reach & engagement stats',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileInsightsScreen()))),
-                      _buildDashItem(Icons.trending_up, 'teal', 'Spark Score Analytics', 'Track your Spark score growth',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SparkAnalyticsScreen()))),
-                      _buildDashItem(Icons.donut_large, 'amber', 'Activity Summary', 'Weekly & monthly activity report',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActivitySummaryScreen()))),
-                      const Divider(color: ProfileColors.borderSubtle, height: 40),
+                      _buildDashItem(Icons.bar_chart, 'green',
+                          'Profile Insights', 'Views, reach & engagement stats',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      const ProfileInsightsScreen()))),
+                      _buildDashItem(
+                          Icons.trending_up,
+                          'teal',
+                          'Spark Score Analytics',
+                          'Track your Spark score growth',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      const SparkAnalyticsScreen()))),
+                      _buildDashItem(
+                          Icons.donut_large,
+                          'amber',
+                          'Activity Summary',
+                          'Weekly & monthly activity report',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      const ActivitySummaryScreen()))),
+                      const Divider(
+                          color: ProfileColors.borderSubtle, height: 40),
 
                       // ── SECTION 4: QUICK TOOLS ──
                       _buildSectionTitle('🔧 QUICK TOOLS'),
-                      _buildDashItem(Icons.block, 'pink', 'Blocked Users', 'Manage blocked accounts',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BlockedUsersScreen()))),
-                      _buildDashItem(Icons.visibility_off, 'blue', 'Restricted Accounts', 'Silently limit interactions',
-                        onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coming soon!')))),
-                      _buildDashItem(Icons.qr_code_2, 'violet', 'QR Code', 'Share your profile via QR',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const QRCodeScreen()))),
-                      _buildDashItem(Icons.share, 'green', 'Invite Friends', 'Invite contacts to join Relaya',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InviteFriendsScreen()))),
-                      const Divider(color: ProfileColors.borderSubtle, height: 40),
+                      _buildDashItem(Icons.block, 'pink', 'Blocked Users',
+                          'Manage blocked accounts',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const BlockedUsersScreen()))),
+                      _buildDashItem(Icons.visibility_off, 'blue',
+                          'Restricted Accounts', 'Silently limit interactions',
+                          onTap: () => ScaffoldMessenger.of(context)
+                              .showSnackBar(const SnackBar(
+                                  content: Text('Coming soon!')))),
+                      _buildDashItem(Icons.qr_code_2, 'violet', 'QR Code',
+                          'Share your profile via QR',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const QRCodeScreen()))),
+                      _buildDashItem(Icons.share, 'green', 'Invite Friends',
+                          'Invite contacts to join Relaya',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      const InviteFriendsScreen()))),
+                      const Divider(
+                          color: ProfileColors.borderSubtle, height: 40),
 
                       // ── SECTION 5: SYSTEM ADMINISTRATION ──
                       _buildSectionTitle('⚡ SYSTEM ADMIN'),
-                      _buildDashItem(Icons.admin_panel_settings, 'red', 'Super Admin Panel', 'Supreme power over the Relaya ecosystem',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboardScreen()))),
+                      _buildDashItem(
+                          Icons.admin_panel_settings,
+                          'red',
+                          'Super Admin Panel',
+                          'Supreme power over the Relaya ecosystem',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      const AdminDashboardScreen()))),
                       const SizedBox(height: 30),
                     ],
                   );
@@ -1618,22 +2157,34 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     );
   }
 
-  Widget _buildDashItem(IconData icon, String colorName, String title, String desc, {String? badge, VoidCallback? onTap}) {
+  Widget _buildDashItem(
+      IconData icon, String colorName, String title, String desc,
+      {String? badge, VoidCallback? onTap}) {
     Color getBaseColor() {
-      switch(colorName) {
-        case 'amber': return ProfileColors.cyan;
-        case 'coral': return ProfileColors.pink;
-        case 'violet': return ProfileColors.purple;
-        case 'blue': return ProfileColors.blue;
-        case 'green': return ProfileColors.green;
-        case 'pink': return ProfileColors.pink;
-        case 'teal': return ProfileColors.teal;
-        case 'red': return ProfileColors.red;
-        default: return ProfileColors.textMuted;
+      switch (colorName) {
+        case 'amber':
+          return ProfileColors.cyan;
+        case 'coral':
+          return ProfileColors.pink;
+        case 'violet':
+          return ProfileColors.purple;
+        case 'blue':
+          return ProfileColors.blue;
+        case 'green':
+          return ProfileColors.green;
+        case 'pink':
+          return ProfileColors.pink;
+        case 'teal':
+          return ProfileColors.teal;
+        case 'red':
+          return ProfileColors.red;
+        default:
+          return ProfileColors.textMuted;
       }
     }
+
     Color c = getBaseColor();
-    
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1647,10 +2198,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         child: Row(
           children: [
             Container(
-              width: 42, height: 42,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(colors: [c.withValues(alpha:0.2), c.withValues(alpha:0.05)]),
+                gradient: LinearGradient(colors: [
+                  c.withValues(alpha: 0.2),
+                  c.withValues(alpha: 0.05)
+                ]),
                 border: Border.all(color: c.withValues(alpha: 0.15)),
               ),
               child: Icon(icon, color: c, size: 20),
@@ -1660,9 +2215,16 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: ProfileColors.textPrimary)),
+                  Text(title,
+                      style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: ProfileColors.textPrimary)),
                   const SizedBox(height: 2),
-                  Text(desc, style: GoogleFonts.inter(fontSize: 11, color: ProfileColors.textMuted), overflow: TextOverflow.ellipsis),
+                  Text(desc,
+                      style: GoogleFonts.inter(
+                          fontSize: 11, color: ProfileColors.textMuted),
+                      overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),
@@ -1670,10 +2232,17 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               Container(
                 margin: const EdgeInsets.only(right: 12),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: ProfileColors.red.withValues(alpha:0.15), borderRadius: BorderRadius.circular(99)),
-                child: Text(badge, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: ProfileColors.red)),
+                decoration: BoxDecoration(
+                    color: ProfileColors.red.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(99)),
+                child: Text(badge,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: ProfileColors.red)),
               ),
-            const Icon(Icons.arrow_forward_ios, size: 14, color: ProfileColors.textMuted),
+            const Icon(Icons.arrow_forward_ios,
+                size: 14, color: ProfileColors.textMuted),
           ],
         ),
       ),
@@ -1684,26 +2253,48 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     final prefs = await SharedPreferences.getInstance();
     if (value is bool) {
       await prefs.setBool(key, value);
-    } else if (value is double) await prefs.setDouble(key, value);
-    else if (value is String) await prefs.setString(key, value);
+    } else if (value is double)
+      await prefs.setDouble(key, value);
+    else if (value is String)
+      await prefs.setString(key, value);
     else if (value is int) await prefs.setInt(key, value);
   }
 
-  void _showBottomSlider({required String title, required String subtitle, required Widget slider, required VoidCallback onSave}) {
+  void _showBottomSlider(
+      {required String title,
+      required String subtitle,
+      required Widget slider,
+      required VoidCallback onSave}) {
     final doodle = isDoodleMode(context);
     showModalBottomSheet(
       context: context,
       backgroundColor: doodle ? DoodleColors.paper : ProfileColors.bgSecondary,
-      shape: doodle ? null : const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: doodle
+          ? null
+          : const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 24) : GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: ProfileColors.textPrimary)),
+            Text(title,
+                style: doodle
+                    ? DoodleFonts.heading(
+                        color: DoodleColors.brown, fontSize: 24)
+                    : GoogleFonts.plusJakartaSans(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: ProfileColors.textPrimary)),
             const SizedBox(height: 8),
-            Text(subtitle, style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 14) : GoogleFonts.inter(fontSize: 13, color: ProfileColors.textMuted)),
+            Text(subtitle,
+                style: doodle
+                    ? DoodleFonts.body(
+                        color: DoodleColors.brown.withValues(alpha: 0.7),
+                        fontSize: 14)
+                    : GoogleFonts.inter(
+                        fontSize: 13, color: ProfileColors.textMuted)),
             const SizedBox(height: 32),
             slider,
             const SizedBox(height: 32),
@@ -1716,9 +2307,28 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: doodle
-                  ? DoodleDecorations.card(color: DoodleColors.orange).copyWith(borderRadius: BorderRadius.circular(12))
-                  : BoxDecoration(gradient: mainGradient, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: ProfileColors.cyan.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))]),
-                child: Center(child: Text('Save Changes', style: doodle ? DoodleFonts.body(color: DoodleColors.cream, fontSize: 18).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white))),
+                    ? DoodleDecorations.card(color: DoodleColors.orange)
+                        .copyWith(borderRadius: BorderRadius.circular(12))
+                    : BoxDecoration(
+                        gradient: mainGradient,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                            BoxShadow(
+                                color:
+                                    ProfileColors.cyan.withValues(alpha: 0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4))
+                          ]),
+                child: Center(
+                    child: Text('Save Changes',
+                        style: doodle
+                            ? DoodleFonts.body(
+                                    color: DoodleColors.cream, fontSize: 18)
+                                .copyWith(fontWeight: FontWeight.bold)
+                            : GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white))),
               ),
             ),
           ],
@@ -1736,18 +2346,31 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       slider: StatefulBuilder(builder: (context, setSheetState) {
         return Column(
           children: [
-            Text('${tempVal.toInt()} km', style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 26).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.bold, color: ProfileColors.cyan)),
+            Text('${tempVal.toInt()} km',
+                style: doodle
+                    ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 26)
+                        .copyWith(fontWeight: FontWeight.bold)
+                    : GoogleFonts.inter(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: ProfileColors.cyan)),
             SliderTheme(
-              data: doodle ? SliderThemeData(
-                activeTrackColor: DoodleColors.blue,
-                inactiveTrackColor: DoodleColors.paper,
-                thumbColor: DoodleColors.orange,
-                overlayColor: DoodleColors.orange.withValues(alpha: 0.2),
-              ) : SliderTheme.of(context),
+              data: doodle
+                  ? SliderThemeData(
+                      activeTrackColor: DoodleColors.blue,
+                      inactiveTrackColor: DoodleColors.paper,
+                      thumbColor: DoodleColors.orange,
+                      overlayColor: DoodleColors.orange.withValues(alpha: 0.2),
+                    )
+                  : SliderTheme.of(context),
               child: Slider(
                 value: tempVal,
-                min: 1, max: 200, divisions: 199,
-                activeColor: doodle ? null : ProfileColors.cyan, inactiveColor: doodle ? null : ProfileColors.cyan.withValues(alpha:0.2),
+                min: 1,
+                max: 200,
+                divisions: 199,
+                activeColor: doodle ? null : ProfileColors.cyan,
+                inactiveColor:
+                    doodle ? null : ProfileColors.cyan.withValues(alpha: 0.2),
                 onChanged: (v) => setSheetState(() => tempVal = v),
               ),
             ),
@@ -1771,26 +2394,45 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       slider: StatefulBuilder(builder: (context, setSheetState) {
         return Column(
           children: [
-            Text('${tempMin.toInt()} - ${tempMax.toInt()} years old', style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 22).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.bold, color: ProfileColors.cyan)),
+            Text('${tempMin.toInt()} - ${tempMax.toInt()} years old',
+                style: doodle
+                    ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 22)
+                        .copyWith(fontWeight: FontWeight.bold)
+                    : GoogleFonts.inter(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: ProfileColors.cyan)),
             SliderTheme(
-              data: doodle ? SliderThemeData(
-                activeTrackColor: DoodleColors.blue,
-                inactiveTrackColor: DoodleColors.paper,
-                thumbColor: DoodleColors.orange,
-                overlayColor: DoodleColors.orange.withValues(alpha: 0.2),
-              ) : SliderTheme.of(context),
+              data: doodle
+                  ? SliderThemeData(
+                      activeTrackColor: DoodleColors.blue,
+                      inactiveTrackColor: DoodleColors.paper,
+                      thumbColor: DoodleColors.orange,
+                      overlayColor: DoodleColors.orange.withValues(alpha: 0.2),
+                    )
+                  : SliderTheme.of(context),
               child: RangeSlider(
                 values: RangeValues(tempMin, tempMax),
-                min: 18, max: 99, divisions: 81,
-                activeColor: doodle ? null : ProfileColors.cyan, inactiveColor: doodle ? null : ProfileColors.cyan.withValues(alpha:0.2),
-                onChanged: (v) => setSheetState(() { tempMin = v.start; tempMax = v.end; }),
+                min: 18,
+                max: 99,
+                divisions: 81,
+                activeColor: doodle ? null : ProfileColors.cyan,
+                inactiveColor:
+                    doodle ? null : ProfileColors.cyan.withValues(alpha: 0.2),
+                onChanged: (v) => setSheetState(() {
+                  tempMin = v.start;
+                  tempMax = v.end;
+                }),
               ),
             ),
           ],
         );
       }),
       onSave: () {
-        setState(() { _ageMin = tempMin; _ageMax = tempMax; });
+        setState(() {
+          _ageMin = tempMin;
+          _ageMax = tempMax;
+        });
         _saveSetting('age_range_min', tempMin);
         _saveSetting('age_range_max', tempMax);
       },
@@ -1816,7 +2458,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       {'icon': '🚀', 'label': 'Startup', 'c1': 0xFF030C1A, 'c2': 0xFF1E3A8A},
       {'icon': '✈️', 'label': 'Travel', 'c1': 0xFF022C22, 'c2': 0xFF064E3B},
       {'icon': '🎮', 'label': 'Gaming', 'c1': 0xFF0D0028, 'c2': 0xFF3B0764},
-      {'icon': '📸', 'label': 'Photography', 'c1': 0xFF1A0E00, 'c2': 0xFF78350F},
+      {
+        'icon': '📸',
+        'label': 'Photography',
+        'c1': 0xFF1A0E00,
+        'c2': 0xFF78350F
+      },
       {'icon': '🍳', 'label': 'Cooking', 'c1': 0xFF1A0500, 'c2': 0xFF7C2D12},
       {'icon': '🎤', 'label': 'Perform', 'c1': 0xFF022C22, 'c2': 0xFF065F46},
       {'icon': '🤖', 'label': 'Tech & AI', 'c1': 0xFF001A25, 'c2': 0xFF082F49},
@@ -1831,11 +2478,13 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             return Container(
-              constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+              constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.8),
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
               decoration: BoxDecoration(
                 color: ProfileColors.bgSecondary,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
                 border: Border.all(color: ProfileColors.borderSubtle),
               ),
               child: Column(
@@ -1843,19 +2492,33 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Center(
-                    child: Container(width: 40, height: 4, decoration: BoxDecoration(color: ProfileColors.textMuted, borderRadius: BorderRadius.circular(2))),
+                    child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                            color: ProfileColors.textMuted,
+                            borderRadius: BorderRadius.circular(2))),
                   ),
                   const SizedBox(height: 20),
-                  Text('Explore Visibility', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: ProfileColors.textPrimary)),
+                  Text('Explore Visibility',
+                      style: GoogleFonts.inter(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: ProfileColors.textPrimary)),
                   const SizedBox(height: 6),
-                  Text('Choose which sections your profile appears in. Empty = visible everywhere.',
-                    style: GoogleFonts.inter(fontSize: 13, color: ProfileColors.textSecondary, height: 1.4),
+                  Text(
+                    'Choose which sections your profile appears in. Empty = visible everywhere.',
+                    style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: ProfileColors.textSecondary,
+                        height: 1.4),
                   ),
                   const SizedBox(height: 20),
                   Flexible(
                     child: SingleChildScrollView(
                       child: Wrap(
-                        spacing: 10, runSpacing: 10,
+                        spacing: 10,
+                        runSpacing: 10,
                         children: allVibes.map((v) {
                           final label = v['label'] as String;
                           final icon = v['icon'] as String;
@@ -1872,21 +2535,42 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                             },
                             child: Container(
                               width: (MediaQuery.of(ctx).size.width - 60) / 2,
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 14),
                               decoration: BoxDecoration(
                                 gradient: active
-                                    ? LinearGradient(colors: [Color(v['c1'] as int), Color(v['c2'] as int)])
+                                    ? LinearGradient(colors: [
+                                        Color(v['c1'] as int),
+                                        Color(v['c2'] as int)
+                                      ])
                                     : null,
                                 color: active ? null : ProfileColors.bgTertiary,
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: active ? ProfileColors.cyan.withValues(alpha: 0.5) : ProfileColors.borderSubtle, width: active ? 2 : 1),
+                                border: Border.all(
+                                    color: active
+                                        ? ProfileColors.cyan
+                                            .withValues(alpha: 0.5)
+                                        : ProfileColors.borderSubtle,
+                                    width: active ? 2 : 1),
                               ),
                               child: Row(
                                 children: [
-                                  Text(icon, style: const TextStyle(fontSize: 20)),
+                                  Text(icon,
+                                      style: const TextStyle(fontSize: 20)),
                                   const SizedBox(width: 8),
-                                  Expanded(child: Text(label, style: GoogleFonts.inter(color: active ? Colors.white : ProfileColors.textSecondary, fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w500))),
-                                  if (active) const Icon(Icons.check_circle, color: ProfileColors.cyan, size: 18),
+                                  Expanded(
+                                      child: Text(label,
+                                          style: GoogleFonts.inter(
+                                              color: active
+                                                  ? Colors.white
+                                                  : ProfileColors.textSecondary,
+                                              fontSize: 13,
+                                              fontWeight: active
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w500))),
+                                  if (active)
+                                    const Icon(Icons.check_circle,
+                                        color: ProfileColors.cyan, size: 18),
                                 ],
                               ),
                             ),
@@ -1910,11 +2594,16 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [ProfileColors.cyan, ProfileColors.purple]),
+                        gradient: const LinearGradient(
+                            colors: [ProfileColors.cyan, ProfileColors.purple]),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       alignment: Alignment.center,
-                      child: Text('Apply', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+                      child: Text('Apply',
+                          style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white)),
                     ),
                   ),
                 ],
@@ -1933,85 +2622,144 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       context: context,
       backgroundColor: ProfileColors.bgSecondary,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: ProfileColors.textMuted, borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 20),
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [ProfileColors.purple.withValues(alpha: 0.2), ProfileColors.cyan.withValues(alpha: 0.1)]),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.theater_comedy, color: ProfileColors.purple, size: 24),
-            ),
-            const SizedBox(width: 14),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Alias Name', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: ProfileColors.textPrimary)),
-              Text('This name will appear in BolRooms only', style: GoogleFonts.inter(fontSize: 12, color: ProfileColors.textMuted)),
-            ]),
-          ]),
-          const SizedBox(height: 24),
-          TextField(
-            controller: ctrl,
-            autofocus: true,
-            style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-            maxLength: 20,
-            decoration: InputDecoration(
-              hintText: 'Enter your alias...',
-              hintStyle: GoogleFonts.inter(color: ProfileColors.textMuted),
-              filled: true,
-              fillColor: ProfileColors.glass,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: ProfileColors.borderSubtle)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: ProfileColors.borderSubtle)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: ProfileColors.cyan, width: 2)),
-              counterStyle: GoogleFonts.inter(color: ProfileColors.textMuted, fontSize: 11),
-              prefixIcon: const Icon(Icons.alternate_email, color: ProfileColors.cyan, size: 20),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Quick suggestion chips
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final suggestion in ['Shadow', 'Phantom', 'Ghost', 'Ninja', 'Mystic', 'Raven', 'Storm', 'Echo'])
-              GestureDetector(
-                onTap: () => ctrl.text = suggestion,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: EdgeInsets.fromLTRB(
+            24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                  child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: ProfileColors.textMuted,
+                          borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 20),
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: ProfileColors.glass,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: ProfileColors.borderSubtle),
+                    gradient: LinearGradient(colors: [
+                      ProfileColors.purple.withValues(alpha: 0.2),
+                      ProfileColors.cyan.withValues(alpha: 0.1)
+                    ]),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(suggestion, style: GoogleFonts.inter(color: ProfileColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+                  child: const Icon(Icons.theater_comedy,
+                      color: ProfileColors.purple, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Alias Name',
+                      style: GoogleFonts.inter(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: ProfileColors.textPrimary)),
+                  Text('This name will appear in BolRooms only',
+                      style: GoogleFonts.inter(
+                          fontSize: 12, color: ProfileColors.textMuted)),
+                ]),
+              ]),
+              const SizedBox(height: 24),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
+                maxLength: 20,
+                decoration: InputDecoration(
+                  hintText: 'Enter your alias...',
+                  hintStyle: GoogleFonts.inter(color: ProfileColors.textMuted),
+                  filled: true,
+                  fillColor: ProfileColors.glass,
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide:
+                          const BorderSide(color: ProfileColors.borderSubtle)),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide:
+                          const BorderSide(color: ProfileColors.borderSubtle)),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                          color: ProfileColors.cyan, width: 2)),
+                  counterStyle: GoogleFonts.inter(
+                      color: ProfileColors.textMuted, fontSize: 11),
+                  prefixIcon: const Icon(Icons.alternate_email,
+                      color: ProfileColors.cyan, size: 20),
                 ),
               ),
-          ]),
-          const SizedBox(height: 20),
-          GestureDetector(
-            onTap: () async {
-              final name = ctrl.text.trim();
-              if (name.isEmpty) return;
-              Navigator.pop(ctx);
-              setState(() => _bolroomAnonName = name);
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setString('bolroom_anon_name', name);
-            },
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [ProfileColors.cyan, ProfileColors.purple]),
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [BoxShadow(color: ProfileColors.cyan.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+              const SizedBox(height: 8),
+              // Quick suggestion chips
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final suggestion in [
+                  'Shadow',
+                  'Phantom',
+                  'Ghost',
+                  'Ninja',
+                  'Mystic',
+                  'Raven',
+                  'Storm',
+                  'Echo'
+                ])
+                  GestureDetector(
+                    onTap: () => ctrl.text = suggestion,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: ProfileColors.glass,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: ProfileColors.borderSubtle),
+                      ),
+                      child: Text(suggestion,
+                          style: GoogleFonts.inter(
+                              color: ProfileColors.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500)),
+                    ),
+                  ),
+              ]),
+              const SizedBox(height: 20),
+              GestureDetector(
+                onTap: () async {
+                  final name = ctrl.text.trim();
+                  if (name.isEmpty) return;
+                  Navigator.pop(ctx);
+                  setState(() => _bolroomAnonName = name);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString('bolroom_anon_name', name);
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                        colors: [ProfileColors.cyan, ProfileColors.purple]),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                          color: ProfileColors.cyan.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4))
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: Text('Save Alias',
+                      style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white)),
+                ),
               ),
-              alignment: Alignment.center,
-              child: Text('Save Alias', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
-            ),
-          ),
-        ]),
+            ]),
       ),
     );
   }
@@ -2035,87 +2783,152 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     showModalBottomSheet(
       context: context,
       backgroundColor: ProfileColors.bgSecondary,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) {
         return StatefulBuilder(builder: (ctx, setSheetState) {
           return Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: ProfileColors.textMuted, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 20),
-              Row(children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [ProfileColors.purple.withValues(alpha: 0.2), ProfileColors.cyan.withValues(alpha: 0.1)]),
-                    borderRadius: BorderRadius.circular(12),
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                      child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                              color: ProfileColors.textMuted,
+                              borderRadius: BorderRadius.circular(2)))),
+                  const SizedBox(height: 20),
+                  Row(children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [
+                          ProfileColors.purple.withValues(alpha: 0.2),
+                          ProfileColors.cyan.withValues(alpha: 0.1)
+                        ]),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.face,
+                          color: ProfileColors.cyan, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Choose Avatar',
+                              style: GoogleFonts.inter(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: ProfileColors.textPrimary)),
+                          Text('Pick your anonymous identity',
+                              style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: ProfileColors.textMuted)),
+                        ]),
+                  ]),
+                  const SizedBox(height: 20),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 0.85),
+                    itemCount: _anonAvatars.length,
+                    itemBuilder: (_, i) {
+                      final av = _anonAvatars[i];
+                      final avatarKey = 'anon_${av['label']}';
+                      final isSelected = _bolroomAnonAvatar == avatarKey;
+                      final color = Color(av['color'] as int);
+                      return GestureDetector(
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          setState(() => _bolroomAnonAvatar = avatarKey);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setString(
+                              'bolroom_anon_avatar', avatarKey);
+                        },
+                        child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: LinearGradient(colors: [
+                                    color.withValues(alpha: 0.3),
+                                    color.withValues(alpha: 0.1)
+                                  ]),
+                                  border: Border.all(
+                                      color: isSelected
+                                          ? ProfileColors.cyan
+                                          : color.withValues(alpha: 0.3),
+                                      width: isSelected ? 3 : 1.5),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                              color: ProfileColors.cyan
+                                                  .withValues(alpha: 0.4),
+                                              blurRadius: 12)
+                                        ]
+                                      : [],
+                                ),
+                                child: Center(
+                                    child: Text(av['emoji'] as String,
+                                        style: const TextStyle(fontSize: 26))),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(av['label'] as String,
+                                  style: GoogleFonts.inter(
+                                      fontSize: 10,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      color: isSelected
+                                          ? ProfileColors.cyan
+                                          : ProfileColors.textMuted)),
+                            ]),
+                      );
+                    },
                   ),
-                  child: const Icon(Icons.face, color: ProfileColors.cyan, size: 24),
-                ),
-                const SizedBox(width: 14),
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Choose Avatar', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: ProfileColors.textPrimary)),
-                  Text('Pick your anonymous identity', style: GoogleFonts.inter(fontSize: 12, color: ProfileColors.textMuted)),
-                ]),
-              ]),
-              const SizedBox(height: 20),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.85),
-                itemCount: _anonAvatars.length,
-                itemBuilder: (_, i) {
-                  final av = _anonAvatars[i];
-                  final avatarKey = 'anon_${av['label']}';
-                  final isSelected = _bolroomAnonAvatar == avatarKey;
-                  final color = Color(av['color'] as int);
-                  return GestureDetector(
+                  const SizedBox(height: 16),
+                  // "No avatar" option
+                  GestureDetector(
                     onTap: () async {
                       Navigator.pop(ctx);
-                      setState(() => _bolroomAnonAvatar = avatarKey);
+                      setState(() => _bolroomAnonAvatar = '');
                       final prefs = await SharedPreferences.getInstance();
-                      await prefs.setString('bolroom_anon_avatar', avatarKey);
+                      await prefs.setString('bolroom_anon_avatar', '');
                     },
-                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: 56, height: 56,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.1)]),
-                          border: Border.all(color: isSelected ? ProfileColors.cyan : color.withValues(alpha: 0.3), width: isSelected ? 3 : 1.5),
-                          boxShadow: isSelected ? [BoxShadow(color: ProfileColors.cyan.withValues(alpha: 0.4), blurRadius: 12)] : [],
-                        ),
-                        child: Center(child: Text(av['emoji'] as String, style: const TextStyle(fontSize: 26))),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: ProfileColors.glass,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: _bolroomAnonAvatar.isEmpty
+                                ? ProfileColors.cyan
+                                : ProfileColors.borderSubtle),
                       ),
-                      const SizedBox(height: 4),
-                      Text(av['label'] as String, style: GoogleFonts.inter(fontSize: 10, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500, color: isSelected ? ProfileColors.cyan : ProfileColors.textMuted)),
-                    ]),
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              // "No avatar" option
-              GestureDetector(
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  setState(() => _bolroomAnonAvatar = '');
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('bolroom_anon_avatar', '');
-                },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: ProfileColors.glass,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _bolroomAnonAvatar.isEmpty ? ProfileColors.cyan : ProfileColors.borderSubtle),
+                      alignment: Alignment.center,
+                      child: Text('Use Default Initial',
+                          style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _bolroomAnonAvatar.isEmpty
+                                  ? ProfileColors.cyan
+                                  : ProfileColors.textSecondary)),
+                    ),
                   ),
-                  alignment: Alignment.center,
-                  child: Text('Use Default Initial', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _bolroomAnonAvatar.isEmpty ? ProfileColors.cyan : ProfileColors.textSecondary)),
-                ),
-              ),
-            ]),
+                ]),
           );
         });
       },
@@ -2126,7 +2939,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     showModalBottomSheet(
       context: context,
       backgroundColor: ProfileColors.bgSecondary,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -2134,9 +2948,15 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Navigation Style', style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: ProfileColors.textPrimary)),
+              Text('Navigation Style',
+                  style: GoogleFonts.plusJakartaSans(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: ProfileColors.textPrimary)),
               const SizedBox(height: 8),
-              Text('Customize how you swipe between pages.', style: GoogleFonts.inter(fontSize: 13, color: ProfileColors.textMuted)),
+              Text('Customize how you swipe between pages.',
+                  style: GoogleFonts.inter(
+                      fontSize: 13, color: ProfileColors.textMuted)),
               const SizedBox(height: 24),
               ...['Slide', 'Fade', 'Scale', '3D Flip'].map((style) {
                 final isSelected = _navTransition == style;
@@ -2146,21 +2966,40 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     setState(() => _navTransition = style);
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setString('nav_transition', style);
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Navigation set to $style'), backgroundColor: ProfileColors.cyan, duration: const Duration(seconds: 1)));
+                    if (mounted)
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('Navigation set to $style'),
+                          backgroundColor: ProfileColors.cyan,
+                          duration: const Duration(seconds: 1)));
                   },
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 16, horizontal: 20),
                     decoration: BoxDecoration(
                       color: ProfileColors.glass,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: isSelected ? ProfileColors.cyan : ProfileColors.borderSubtle, width: isSelected ? 2 : 1),
+                      border: Border.all(
+                          color: isSelected
+                              ? ProfileColors.cyan
+                              : ProfileColors.borderSubtle,
+                          width: isSelected ? 2 : 1),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(style, style: GoogleFonts.inter(fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, color: isSelected ? Colors.white : ProfileColors.textSecondary)),
-                        if (isSelected) const Icon(Icons.check_circle, color: ProfileColors.cyan),
+                        Text(style,
+                            style: GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
+                                color: isSelected
+                                    ? Colors.white
+                                    : ProfileColors.textSecondary)),
+                        if (isSelected)
+                          const Icon(Icons.check_circle,
+                              color: ProfileColors.cyan),
                       ],
                     ),
                   ),
@@ -2177,177 +3016,242 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   Widget _buildSettingsPanel() {
     return Drawer(
       backgroundColor: ProfileColors.bgSecondary,
-      width: MediaQuery.of(context).size.width * 0.88 > 380 ? 380 : MediaQuery.of(context).size.width * 0.88,
+      width: MediaQuery.of(context).size.width * 0.88 > 380
+          ? 380
+          : MediaQuery.of(context).size.width * 0.88,
       child: SafeArea(
         child: Column(
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
               decoration: BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [ProfileColors.purple.withValues(alpha: 0.08), Colors.transparent]),
-                border: const Border(bottom: BorderSide(color: ProfileColors.borderSubtle)),
+                gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      ProfileColors.purple.withValues(alpha: 0.08),
+                      Colors.transparent
+                    ]),
+                border: const Border(
+                    bottom: BorderSide(color: ProfileColors.borderSubtle)),
               ),
               child: Row(
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: Container(
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(color: ProfileColors.glass, shape: BoxShape.circle, border: Border.all(color: ProfileColors.gborder)),
-                      child: const Icon(Icons.arrow_back_ios_new, size: 16, color: ProfileColors.textSecondary),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                          color: ProfileColors.glass,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: ProfileColors.gborder)),
+                      child: const Icon(Icons.arrow_back_ios_new,
+                          size: 16, color: ProfileColors.textSecondary),
                     ),
                   ),
                   const SizedBox(width: 14),
-                  Text('Settings', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: ProfileColors.textPrimary)),
+                  Text('Settings',
+                      style: GoogleFonts.inter(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: ProfileColors.textPrimary)),
                 ],
               ),
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 children: [
                   _buildSectionTitle('Account'),
-                  _buildSettingsRow(Icons.person_outline, 'Personal Information', hasArrow: true),
-                  _buildSettingsRow(Icons.lock_outline, 'Password & Security', hasArrow: true),
-                  _buildSettingsRow(Icons.verified_user_outlined, 'Identity Verification', valueText: 'Verified ✔', valueColor: ProfileColors.green, hasArrow: true),
-                  _buildSettingsRow(Icons.link, 'Linked Accounts', hasArrow: true),
+                  _buildSettingsRow(
+                      Icons.person_outline, 'Personal Information',
+                      hasArrow: true),
+                  _buildSettingsRow(Icons.lock_outline, 'Password & Security',
+                      hasArrow: true),
+                  _buildSettingsRow(
+                      Icons.verified_user_outlined, 'Identity Verification',
+                      valueText: 'Verified ✔',
+                      valueColor: ProfileColors.green,
+                      hasArrow: true),
+                  _buildSettingsRow(Icons.link, 'Linked Accounts',
+                      hasArrow: true),
                   const SizedBox(height: 24),
-                  
+
                   _buildSectionTitle('Preferences'),
-                  _buildSettingsRow(Icons.notifications_none, 'Push Notifications', 
-                    toggleValue: _pushNotifications, 
-                    onToggle: (v) { setState(() => _pushNotifications = v); _saveSetting('push_notifications', v); }
-                  ),
-                  _buildSettingsRow(Icons.mail_outline, 'Email Notifications', 
-                    toggleValue: _emailNotifications, 
-                    onToggle: (v) { setState(() => _emailNotifications = v); _saveSetting('email_notifications', v); }
-                  ),
+                  _buildSettingsRow(
+                      Icons.notifications_none, 'Push Notifications',
+                      toggleValue: _pushNotifications, onToggle: (v) {
+                    setState(() => _pushNotifications = v);
+                    _saveSetting('push_notifications', v);
+                  }),
+                  _buildSettingsRow(Icons.mail_outline, 'Email Notifications',
+                      toggleValue: _emailNotifications, onToggle: (v) {
+                    setState(() => _emailNotifications = v);
+                    _saveSetting('email_notifications', v);
+                  }),
                   ValueListenableBuilder<ThemeMode>(
-                    valueListenable: themeService.themeModeNotifier,
-                    builder: (context, mode, _) {
-                      return _buildSettingsRow(Icons.dark_mode_outlined, 'Dark Mode', 
-                        toggleValue: mode == ThemeMode.dark, 
-                        onToggle: (v) => themeService.setTheme(v ? ThemeMode.dark : ThemeMode.light)
-                      );
-                    }
-                  ),
-                  _buildSettingsRow(Icons.swipe_outlined, 'Navigation Transition', 
-                    valueText: _navTransition, 
-                    valueColor: ProfileColors.cyan, 
-                    hasArrow: true, 
-                    onTap: _showNavTransitionSheet
-                  ),
+                      valueListenable: themeService.themeModeNotifier,
+                      builder: (context, mode, _) {
+                        return _buildSettingsRow(
+                            Icons.dark_mode_outlined, 'Dark Mode',
+                            toggleValue: mode == ThemeMode.dark,
+                            onToggle: (v) => themeService.setTheme(
+                                v ? ThemeMode.dark : ThemeMode.light));
+                      }),
+                  _buildSettingsRow(
+                      Icons.swipe_outlined, 'Navigation Transition',
+                      valueText: _navTransition,
+                      valueColor: ProfileColors.cyan,
+                      hasArrow: true,
+                      onTap: _showNavTransitionSheet),
                   // Discovery Location — unified search picker (opens real search sheet)
                   ValueListenableBuilder<String>(
-                    valueListenable: locationService.activeLocationNotifier,
-                    builder: (context, activeLoc, _) {
-                      return _buildSettingsRow(
-                        Icons.explore_outlined,
-                        'Discovery Location',
-                        valueText: activeLoc.isEmpty ? 'Tap to set' : activeLoc,
-                        valueColor: const Color(0xFFFF6B00),
-                        hasArrow: true,
-                        onTap: () => showLocationSearchSheet(context),
-                      );
-                    }
-                  ),
-                  _buildSettingsRow(Icons.map_outlined, 'Default Maps App', valueText: _mapsApp, hasArrow: true),
+                      valueListenable: locationService.activeLocationNotifier,
+                      builder: (context, activeLoc, _) {
+                        return _buildSettingsRow(
+                          Icons.explore_outlined,
+                          'Discovery Location',
+                          valueText:
+                              activeLoc.isEmpty ? 'Tap to set' : activeLoc,
+                          valueColor: const Color(0xFFFF6B00),
+                          hasArrow: true,
+                          onTap: () => showLocationSearchSheet(context),
+                        );
+                      }),
+                  _buildSettingsRow(Icons.map_outlined, 'Default Maps App',
+                      valueText: _mapsApp, hasArrow: true),
                   const SizedBox(height: 24),
-                  
+
                   _buildSectionTitle('Privacy'),
-                  _buildSettingsRow(Icons.privacy_tip_outlined, 'Private Account', 
-                    toggleValue: _isPublic == false, 
-                    onToggle: (v) async { 
-                      setState(() => _isPublic = !v); 
-                      if (_myUid.isNotEmpty) await Supabase.instance.client.from('profiles').update({'is_public': !v}).eq('id', _myUid);
-                    }
-                  ),
-                  _buildSettingsRow(Icons.visibility_outlined, 'Activity Status', 
-                    toggleValue: true, 
-                    onToggle: (v) {} 
-                  ),
-                  _buildSettingsRow(Icons.block, 'Blocked Accounts', hasArrow: true),
-                  _buildSettingsRow(Icons.volume_off_outlined, 'Muted Accounts', hasArrow: true),
-                  _buildSettingsRow(Icons.visibility_off_outlined, 'Ghost Mode', 
-                    toggleValue: _ghostMode, 
-                    onToggle: (v) { setState(() => _ghostMode = v); _saveSetting('ghost_mode', v); }
-                  ),
+                  _buildSettingsRow(
+                      Icons.privacy_tip_outlined, 'Private Account',
+                      toggleValue: _isPublic == false, onToggle: (v) async {
+                    setState(() => _isPublic = !v);
+                    if (_myUid.isNotEmpty)
+                      await Supabase.instance.client
+                          .from('profiles')
+                          .update({'is_public': !v}).eq('id', _myUid);
+                  }),
+                  _buildSettingsRow(
+                      Icons.visibility_outlined, 'Activity Status',
+                      toggleValue: true, onToggle: (v) {}),
+                  _buildSettingsRow(Icons.block, 'Blocked Accounts',
+                      hasArrow: true),
+                  _buildSettingsRow(Icons.volume_off_outlined, 'Muted Accounts',
+                      hasArrow: true),
+                  _buildSettingsRow(Icons.visibility_off_outlined, 'Ghost Mode',
+                      toggleValue: _ghostMode, onToggle: (v) {
+                    setState(() => _ghostMode = v);
+                    _saveSetting('ghost_mode', v);
+                  }),
                   const SizedBox(height: 24),
-                  
+
                   _buildSectionTitle('Activity Matches'),
-                  _buildSettingsRow(Icons.public, 'Global Discovery', 
-                    toggleValue: _isGlobal, 
-                    onToggle: (v) { setState(() => _isGlobal = v); _saveSetting('is_global', v); }
-                  ),
+                  _buildSettingsRow(Icons.public, 'Global Discovery',
+                      toggleValue: _isGlobal, onToggle: (v) {
+                    setState(() => _isGlobal = v);
+                    _saveSetting('is_global', v);
+                  }),
                   if (!_isGlobal)
-                    _buildSettingsRow(Icons.radar, 'Match Radius', valueText: '${_matchRadius.toInt()} km', hasArrow: true, onTap: _showMatchRadiusSheet),
-                  _buildSettingsRow(Icons.group_outlined, 'Age Preference', valueText: '${_ageMin.toInt()}-${_ageMax.toInt()}', hasArrow: true, onTap: _showAgePrefSheet),
-                  _buildSettingsRow(Icons.bolt, 'Spark Notifications', 
-                    toggleValue: _sparkNotifications, 
-                    onToggle: (v) { setState(() => _sparkNotifications = v); _saveSetting('spark_notifications', v); }
-                  ),
-                  _buildSettingsRow(Icons.auto_awesome, 'Auto-Match with Spark', 
-                    toggleValue: _autoMatchSpark, 
-                    onToggle: (v) { setState(() => _autoMatchSpark = v); _saveSetting('auto_match_spark', v); }
-                  ),
-                  _buildSettingsRow(Icons.explore, 'Explore Visibility', 
+                    _buildSettingsRow(Icons.radar, 'Match Radius',
+                        valueText: '${_matchRadius.toInt()} km',
+                        hasArrow: true,
+                        onTap: _showMatchRadiusSheet),
+                  _buildSettingsRow(Icons.group_outlined, 'Age Preference',
+                      valueText: '${_ageMin.toInt()}-${_ageMax.toInt()}',
+                      hasArrow: true,
+                      onTap: _showAgePrefSheet),
+                  _buildSettingsRow(Icons.bolt, 'Spark Notifications',
+                      toggleValue: _sparkNotifications, onToggle: (v) {
+                    setState(() => _sparkNotifications = v);
+                    _saveSetting('spark_notifications', v);
+                  }),
+                  _buildSettingsRow(Icons.auto_awesome, 'Auto-Match with Spark',
+                      toggleValue: _autoMatchSpark, onToggle: (v) {
+                    setState(() => _autoMatchSpark = v);
+                    _saveSetting('auto_match_spark', v);
+                  }),
+                  _buildSettingsRow(
+                    Icons.explore,
+                    'Explore Visibility',
                     valueText: _getVibeVisibilitySummary(),
                     valueColor: ProfileColors.cyan,
                     hasArrow: true,
                     onTap: _showVibeVisibilitySheet,
                   ),
                   const SizedBox(height: 24),
-                  
+
                   _buildSectionTitle('BolRoom Identity'),
-                  _buildSettingsRow(Icons.theater_comedy, 'Anonymous Mode', 
-                    toggleValue: _bolroomAnonymous, 
-                    onToggle: (v) async { 
-                      setState(() => _bolroomAnonymous = v); 
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setBool('bolroom_anonymous', v);
-                    }
-                  ),
+                  _buildSettingsRow(Icons.theater_comedy, 'Anonymous Mode',
+                      toggleValue: _bolroomAnonymous, onToggle: (v) async {
+                    setState(() => _bolroomAnonymous = v);
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('bolroom_anonymous', v);
+                  }),
                   if (_bolroomAnonymous) ...[
-                    _buildSettingsRow(Icons.edit, 'Alias Name', 
+                    _buildSettingsRow(
+                      Icons.edit,
+                      'Alias Name',
                       valueText: _bolroomAnonName,
                       valueColor: ProfileColors.cyan,
-                      hasArrow: true, 
+                      hasArrow: true,
                       onTap: _showBolRoomAnonNameSheet,
                     ),
-                    _buildSettingsRow(Icons.face, 'Avatar', 
-                      valueText: _bolroomAnonAvatar.isNotEmpty ? 'Custom' : 'Default',
+                    _buildSettingsRow(
+                      Icons.face,
+                      'Avatar',
+                      valueText:
+                          _bolroomAnonAvatar.isNotEmpty ? 'Custom' : 'Default',
                       valueColor: ProfileColors.purple,
-                      hasArrow: true, 
+                      hasArrow: true,
                       onTap: _showBolRoomAnonAvatarSheet,
                     ),
                   ],
                   const SizedBox(height: 24),
-                  
+
                   _buildSectionTitle('Data & Storage'),
-                  _buildSettingsRow(Icons.storage, 'Cache Size', valueText: '45.2 MB', hasArrow: false),
-                  _buildSettingsRow(Icons.delete_outline, 'Clear Cache', hasArrow: false, onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cache cleared! (Simulated)'), backgroundColor: ProfileColors.green));
+                  _buildSettingsRow(Icons.storage, 'Cache Size',
+                      valueText: '45.2 MB', hasArrow: false),
+                  _buildSettingsRow(Icons.delete_outline, 'Clear Cache',
+                      hasArrow: false, onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Cache cleared! (Simulated)'),
+                        backgroundColor: ProfileColors.green));
                   }),
-                  _buildSettingsRow(Icons.high_quality, 'Media Quality', valueText: _mediaQuality, hasArrow: true),
-                  _buildSettingsRow(Icons.save_alt, 'Save to Camera Roll', 
-                    toggleValue: _saveToCameraRoll, 
-                    onToggle: (v) { setState(() => _saveToCameraRoll = v); _saveSetting('save_camera_roll', v); }
-                  ),
+                  _buildSettingsRow(Icons.high_quality, 'Media Quality',
+                      valueText: _mediaQuality, hasArrow: true),
+                  _buildSettingsRow(Icons.save_alt, 'Save to Camera Roll',
+                      toggleValue: _saveToCameraRoll, onToggle: (v) {
+                    setState(() => _saveToCameraRoll = v);
+                    _saveSetting('save_camera_roll', v);
+                  }),
                   const SizedBox(height: 24),
-                  
+
                   _buildSectionTitle('Support & About'),
-                  _buildSettingsRow(Icons.help_outline, 'Help Center', hasArrow: true),
-                  _buildSettingsRow(Icons.report_problem_outlined, 'Report a Problem', hasArrow: true),
-                  _buildSettingsRow(Icons.article_outlined, 'Privacy Policy', hasArrow: true),
-                  _buildSettingsRow(Icons.gavel_outlined, 'Terms of Service', hasArrow: true),
-                  _buildSettingsRow(Icons.info_outline, 'App Version', valueText: 'v3.2.1', hasArrow: false),
+                  _buildSettingsRow(Icons.help_outline, 'Help Center',
+                      hasArrow: true),
+                  _buildSettingsRow(
+                      Icons.report_problem_outlined, 'Report a Problem',
+                      hasArrow: true),
+                  _buildSettingsRow(Icons.article_outlined, 'Privacy Policy',
+                      hasArrow: true),
+                  _buildSettingsRow(Icons.gavel_outlined, 'Terms of Service',
+                      hasArrow: true),
+                  _buildSettingsRow(Icons.info_outline, 'App Version',
+                      valueText: 'v3.2.1', hasArrow: false),
                   const SizedBox(height: 24),
-                  
+
                   _buildSectionTitle('Danger Zone'),
-                  _buildSettingsRow(Icons.logout, 'Log Out', isDanger: true, onTap: _onLogout),
-                  _buildSettingsRow(Icons.warning_amber_rounded, 'Deactivate Account', isDanger: true, onTap: () {}),
-                  _buildSettingsRow(Icons.delete_forever, 'Delete Account', isDanger: true, onTap: () {}),
-                  
+                  _buildSettingsRow(Icons.logout, 'Log Out',
+                      isDanger: true, onTap: _onLogout),
+                  _buildSettingsRow(
+                      Icons.warning_amber_rounded, 'Deactivate Account',
+                      isDanger: true, onTap: () {}),
+                  _buildSettingsRow(Icons.delete_forever, 'Delete Account',
+                      isDanger: true, onTap: () {}),
+
                   const SizedBox(height: 32),
                 ],
               ),
@@ -2363,15 +3267,32 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       padding: const EdgeInsets.only(bottom: 10, left: 4, top: 12),
       child: Row(
         children: [
-          Container(width: 3, height: 14, decoration: BoxDecoration(color: ProfileColors.cyan, borderRadius: BorderRadius.circular(2))),
+          Container(
+              width: 3,
+              height: 14,
+              decoration: BoxDecoration(
+                  color: ProfileColors.cyan,
+                  borderRadius: BorderRadius.circular(2))),
           const SizedBox(width: 8),
-          Text(text.toUpperCase(), style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: ProfileColors.textMuted, letterSpacing: 1.5)),
+          Text(text.toUpperCase(),
+              style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: ProfileColors.textMuted,
+                  letterSpacing: 1.5)),
         ],
       ),
     );
   }
 
-  Widget _buildSettingsRow(IconData icon, String title, {String? valueText, Color? valueColor, bool hasArrow = false, bool isDanger = false, bool? toggleValue, ValueChanged<bool>? onToggle, VoidCallback? onTap}) {
+  Widget _buildSettingsRow(IconData icon, String title,
+      {String? valueText,
+      Color? valueColor,
+      bool hasArrow = false,
+      bool isDanger = false,
+      bool? toggleValue,
+      ValueChanged<bool>? onToggle,
+      VoidCallback? onTap}) {
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -2383,30 +3304,50 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
-          color: isDanger ? ProfileColors.red.withValues(alpha: 0.05) : ProfileColors.glass,
+          color: isDanger
+              ? ProfileColors.red.withValues(alpha: 0.05)
+              : ProfileColors.glass,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: isDanger ? ProfileColors.red.withValues(alpha: 0.15) : ProfileColors.gborder),
+          border: Border.all(
+              color: isDanger
+                  ? ProfileColors.red.withValues(alpha: 0.15)
+                  : ProfileColors.gborder),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: isDanger ? ProfileColors.red.withValues(alpha: 0.1) : ProfileColors.cyan.withValues(alpha: 0.1),
+                color: isDanger
+                    ? ProfileColors.red.withValues(alpha: 0.1)
+                    : ProfileColors.cyan.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 18, color: isDanger ? ProfileColors.red : ProfileColors.textSecondary),
+              child: Icon(icon,
+                  size: 18,
+                  color: isDanger
+                      ? ProfileColors.red
+                      : ProfileColors.textSecondary),
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(title, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: isDanger ? ProfileColors.red : ProfileColors.textPrimary)),
+              child: Text(title,
+                  style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: isDanger
+                          ? ProfileColors.red
+                          : ProfileColors.textPrimary)),
             ),
             const SizedBox(width: 12),
             if (valueText != null)
               Flexible(
                 child: Text(
-                  valueText, 
-                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: valueColor ?? ProfileColors.textMuted),
+                  valueText,
+                  style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: valueColor ?? ProfileColors.textMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
@@ -2414,23 +3355,71 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               ),
             if (valueText != null && hasArrow) const SizedBox(width: 8),
             if (toggleValue != null)
-               SizedBox(
-                 height: 24,
-                 child: Switch(
-                   value: toggleValue,
-                   onChanged: onToggle,
-                   activeThumbColor: Colors.white,
-                   activeTrackColor: const Color(0xFFFF6B00), // Brand orange
-                   inactiveThumbColor: ProfileColors.textMuted,
-                   inactiveTrackColor: Colors.white10,
-                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                 ),
-               )
+              SizedBox(
+                height: 24,
+                child: Switch(
+                  value: toggleValue,
+                  onChanged: onToggle,
+                  activeThumbColor: Colors.white,
+                  activeTrackColor: const Color(0xFFFF6B00), // Brand orange
+                  inactiveThumbColor: ProfileColors.textMuted,
+                  inactiveTrackColor: Colors.white10,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              )
             else if (hasArrow)
-               Icon(Icons.arrow_forward_ios, size: 14, color: ProfileColors.textMuted.withValues(alpha:0.5)),
+              Icon(Icons.arrow_forward_ios,
+                  size: 14,
+                  color: ProfileColors.textMuted.withValues(alpha: 0.5)),
           ],
         ),
-      ).animate(target: 1).scale(begin: const Offset(1,1), end: const Offset(1.02, 1.02), duration: 200.ms, curve: Curves.easeOutBack),
+      ).animate(target: 1).scale(
+          begin: const Offset(1, 1),
+          end: const Offset(1.02, 1.02),
+          duration: 200.ms,
+          curve: Curves.easeOutBack),
+    );
+  }
+
+  void _showPhotoPreview(BuildContext ctx, String avatarUrl, String initial) {
+    showDialog(
+      context: ctx,
+      barrierColor: Colors.black.withValues(alpha: 0.9),
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(ctx),
+          child: InteractiveViewer(
+            child: Center(
+              child: ClipOval(
+                child: SizedBox(
+                  width: 280,
+                  height: 280,
+                  child: avatarUrl.isNotEmpty
+                      ? Image(
+                          image: _buildSafeImageProvider(avatarUrl),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              _fallbackAvatarCenterText(initial))
+                      : _fallbackAvatarCenterText(initial),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _fallbackAvatarCenterText(String initial) {
+    return Container(
+      color: DoodleColors.pastelPeach,
+      child: Center(
+        child: Text(initial,
+            style:
+                DoodleFonts.heading(fontSize: 90, color: DoodleColors.orange)),
+      ),
     );
   }
 }
@@ -2445,28 +3434,32 @@ class _AmbientOrbPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    final paint = Paint()..maskFilter = const MaskFilter.blur(BlurStyle.normal, 60);
+    final paint = Paint()
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 60);
     final p = Curves.easeInOut.transform(progress);
 
     // Orb 1: Cyan top-right
     paint.color = ProfileColors.cyan.withValues(alpha: 0.15);
     canvas.drawCircle(
       Offset(size.width * 0.8 - (p * 40), size.height * 0.2 + (p * 50)),
-      120, paint,
+      120,
+      paint,
     );
 
     // Orb 2: Purple bottom-left
     paint.color = ProfileColors.purple.withValues(alpha: 0.12);
     canvas.drawCircle(
       Offset(size.width * 0.2 + (p * 50), size.height * 0.7 - (p * 40)),
-      150, paint,
+      150,
+      paint,
     );
 
     // Orb 3: Pink mid-right
     paint.color = ProfileColors.pink.withValues(alpha: 0.10);
     canvas.drawCircle(
       Offset(size.width * 0.6 + (p * 30), size.height * 0.5 + (p * 60)),
-      100, paint,
+      100,
+      paint,
     );
   }
 
@@ -2489,12 +3482,12 @@ class LocationMapPickerSheet extends StatefulWidget {
 class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
   final MapController _mapController = MapController();
   final TextEditingController _searchCtrl = TextEditingController();
-  
+
   LatLng _selectedPoint = const LatLng(0, 0); // Default, updated on init
   bool _isMapDarkMode = true;
   bool _isResolving = false;
   String _resolvedName = '';
-  
+
   List<dynamic> _searchResults = [];
   Timer? _debounce;
   bool _fetchingGps = false;
@@ -2529,9 +3522,15 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
         if (mounted) {
           setState(() => _fetchingGps = false);
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Row(children: [Icon(Icons.location_off, color: Colors.white, size: 18), SizedBox(width: 8), Expanded(child: Text('Please enable location services'))]),
-            backgroundColor: Colors.red.shade700, behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            content: const Row(children: [
+              Icon(Icons.location_off, color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Expanded(child: Text('Please enable location services'))
+            ]),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ));
         }
         return;
@@ -2544,9 +3543,15 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
           if (mounted) {
             setState(() => _fetchingGps = false);
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: const Row(children: [Icon(Icons.not_listed_location, color: Colors.white, size: 18), SizedBox(width: 8), Expanded(child: Text('Location permission denied'))]),
-              backgroundColor: Colors.orange.shade800, behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              content: const Row(children: [
+                Icon(Icons.not_listed_location, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Expanded(child: Text('Location permission denied'))
+              ]),
+              backgroundColor: Colors.orange.shade800,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ));
           }
           return;
@@ -2557,16 +3562,30 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
         if (mounted) {
           setState(() => _fetchingGps = false);
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Row(children: [Icon(Icons.settings, color: Colors.white, size: 18), SizedBox(width: 8), Expanded(child: Text('Location permanently denied. Enable in settings.'))]),
-            backgroundColor: Colors.red.shade700, behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            action: SnackBarAction(label: 'Settings', textColor: Colors.white, onPressed: () => Geolocator.openAppSettings()),
+            content: const Row(children: [
+              Icon(Icons.settings, color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                  child:
+                      Text('Location permanently denied. Enable in settings.'))
+            ]),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            action: SnackBarAction(
+                label: 'Settings',
+                textColor: Colors.white,
+                onPressed: () => Geolocator.openAppSettings()),
           ));
         }
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)));
+      final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 15)));
 
       if (mounted) {
         setState(() {
@@ -2576,18 +3595,32 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
         _mapController.move(_selectedPoint, 14.0);
         _reverseGeocode(_selectedPoint);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Row(children: [const Icon(Icons.check_circle, color: Colors.white, size: 18), const SizedBox(width: 8), Text('Location: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}')]),
-          backgroundColor: ProfileColors.cyan, behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), duration: const Duration(seconds: 3),
+          content: Row(children: [
+            const Icon(Icons.check_circle, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text(
+                'Location: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}')
+          ]),
+          backgroundColor: ProfileColors.cyan,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 3),
         ));
       }
     } catch (e) {
       if (mounted) {
         setState(() => _fetchingGps = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Row(children: [const Icon(Icons.error_outline, color: Colors.white, size: 18), const SizedBox(width: 8), Expanded(child: Text('Could not get location: $e'))]),
-          backgroundColor: Colors.red.shade700, behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Row(children: [
+            const Icon(Icons.error_outline, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Could not get location: $e'))
+          ]),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ));
       }
     }
@@ -2595,7 +3628,8 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
 
   void _onSearchChanged(String val) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () => _searchPlace(val));
+    _debounce =
+        Timer(const Duration(milliseconds: 500), () => _searchPlace(val));
   }
 
   Future<void> _searchPlace(String query) async {
@@ -2604,18 +3638,22 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
       return;
     }
     try {
-      final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&limit=5&addressdetails=1')}';
+      final proxyUrl =
+          'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&limit=5&addressdetails=1')}';
       final res = await http.get(Uri.parse(proxyUrl));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as List;
         if (mounted) {
           setState(() {
-            _searchResults = data.map((it) => {
-              'name': it['display_name'].toString().split(',').first.trim(),
-              'full_name': it['display_name'].toString(),
-              'lat': double.parse(it['lat']),
-              'lng': double.parse(it['lon']),
-            }).toList();
+            _searchResults = data
+                .map((it) => {
+                      'name':
+                          it['display_name'].toString().split(',').first.trim(),
+                      'full_name': it['display_name'].toString(),
+                      'lat': double.parse(it['lat']),
+                      'lng': double.parse(it['lon']),
+                    })
+                .toList();
           });
         }
       }
@@ -2624,17 +3662,20 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
 
   void _selectSearchResult(Map<String, dynamic> result) {
     final pt = LatLng(result['lat'], result['lng']);
-    setState(() { 
-      _selectedPoint = pt; 
-      _searchResults = []; 
-      _searchCtrl.text = ''; 
+    setState(() {
+      _selectedPoint = pt;
+      _searchResults = [];
+      _searchCtrl.text = '';
       _resolvedName = result['name'];
     });
     _mapController.move(pt, 14);
   }
 
   void _onMapTap(TapPosition tapPos, LatLng point) {
-    setState(() { _selectedPoint = point; _searchResults = []; });
+    setState(() {
+      _selectedPoint = point;
+      _searchResults = [];
+    });
     _mapController.move(point, _mapController.camera.zoom);
     _reverseGeocode(point);
   }
@@ -2642,15 +3683,20 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
   Future<void> _reverseGeocode(LatLng p) async {
     setState(() => _isResolving = true);
     try {
-      final res = await http.get(Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=${p.latitude}&lon=${p.longitude}&zoom=14&addressdetails=1'));
+      final res = await http.get(Uri.parse(
+          'https://nominatim.openstreetmap.org/reverse?format=json&lat=${p.latitude}&lon=${p.longitude}&zoom=14&addressdetails=1'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (mounted) {
           final address = data['address'] ?? {};
-          final landmark = data['name'] ?? address['amenity'] ?? address['building'] ?? address['historic'] ?? address['leisure'];
+          final landmark = data['name'] ??
+              address['amenity'] ??
+              address['building'] ??
+              address['historic'] ??
+              address['leisure'];
           final display = landmark ?? (data['display_name'] ?? '');
           setState(() {
-            _resolvedName = display.toString().split(',').first; 
+            _resolvedName = display.toString().split(',').first;
             _isResolving = false;
           });
         }
@@ -2673,55 +3719,128 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
           // Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: ProfileColors.borderSubtle))),
+            decoration: const BoxDecoration(
+                border: Border(
+                    bottom: BorderSide(color: ProfileColors.borderSubtle))),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Global Location', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.bold, fontSize: 22, color: Colors.white)),
+                    Text('Global Location',
+                        style: GoogleFonts.playfairDisplay(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 22,
+                            color: Colors.white)),
                     const SizedBox(height: 4),
-                    Text('Choose where you want to discover.', style: GoogleFonts.inter(color: Colors.white38, fontSize: 13)),
+                    Text('Choose where you want to discover.',
+                        style: GoogleFonts.inter(
+                            color: Colors.white38, fontSize: 13)),
                   ],
                 ),
-                GestureDetector(onTap: () => Navigator.pop(context), child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: ProfileColors.bgCard, shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white54, size: 18))),
+                GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(
+                            color: ProfileColors.bgCard,
+                            shape: BoxShape.circle),
+                        child: const Icon(Icons.close,
+                            color: Colors.white54, size: 18))),
               ],
             ),
           ),
-          
+
           // Map Canvas
           Expanded(
             child: Stack(
               children: [
                 ColorFiltered(
-                  colorFilter: ColorFilter.matrix(_isMapDarkMode ? [
-                    -1.0, 0.0, 0.0, 0.0, 255.0,
-                    0.0, -1.0, 0.0, 0.0, 255.0,
-                    0.0, 0.0, -1.0, 0.0, 255.0,
-                    0.0, 0.0, 0.0, 1.0, 0.0,
-                  ] : [
-                    1.0, 0.0, 0.0, 0.0, 0.0,
-                    0.0, 1.0, 0.0, 0.0, 0.0,
-                    0.0, 0.0, 1.0, 0.0, 0.0,
-                    0.0, 0.0, 0.0, 1.0, 0.0,
-                  ]),
+                  colorFilter: ColorFilter.matrix(_isMapDarkMode
+                      ? [
+                          -1.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          255.0,
+                          0.0,
+                          -1.0,
+                          0.0,
+                          0.0,
+                          255.0,
+                          0.0,
+                          0.0,
+                          -1.0,
+                          0.0,
+                          255.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          1.0,
+                          0.0,
+                        ]
+                      : [
+                          1.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          1.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          1.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          0.0,
+                          1.0,
+                          0.0,
+                        ]),
                   child: FlutterMap(
                     mapController: _mapController,
-                    options: MapOptions(initialCenter: _selectedPoint, initialZoom: 14, onTap: _onMapTap, interactionOptions: const InteractionOptions(flags: InteractiveFlag.all)),
+                    options: MapOptions(
+                        initialCenter: _selectedPoint,
+                        initialZoom: 14,
+                        onTap: _onMapTap,
+                        interactionOptions: const InteractionOptions(
+                            flags: InteractiveFlag.all)),
                     children: [
-                      TileLayer(userAgentPackageName: 'com.meetra.app', urlTemplate: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'),
+                      TileLayer(
+                          userAgentPackageName: 'com.meetra.app',
+                          urlTemplate:
+                              'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'),
                       MarkerLayer(markers: [
-                        Marker(point: _selectedPoint, width: 80, height: 80, child: const Icon(Icons.location_on, color: ProfileColors.amber, size: 45, shadows: [Shadow(color: ProfileColors.amber, blurRadius: 15)])),
+                        Marker(
+                            point: _selectedPoint,
+                            width: 80,
+                            height: 80,
+                            child: const Icon(Icons.location_on,
+                                color: ProfileColors.amber,
+                                size: 45,
+                                shadows: [
+                                  Shadow(
+                                      color: ProfileColors.amber,
+                                      blurRadius: 15)
+                                ])),
                       ]),
                     ],
                   ),
                 ),
-                if (_isMapDarkMode) Container(color: const Color(0xFFFF5C00).withValues(alpha: 0.1)),
-                
+                if (_isMapDarkMode)
+                  Container(
+                      color: const Color(0xFFFF5C00).withValues(alpha: 0.1)),
+
                 // Search Input
                 Positioned(
-                  top: 16, left: 16, right: 16,
+                  top: 16,
+                  left: 16,
+                  right: 16,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -2732,12 +3851,22 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
                           child: Container(
                             height: 52,
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10)),
+                            decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.7),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.white10)),
                             child: TextField(
                               controller: _searchCtrl,
                               onChanged: _onSearchChanged,
-                              style: const TextStyle(color: Colors.white, fontSize: 14),
-                              decoration: const InputDecoration(hintText: 'Search city or landmark...', hintStyle: TextStyle(color: Colors.white54, fontSize: 14), border: InputBorder.none, icon: Icon(Icons.search, color: ProfileColors.amber, size: 20)),
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 14),
+                              decoration: const InputDecoration(
+                                  hintText: 'Search city or landmark...',
+                                  hintStyle: TextStyle(
+                                      color: Colors.white54, fontSize: 14),
+                                  border: InputBorder.none,
+                                  icon: Icon(Icons.search,
+                                      color: ProfileColors.amber, size: 20)),
                             ),
                           ),
                         ),
@@ -2747,17 +3876,34 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
                         Container(
                           margin: const EdgeInsets.only(top: 8),
                           constraints: const BoxConstraints(maxHeight: 200),
-                          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(16), border: Border.all(color: ProfileColors.amber.withValues(alpha: 0.3))),
+                          decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.85),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                  color: ProfileColors.amber
+                                      .withValues(alpha: 0.3))),
                           child: ListView.separated(
-                            shrinkWrap: true, padding: EdgeInsets.zero, itemCount: _searchResults.length,
-                            separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1),
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            itemCount: _searchResults.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(color: Colors.white10, height: 1),
                             itemBuilder: (ctx, i) {
                               final r = _searchResults[i];
                               return ListTile(
                                 dense: true,
-                                leading: const Icon(Icons.location_on_outlined, color: ProfileColors.amber, size: 16),
-                                title: Text(r['name'], style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-                                subtitle: Text(r['full_name'], style: const TextStyle(color: Colors.white38, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                leading: const Icon(Icons.location_on_outlined,
+                                    color: ProfileColors.amber, size: 16),
+                                title: Text(r['name'],
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold)),
+                                subtitle: Text(r['full_name'],
+                                    style: const TextStyle(
+                                        color: Colors.white38, fontSize: 11),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
                                 onTap: () => _selectSearchResult(r),
                               );
                             },
@@ -2766,27 +3912,55 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
                     ],
                   ),
                 ),
-                
+
                 // Action Buttons Right Side (Day/Night & GPS)
                 Positioned(
-                  bottom: 24, right: 16,
+                  bottom: 24,
+                  right: 16,
                   child: Column(
                     children: [
                       GestureDetector(
-                        onTap: () => setState(() => _isMapDarkMode = !_isMapDarkMode),
+                        onTap: () =>
+                            setState(() => _isMapDarkMode = !_isMapDarkMode),
                         child: Container(
-                          width: 48, height: 48,
-                          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), shape: BoxShape.circle, border: Border.all(color: Colors.white10)),
-                          child: Icon(_isMapDarkMode ? Icons.wb_sunny : Icons.nightlight_round, color: _isMapDarkMode ? Colors.yellow : ProfileColors.amber, size: 20),
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white10)),
+                          child: Icon(
+                              _isMapDarkMode
+                                  ? Icons.wb_sunny
+                                  : Icons.nightlight_round,
+                              color: _isMapDarkMode
+                                  ? Colors.yellow
+                                  : ProfileColors.amber,
+                              size: 20),
                         ),
                       ),
                       const SizedBox(height: 12),
                       GestureDetector(
                         onTap: _fetchLiveGps,
                         child: Container(
-                          width: 48, height: 48,
-                          decoration: BoxDecoration(color: ProfileColors.amber, shape: BoxShape.circle, boxShadow: [BoxShadow(color: ProfileColors.amber.withValues(alpha: 0.4), blurRadius: 12)]),
-                          child: _fetchingGps ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2)) : const Icon(Icons.my_location, color: Colors.black, size: 22),
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                              color: ProfileColors.amber,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                    color: ProfileColors.amber
+                                        .withValues(alpha: 0.4),
+                                    blurRadius: 12)
+                              ]),
+                          child: _fetchingGps
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: CircularProgressIndicator(
+                                      color: Colors.black, strokeWidth: 2))
+                              : const Icon(Icons.my_location,
+                                  color: Colors.black, size: 22),
                         ),
                       ),
                     ],
@@ -2795,7 +3969,7 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
               ],
             ),
           ),
-          
+
           // Bottom Bar (Save Location)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -2807,11 +3981,26 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Selected Base', style: GoogleFonts.inter(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                      Text('Selected Base',
+                          style: GoogleFonts.inter(
+                              color: Colors.white38,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold)),
                       const SizedBox(height: 4),
-                      _isResolving 
-                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: ProfileColors.amber))
-                          : Text(_resolvedName.isEmpty ? 'Tap map' : _resolvedName, style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      _isResolving
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: ProfileColors.amber))
+                          : Text(
+                              _resolvedName.isEmpty ? 'Tap map' : _resolvedName,
+                              style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
                     ],
                   ),
                 ),
@@ -2819,16 +4008,26 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
                 GestureDetector(
                   onTap: () {
                     if (_resolvedName.isEmpty) return;
-                    widget.onLocationSelected(_resolvedName, _selectedPoint.latitude, _selectedPoint.longitude);
+                    widget.onLocationSelected(_resolvedName,
+                        _selectedPoint.latitude, _selectedPoint.longitude);
                     Navigator.pop(context);
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 32, vertical: 14),
                     decoration: BoxDecoration(
-                      color: _resolvedName.isEmpty ? Colors.white12 : ProfileColors.amber,
+                      color: _resolvedName.isEmpty
+                          ? Colors.white12
+                          : ProfileColors.amber,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text('Confirm', style: GoogleFonts.inter(color: _resolvedName.isEmpty ? Colors.white38 : Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
+                    child: Text('Confirm',
+                        style: GoogleFonts.inter(
+                            color: _resolvedName.isEmpty
+                                ? Colors.white38
+                                : Colors.black,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14)),
                   ),
                 ),
               ],
@@ -2839,5 +4038,3 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
     );
   }
 }
-
-
