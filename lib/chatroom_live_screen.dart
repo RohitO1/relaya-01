@@ -23,6 +23,7 @@ import 'package:meetra_app/services/notification_service.dart';
 import 'games/truth_dare_game.dart';
 import 'games/two_truths_game.dart';
 import 'games/blind_date_game.dart';
+import 'bolroom/bolroom_avatars.dart';
 import 'package:meetra_app/bolroom/bolroom_dm_chat_screen.dart';
 import 'package:meetra_app/services/voice_mask_service.dart';
 import 'services/doodle_theme.dart';
@@ -1186,6 +1187,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
 
   Future<void> _loadMyProfile() async {
     // Always use BolRoom anonymous profile from Supabase
+    String? avatarKey;
+    String? anonName;
     try {
       final bp = await _sb
           .from('bolroom_profiles')
@@ -1193,37 +1196,38 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           .eq('id', _myId)
           .maybeSingle();
       if (bp != null && mounted) {
-        final anonName = (bp['anon_name'] ?? '').toString().trim();
+        anonName = (bp['anon_name'] ?? '').toString().trim();
+        avatarKey = bp['avatar_key']?.toString();
         setState(() {
           _isVoiceMasked = bp['voice_mask_enabled'] == true;
           _myVoicePitch = (bp['voice_pitch'] ?? 0.5).toDouble();
           _voiceMaskPreset = (bp['voice_mask_preset'] ?? 'ghost').toString();
         });
         _updateNativeVoiceMasking();
-        if (anonName.isNotEmpty) {
-          setState(() {
-            _myName = anonName;
-            _myAvatar = null;
-          });
-          return;
+      }
+    } catch (_) {}
+
+    if (anonName == null || anonName.isEmpty) {
+      // Fallback to main profile if no bolroom profile exists
+      try {
+        final p = await _sb
+            .from('profiles')
+            .select('name, full_name')
+            .eq('id', _myId)
+            .maybeSingle();
+        if (p != null) {
+          final loaded = (p['name'] ?? p['full_name'] ?? '').toString().trim();
+          if (loaded.isNotEmpty) anonName = loaded;
         }
-      }
-    } catch (_) {}
-    // Fallback to main profile if no bolroom profile exists
-    try {
-      final p = await _sb
-          .from('profiles')
-          .select('name, full_name, avatar_url')
-          .eq('id', _myId)
-          .maybeSingle();
-      if (p != null && mounted) {
-        final loaded = (p['name'] ?? p['full_name'] ?? '').toString().trim();
-        setState(() {
-          _myName = loaded.isNotEmpty ? loaded : 'User';
-          _myAvatar = p['avatar_url'];
-        });
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      setState(() {
+        _myName = (anonName != null && anonName.isNotEmpty) ? anonName : 'User';
+        _myAvatar = avatarKey ?? BolroomAvatars.forUser(_myId).id;
+      });
+    }
   }
 
   /// Public method to trigger a re-sync of voice masking from Supabase.
@@ -1523,6 +1527,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
       if (remaining.isEmpty) {
         // Auto-dissolve immediately: no one left
         await _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', widget.roomId);
+        await _sendSystemCommand('END', '');
         await _sb.from('chatrooms').delete().eq('id', widget.roomId);
         debugPrint('Empty room ${widget.roomId} deleted immediately.');
       } else if (_isHost) {
@@ -4897,61 +4902,40 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
       String? userName,
       String? userId}) {
     final seed = userId ?? userName ?? '';
-    final bgColor =
-        seed.isNotEmpty ? _deterministicColor(seed) : const Color(0xFF13101E);
-    final label =
-        userName != null && userName.isNotEmpty ? _initials(userName) : '?';
-    final hasValidUrl = avatarUrl != null && avatarUrl.startsWith('http');
+    final avatarKey = (avatarUrl != null && !avatarUrl.startsWith('http')) ? avatarUrl : null;
     return AnimatedScale(
       scale: isPulsing ? 1.08 : 1.0,
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeInOut,
       child: Container(
         width: radius * 2,
-      height: radius * 2,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-            color: glowColor.withValues(alpha: isPulsing ? 1.0 : 0.3),
-            width: isPulsing ? 3 : 1),
-        boxShadow: isPulsing
-            ? [
-                BoxShadow(
-                    color: glowColor.withValues(alpha: 0.4),
-                    blurRadius: 15,
-                    spreadRadius: 2),
-              ]
-            : [],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(2.0),
-        child: ClipOval(
-          child: Container(
-            color: bgColor,
-            child: hasValidUrl
-                ? Image.network(
-                    avatarUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Center(
-                      child: Text(label,
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: radius * 0.45)),
-                    ),
-                  )
-                : Center(
-                    child: Text(label,
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: radius * 0.45,
-                            height: 1)),
-                  ),
+        height: radius * 2,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+              color: glowColor.withValues(alpha: isPulsing ? 1.0 : 0.3),
+              width: isPulsing ? 3 : 1),
+          boxShadow: isPulsing
+              ? [
+                  BoxShadow(
+                      color: glowColor.withValues(alpha: 0.4),
+                      blurRadius: 15,
+                      spreadRadius: 2),
+                ]
+              : [],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(2.0),
+          child: BolroomAvatars.buildAvatar(
+            size: radius * 2 - 4,
+            avatarUrl: null,
+            avatarKey: avatarKey,
+            userId: seed,
+            auraOverride: glowColor,
           ),
         ),
       ),
-    ));
+    );
   }
 
   // ── MEMBER LIST & MANAGEMENT ──
@@ -7311,17 +7295,13 @@ class _MemberSheetState extends State<_MemberSheet> {
   }
 
   Widget _avatar(String name, String? url, Color color, double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-          shape: BoxShape.circle, color: color.withValues(alpha: 0.12)),
-      clipBehavior: Clip.antiAlias,
-      child: (url != null && url.startsWith('http'))
-          ? Image.network(url,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _initial(name, color, size))
-          : _initial(name, color, size),
+    final avatarKey = (url != null && !url.startsWith('http')) ? url : null;
+    return BolroomAvatars.buildAvatar(
+      size: size,
+      avatarUrl: null,
+      avatarKey: avatarKey,
+      userId: name,
+      auraOverride: color,
     );
   }
 
@@ -7347,58 +7327,15 @@ class _ChatAvatar extends StatelessWidget {
       required this.size,
       this.userColor});
 
-  Color _deterministicColor(String seed) {
-    const cols = [
-      Color(0xFF6C63FF),
-      Color(0xFFE91E63),
-      Color(0xFF00BCD4),
-      Color(0xFF4CAF50),
-      Color(0xFFFF9800),
-      Color(0xFF9C27B0),
-      Color(0xFF03A9F4),
-      Color(0xFFF44336),
-      Color(0xFF009688),
-      Color(0xFFFF5722),
-      Color(0xFF3F51B5),
-      Color(0xFF8BC34A),
-    ];
-    int h = 0;
-    for (int i = 0; i < seed.length; i++)
-      h = seed.codeUnitAt(i) + ((h << 5) - h);
-    return cols[h.abs() % cols.length];
-  }
-
   @override
   Widget build(BuildContext context) {
-    final hasUrl = avatarUrl != null && avatarUrl!.startsWith('http');
-    final initials = username.isNotEmpty ? username[0].toUpperCase() : '?';
-    final bgColor = userColor ?? _deterministicColor(username);
-    return Container(
-      width: size,
-      height: size,
-      margin: const EdgeInsets.only(top: 2),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: bgColor.withValues(alpha: 0.85),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1),
-      ),
-      child: hasUrl
-          ? Image.network(avatarUrl!,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Center(
-                  child: Text(initials,
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: size * 0.42))))
-          : Center(
-              child: Text(initials,
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: size * 0.42))),
+    final avatarKey = (avatarUrl != null && !avatarUrl!.startsWith('http')) ? avatarUrl : null;
+    return BolroomAvatars.buildAvatar(
+      size: size,
+      avatarUrl: null,
+      avatarKey: avatarKey,
+      userId: username,
+      auraOverride: userColor,
     );
   }
 }

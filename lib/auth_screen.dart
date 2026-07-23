@@ -178,51 +178,50 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       // ── Tier 1: Try username@relaya.app (the email set during onboarding) ──
       final usernameEmail = rawInput.contains('@') ? rawInput : '${rawInput.toLowerCase()}@relaya.app';
       bool loggedIn = false;
-      
+
       try {
-        final res = await Supabase.instance.client.auth.signInWithPassword(
-          email: usernameEmail,
-          password: pass,
-        );
+        final res = await Supabase.instance.client.auth
+            .signInWithPassword(email: usernameEmail, password: pass)
+            .timeout(const Duration(seconds: 10));
         if (res.user != null) loggedIn = true;
       } on AuthException catch (_) {
         // Tier 1 failed — try fallback
+      } catch (_) {
+        // Timeout or other error — try fallback
       }
 
-      // ── Tier 2: If Supabase email update was pending/unconfirmed, the account may
-      // still be registered as phone_<digits>@relaya.app. Look up the phone and try that. ──
+      // ── Tier 2: Account may still be registered as phone_<digits>@relaya.app ──
       if (!loggedIn) {
         try {
           final profile = await Supabase.instance.client
               .from('profiles')
               .select('phone')
               .eq('username', rawInput.toLowerCase())
-              .maybeSingle();
+              .maybeSingle()
+              .timeout(const Duration(seconds: 8));
 
           final phone = profile?['phone'] as String?;
           if (phone != null && phone.isNotEmpty) {
             final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
             final phoneEmail = 'phone_$digits@relaya.app';
             try {
-              final res = await Supabase.instance.client.auth.signInWithPassword(
-                email: phoneEmail,
-                password: pass,
-              );
+              final res = await Supabase.instance.client.auth
+                  .signInWithPassword(email: phoneEmail, password: pass)
+                  .timeout(const Duration(seconds: 10));
               if (res.user != null) {
                 loggedIn = true;
-                // Now that we successfully logged in, migrate the email so future 
-                // logins with username@relaya.app also work
-                try {
-                  await Supabase.instance.client.auth.updateUser(
-                    UserAttributes(email: usernameEmail),
-                  );
-                  debugPrint('[Login] Migrated auth email to $usernameEmail');
-                } catch (migrateErr) {
-                  debugPrint('[Login] Email migration failed (non-fatal): $migrateErr');
-                }
+                // Fire-and-forget email migration — do NOT await this.
+                // Awaiting updateUser hangs the login because Supabase sends
+                // a confirmation email and the future resolves slowly / never.
+                Supabase.instance.client.auth
+                    .updateUser(UserAttributes(email: usernameEmail))
+                    .then((_) => debugPrint('[Login] Migrated auth email to $usernameEmail'))
+                    .catchError((e) => debugPrint('[Login] Email migration failed (non-fatal): $e'));
               }
             } on AuthException catch (_) {
               // Tier 2 also failed
+            } catch (_) {
+              // Timeout — treat as failed
             }
           }
         } catch (_) {
@@ -230,11 +229,13 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         }
       }
 
+      // Navigate immediately — do NOT await anything after this point.
       if (loggedIn && mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const _DashboardWrapper()),
           (route) => false,
         );
+        return; // ← return here so finally resets state cleanly
       } else if (mounted) {
         _showError('Username or password is incorrect. Please try again.');
       }
@@ -244,6 +245,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       if (mounted) setState(() => _isSigningIn = false);
     }
   }
+
 
   bool _isTestPhoneNumber(String phone) {
     final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');

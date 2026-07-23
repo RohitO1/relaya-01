@@ -106,7 +106,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   }
 
   void _startLobbySweepTimer() {
-    _lobbySweepTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+    _lobbySweepTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       try {
         final roomsRes = await _sb.from('chatrooms').select('id, created_at');
         if (roomsRes.isEmpty) return;
@@ -122,7 +122,8 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
             final createdAt = DateTime.tryParse(createdAtStr);
             if (createdAt != null) {
               final age = now.difference(createdAt);
-              if (age.inSeconds > 60 && !activeRoomIds.contains(roomId)) {
+              if (age.inSeconds > 5 && !activeRoomIds.contains(roomId)) {
+                await _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', roomId);
                 await _sb.from('chatrooms').delete().eq('id', roomId);
                 debugPrint('Lobby Sweep: Deleted empty room $roomId');
               }
@@ -145,46 +146,81 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
           .order('created_at', ascending: false)
           .limit(50);
 
-      final rooms = List<Map<String, dynamic>>.from(res);
+      final rawRooms = List<Map<String, dynamic>>.from(res);
 
-      // ── Live host-name lookup ─────────────────────────────────────────────
-      // chatrooms.host_name and chatroom_members.user_name can be stale if the 
-      // user updated their profile. Always fetch the absolute latest name from profiles.
+      // Fetch active member counts for all loaded rooms
+      final membersRes = await _sb.from('chatroom_members').select('room_id');
+      final memberCounts = <String, int>{};
+      for (var m in (membersRes as List)) {
+        final rId = m['room_id']?.toString();
+        if (rId != null) {
+          memberCounts[rId] = (memberCounts[rId] ?? 0) + 1;
+        }
+      }
+
+      final now = DateTime.now();
+      final List<Map<String, dynamic>> rooms = [];
+
+      for (var r in rawRooms) {
+        final rId = r['id']?.toString();
+        final count = rId != null ? (memberCounts[rId] ?? 0) : 0;
+        
+        // Auto-dissolve check: If member count is 0 and age > 5s, room is dead -> delete from DB
+        final createdAtStr = r['created_at']?.toString();
+        bool isOrphan = false;
+        if (createdAtStr != null) {
+          final createdAt = DateTime.tryParse(createdAtStr);
+          if (createdAt != null && now.difference(createdAt).inSeconds > 5 && count == 0) {
+            isOrphan = true;
+            if (rId != null) {
+              _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', rId).then((_) {
+                _sb.from('chatrooms').delete().eq('id', rId);
+              }).catchError((_) {});
+            }
+          }
+        }
+        
+        if (!isOrphan) {
+          r['member_count'] = count;
+          rooms.add(r);
+        }
+      }
+
+      // ── Live host-name and avatar lookup from bolroom_profiles ────────────────
       if (rooms.isNotEmpty) {
         try {
           final hostIds = rooms
               .map((r) => r['host_id']?.toString())
               .whereType<String>()
-              .toSet() // Use a Set to avoid duplicate profile queries
+              .toSet()
               .toList();
 
           if (hostIds.isNotEmpty) {
             final profilesRes = await _sb
-                .from('profiles')
-                .select('id, name')
+                .from('bolroom_profiles')
+                .select('id, anon_name, avatar_key')
                 .inFilter('id', hostIds);
 
-            // Build: user_id → name
-            final profileMap = <String, String>{};
+            final profileMap = <String, Map<String, dynamic>>{};
             for (final p in profilesRes) {
               final pId = p['id']?.toString();
-              final pName = p['name']?.toString();
-              if (pId != null && pName != null && pName.isNotEmpty) {
-                profileMap[pId] = pName;
+              if (pId != null) {
+                profileMap[pId] = p;
               }
             }
 
-            // For each room, replace host_name with the latest profile name
             for (final room in rooms) {
               final hId = room['host_id']?.toString();
               if (hId != null && profileMap.containsKey(hId)) {
-                room['host_name'] = profileMap[hId];
+                final pData = profileMap[hId]!;
+                final anon = (pData['anon_name'] ?? '').toString().trim();
+                if (anon.isNotEmpty) room['host_name'] = anon;
+                room['host_avatar_key'] = pData['avatar_key'] ?? BolroomAvatars.forUser(hId).id;
               }
             }
           }
         } catch (e) {
           debugPrint('Host-name live lookup error: $e');
-          // Falls back to whatever host_name is stored in chatrooms
         }
       }
       // ─────────────────────────────────────────────────────────────────────
@@ -605,7 +641,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
-                doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 16, child: Icon(Icons.person, color: DoodleColors.cream, size: 16)) : _buildGlowingAvatar(auraColor, 32, userId: room['host_id']?.toString()),
+                doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 16, child: Icon(Icons.person, color: DoodleColors.cream, size: 16)) : _buildGlowingAvatar(auraColor, 32, userId: room['host_id']?.toString(), avatarKey: room['host_avatar_key']?.toString() ?? room['host_avatar']?.toString()),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -931,12 +967,21 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                         }
 
                         String hostName = 'Host';
-                        String? hostAvatar;
-                        final profile = await _sb.from('profiles').select('full_name, avatar_url').eq('id', myId).maybeSingle();
-                        if (profile != null) {
-                          if (profile['full_name'] != null) hostName = profile['full_name'];
-                          hostAvatar = profile['avatar_url']?.toString();
+                        String? hostAvatarKey;
+                        final bp = await _sb.from('bolroom_profiles').select('anon_name, avatar_key').eq('id', myId).maybeSingle();
+                        if (bp != null) {
+                          final anon = (bp['anon_name'] ?? '').toString().trim();
+                          if (anon.isNotEmpty) hostName = anon;
+                          hostAvatarKey = bp['avatar_key']?.toString();
                         }
+                        if (hostName == 'Host') {
+                          final profile = await _sb.from('profiles').select('full_name, name').eq('id', myId).maybeSingle();
+                          if (profile != null) {
+                            final n = (profile['full_name'] ?? profile['name'] ?? '').toString().trim();
+                            if (n.isNotEmpty) hostName = n;
+                          }
+                        }
+                        hostAvatarKey ??= BolroomAvatars.forUser(myId).id;
 
                         String topic = selectedTags.isNotEmpty ? selectedTags.join(' | ') : 'General';
                         topic += ' | $_myLocation';
@@ -946,7 +991,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                             'name': name,
                             'host_id': myId,
                             'host_name': hostName,
-                            'host_avatar': hostAvatar,
+                            'host_avatar': hostAvatarKey,
                             'topic': topic,
                             'speak_permission': 'everyone',
                             'is_recording': isRecording,

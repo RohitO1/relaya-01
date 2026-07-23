@@ -88,7 +88,6 @@ class _BolroomCommunitiesScreenState extends State<BolroomCommunitiesScreen> {
 
   Future<void> _loadData() async {
     try {
-      final locSvc = LocationService();
       var commsQuery = _sb.from('bolroom_communities').select('*');
       final comms = await commsQuery.order('member_count', ascending: false).limit(100);
       List<dynamic> joined = [];

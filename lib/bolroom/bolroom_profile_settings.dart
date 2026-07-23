@@ -32,7 +32,6 @@ class BolroomSettingsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final doodle = isDoodleMode(context);
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16),
       child: Column(children: [

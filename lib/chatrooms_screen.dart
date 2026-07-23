@@ -102,7 +102,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
   }
 
   void _startLobbySweepTimer() {
-    _lobbySweepTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+    _lobbySweepTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       try {
         final roomsRes = await _sb.from('chatrooms').select('id, created_at');
         if (roomsRes.isEmpty) return;
@@ -118,7 +118,8 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
             final createdAt = DateTime.tryParse(createdAtStr);
             if (createdAt != null) {
               final age = now.difference(createdAt);
-              if (age.inSeconds > 60 && !activeRoomIds.contains(roomId)) {
+              if (age.inSeconds > 5 && !activeRoomIds.contains(roomId)) {
+                await _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', roomId);
                 await _sb.from('chatrooms').delete().eq('id', roomId);
                 debugPrint('Lobby Sweep (Chatrooms): Deleted empty room $roomId');
               }
@@ -133,8 +134,46 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
 
   Future<void> _loadRooms() async {
     try {
-      final res = await _sb.from('chatrooms').select('*').order('created_at', ascending: false).limit(50);
-      if (mounted) setState(() { _rooms = List<Map<String,dynamic>>.from(res); _loading = false; });
+      final res = await _sb.from('chatrooms').select('*').neq('room_status', 'deleted').order('created_at', ascending: false).limit(50);
+      final rawRooms = List<Map<String, dynamic>>.from(res);
+
+      final membersRes = await _sb.from('chatroom_members').select('room_id');
+      final memberCounts = <String, int>{};
+      for (var m in (membersRes as List)) {
+        final rId = m['room_id']?.toString();
+        if (rId != null) {
+          memberCounts[rId] = (memberCounts[rId] ?? 0) + 1;
+        }
+      }
+
+      final now = DateTime.now();
+      final List<Map<String, dynamic>> rooms = [];
+
+      for (var r in rawRooms) {
+        final rId = r['id']?.toString();
+        final count = rId != null ? (memberCounts[rId] ?? 0) : 0;
+
+        final createdAtStr = r['created_at']?.toString();
+        bool isOrphan = false;
+        if (createdAtStr != null) {
+          final createdAt = DateTime.tryParse(createdAtStr);
+          if (createdAt != null && now.difference(createdAt).inSeconds > 5 && count == 0) {
+            isOrphan = true;
+            if (rId != null) {
+              _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', rId).then((_) {
+                _sb.from('chatrooms').delete().eq('id', rId);
+              }).catchError((_) {});
+            }
+          }
+        }
+
+        if (!isOrphan) {
+          r['member_count'] = count;
+          rooms.add(r);
+        }
+      }
+
+      if (mounted) setState(() { _rooms = rooms; _loading = false; });
     } catch (e) {
       debugPrint('Load rooms: $e');
       if (mounted) setState(() => _loading = false);

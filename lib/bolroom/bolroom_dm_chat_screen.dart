@@ -132,7 +132,10 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'conversation_id', value: widget.conversationId),
       callback: (payload) {
         if (payload.newRecord.isNotEmpty && mounted) {
-          setState(() => _messages.add(payload.newRecord));
+          final newMsg = payload.newRecord;
+          final newId = newMsg['id'];
+          if (newId != null && _messages.any((m) => m['id'] == newId)) return;
+          setState(() => _messages.add(newMsg));
           _scrollToBottom();
           _markRead();
         }

@@ -94,6 +94,21 @@ class _MeetraAppState extends State<MeetraApp> {
   late AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
 
+  Future<bool> _fetchOnboardingDone(String userId) async {
+    try {
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('onboarding_complete')
+          .eq('id', userId)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 5));
+      return profile != null && profile['onboarding_complete'] == true;
+    } catch (_) {
+      // On timeout or network error default to done so user reaches dashboard
+      return true;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -197,94 +212,134 @@ class _MeetraAppState extends State<MeetraApp> {
                     if (mounted) setState(() => _showLocationGate = false);
                   },
                 )
-            : StreamBuilder<AuthState>(
-            stream: Supabase.instance.client.auth.onAuthStateChange,
-            builder: (context, snapshot) {
-              final session = snapshot.hasData ? snapshot.data!.session : null;
-              if (session != null) {
-                // User is logged in - check if onboarding is complete
-                return FutureBuilder<Map<String, dynamic>?>(
-                  future: Supabase.instance.client
-                      .from('profiles')
-                      .select('onboarding_complete')
-                      .eq('id', session.user.id)
-                      .maybeSingle(),
-                  builder: (context, profileSnap) {
-                    if (profileSnap.connectionState ==
-                        ConnectionState.waiting) {
-                      return Scaffold(
-                        backgroundColor: const Color(0xFF050508),
-                        body: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Image.asset(
-                                'assets/images/meetra_icon.png',
-                                width: 80,
-                                height: 80,
-                              ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-                               .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 800.ms, 
- curve: Curves.easeInOut),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
-
-                    final profile = profileSnap.data;
-                    final onboardingDone = profile != null &&
-                        profile['onboarding_complete'] == true;
-
-                    if (!onboardingDone) {
-                      return Scaffold(
-                        backgroundColor: Colors.black,
-                        body: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 500),
-                            child: const OnboardingScreen(),
-                          ),
-                        ),
-                      );
-                    }
-
-                    return ValueListenableBuilder<bool>(
-                      valueListenable: locationService.isLocationGrantedNotifier,
-                      builder: (context, isGranted, _) {
-                        if (!isGranted) {
-                          return LocationPermissionScreen(
-                            onPermissionGranted: () {
-                              // We just trigger a rebuild. fetchLiveLocation sets the notifier to true.
-                            },
-                          );
-                        }
-
-                        return Scaffold(
-                          backgroundColor: Colors.black,
-                          body: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 500),
-                              child: const MainDashboard(),
-                            ),
-                          ),
-                        );
-                      }
-                    );
-                  },
-                );
-              }
-              return Scaffold(
-                backgroundColor: Colors.black,
-                body: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 500),
-                    child: const AuthScreen(),
-                  ),
-                ),
-              );
-            },
-          ),
+            : _AuthGate(
+                fetchOnboardingDone: _fetchOnboardingDone,
+              ),
         );
       },
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// _AuthGate — handles auth state reactively WITHOUT a FutureBuilder
+// in the build tree (which caused the infinite loading loop).
+// It uses a StreamSubscription in initState and navigates imperatively.
+// ──────────────────────────────────────────────────────────────
+class _AuthGate extends StatefulWidget {
+  final Future<bool> Function(String userId) fetchOnboardingDone;
+  const _AuthGate({required this.fetchOnboardingDone});
+
+  @override
+  State<_AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<_AuthGate> {
+  StreamSubscription<AuthState>? _authSub;
+  bool _navigating = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // ── Case 1: App opened while already logged in ──
+    // Check the current session after the first frame and navigate immediately.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final currentSession = Supabase.instance.client.auth.currentSession;
+      if (currentSession != null) {
+        _handleSession(currentSession.user.id);
+      }
+    });
+
+    // ── Case 2: Sign-out ──
+    // auth_screen.dart handles its OWN navigation after a successful login
+    // (pushAndRemoveUntil → _DashboardWrapper). We only need to listen for
+    // sign-out events here so we can send the user back to the auth screen.
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
+      if (event.event == AuthChangeEvent.signedOut) {
+        _navigating = false;
+        navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 500),
+              child: const AuthScreen(),
+            )),
+          )),
+          (route) => false,
+        );
+      }
+    });
+  }
+
+  Future<void> _handleSession(String userId) async {
+    if (_navigating) return;
+    _navigating = true;
+
+    bool onboardingDone;
+    try {
+      onboardingDone = await widget.fetchOnboardingDone(userId);
+    } catch (_) {
+      onboardingDone = true; // timeout/error → go to dashboard
+    }
+
+    if (!mounted) return;
+
+    if (!onboardingDone) {
+      navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          body: Center(child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: const OnboardingScreen(),
+          )),
+        )),
+        (route) => false,
+      );
+      return;
+    }
+
+    // Onboarding complete → go to dashboard (location gate is handled inside app)
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: const MainDashboard(),
+        )),
+      )),
+      (route) => false,
+    );
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session != null) {
+      // Already logged in — show a slim spinner while _handleSession runs.
+      return const Scaffold(
+        backgroundColor: Color(0xFF050508),
+        body: Center(child: CircularProgressIndicator(
+          color: Color(0xFFFF6B00),
+          strokeWidth: 2.5,
+        )),
+      );
+    }
+    // Not logged in — show auth screen.
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: const AuthScreen(),
+        ),
+      ),
     );
   }
 }
