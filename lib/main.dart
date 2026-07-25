@@ -23,6 +23,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'home_screen.dart';
 import 'profile_screen.dart';
+import 'splash_screen.dart';
 import 'messages_screen.dart';
 // import 'experience_screen.dart'; // Disabled as per user instruction
 import 'chat_screen.dart';
@@ -89,6 +90,7 @@ class MeetraApp extends StatefulWidget {
 }
 
 class _MeetraAppState extends State<MeetraApp> {
+  bool _showSplash = true;
   bool _showLocationGate = false;
   late AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
@@ -194,14 +196,20 @@ class _MeetraAppState extends State<MeetraApp> {
             textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme)
                 .apply(bodyColor: Colors.white, displayColor: Colors.white),
           ),
-          home: _showLocationGate
-              ? LocationPermissionScreen(
-                  onPermissionGranted: () {
-                    if (mounted) setState(() => _showLocationGate = false);
+          home: _showSplash
+              ? SplashScreen(
+                  onComplete: () {
+                    if (mounted) setState(() => _showSplash = false);
                   },
                 )
-            : StreamBuilder<AuthState>(
-                stream: Supabase.instance.client.auth.onAuthStateChange,
+              : _showLocationGate
+                  ? LocationPermissionScreen(
+                      onPermissionGranted: () {
+                        if (mounted) setState(() => _showLocationGate = false);
+                      },
+                    )
+                  : StreamBuilder<AuthState>(
+                      stream: Supabase.instance.client.auth.onAuthStateChange,
                 builder: (context, snapshot) {
                   final session = snapshot.hasData ? snapshot.data!.session : null;
                   if (session != null) {
@@ -220,18 +228,7 @@ class _MeetraAppState extends State<MeetraApp> {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Image.asset(
-                                    'assets/images/meetra_icon.png',
-                                    width: 80,
-                                    height: 80,
-                                  )
-                                      .animate(
-                                          onPlay: (controller) => controller.repeat(reverse: true))
-                                      .scale(
-                                          begin: const Offset(0.9, 0.9),
-                                          end: const Offset(1.1, 1.1),
-                                          duration: 800.ms,
-                                          curve: Curves.easeInOut),
+                                  const CircularProgressIndicator(color: Color(0xFFFF6B00)),
                                 ],
                               ),
                             ),
@@ -287,110 +284,13 @@ class _MeetraAppState extends State<MeetraApp> {
                     ),
                   );
                 },
-              )
-              : StreamBuilder<AuthState>(
-                  stream: Supabase.instance.client.auth.onAuthStateChange,
-                  builder: (context, snapshot) {
-                    final session =
-                        snapshot.hasData ? snapshot.data!.session : null;
-                    if (session != null) {
-                      // User is logged in - check if onboarding is complete
-                      return FutureBuilder<Map<String, dynamic>?>(
-                        future: Supabase.instance.client
-                            .from('profiles')
-                            .select('onboarding_complete')
-                            .eq('id', session.user.id)
-                            .maybeSingle(),
-                        builder: (context, profileSnap) {
-                          if (profileSnap.connectionState ==
-                              ConnectionState.waiting) {
-                            return Scaffold(
-                              backgroundColor: const Color(0xFF050508),
-                              body: Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Image.asset(
-                                      'assets/images/meetra_icon.png',
-                                      width: 80,
-                                      height: 80,
-                                    )
-                                        .animate(
-                                            onPlay: (controller) => controller
-                                                .repeat(reverse: true))
-                                        .scale(
-                                            begin: const Offset(0.9, 0.9),
-                                            end: const Offset(1.1, 1.1),
-                                            duration: 800.ms,
-                                            curve: Curves.easeInOut),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }
-
-                          final profile = profileSnap.data;
-                          final onboardingDone = profile != null &&
-                              profile['onboarding_complete'] == true;
-
-                          if (!onboardingDone) {
-                            return Scaffold(
-                              backgroundColor: Colors.black,
-                              body: Center(
-                                child: ConstrainedBox(
-                                  constraints:
-                                      const BoxConstraints(maxWidth: 500),
-                                  child: const OnboardingScreen(),
-                                ),
-                              ),
-                            );
-                          }
-
-                          return ValueListenableBuilder<bool>(
-                              valueListenable:
-                                  locationService.isLocationGrantedNotifier,
-                              builder: (context, isGranted, _) {
-                                if (!isGranted) {
-                                  return LocationPermissionScreen(
-                                    onPermissionGranted: () {
-                                      // We just trigger a rebuild. fetchLiveLocation sets the notifier to true.
-                                    },
-                                  );
-                                }
-
-                                return Scaffold(
-                                  backgroundColor: Colors.black,
-                                  body: Center(
-                                    child: ConstrainedBox(
-                                      constraints:
-                                          const BoxConstraints(maxWidth: 500),
-                                      child: const MainDashboard(),
-                                    ),
-                                  ),
-                                );
-                              });
-                        },
-                      );
-                    }
-                    return Scaffold(
-                      backgroundColor: Colors.black,
-                      body: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 500),
-                          child: const AuthScreen(),
-                        ),
-                      ),
-                    );
-                  },
-                ),
->>>>>>> 03fed4d (Your commit message)
+              ),
         );
       },
     );
   }
 }
 
-<<<<<<< HEAD
 // ──────────────────────────────────────────────────────────────
 // _AuthGate — handles auth state reactively WITHOUT a FutureBuilder
 // in the build tree (which caused the infinite loading loop).
@@ -514,9 +414,6 @@ class _AuthGateState extends State<_AuthGate> {
   }
 }
 
-
-=======
->>>>>>> 03fed4d (Your commit message)
 // ----------------------------------------------------
 // NEON WIDGETS
 // ----------------------------------------------------
