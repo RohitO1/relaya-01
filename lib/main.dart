@@ -47,6 +47,7 @@ import 'package:app_links/app_links.dart';
 import 'chatroom_live_screen.dart';
 import 'explore_screen.dart';
 import 'services/doodle_theme.dart';
+import 'widgets/sloth_animated_loader.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -222,15 +223,10 @@ class _MeetraAppState extends State<MeetraApp> {
                           .maybeSingle(),
                       builder: (context, profileSnap) {
                         if (profileSnap.connectionState == ConnectionState.waiting) {
-                          return Scaffold(
-                            backgroundColor: const Color(0xFF050508),
+                          return const Scaffold(
+                            backgroundColor: Color(0xFF030303),
                             body: Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const CircularProgressIndicator(color: Color(0xFFFF6B00)),
-                                ],
-                              ),
+                              child: SlothAnimatedLoader(size: 180),
                             ),
                           );
                         }
@@ -392,13 +388,10 @@ class _AuthGateState extends State<_AuthGate> {
   Widget build(BuildContext context) {
     final session = Supabase.instance.client.auth.currentSession;
     if (session != null) {
-      // Already logged in — show a slim spinner while _handleSession runs.
+      // Already logged in — show sloth loader while _handleSession runs.
       return const Scaffold(
-        backgroundColor: Color(0xFF050508),
-        body: Center(child: CircularProgressIndicator(
-          color: Color(0xFFFF6B00),
-          strokeWidth: 2.5,
-        )),
+        backgroundColor: Color(0xFF030303),
+        body: Center(child: SlothAnimatedLoader(size: 180)),
       );
     }
     // Not logged in — show auth screen.

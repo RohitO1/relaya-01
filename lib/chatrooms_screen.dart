@@ -150,7 +150,6 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
 
   Future<void> _loadRooms() async {
     try {
-<<<<<<< HEAD
       final res = await _sb.from('chatrooms').select('*').neq('room_status', 'deleted').order('created_at', ascending: false).limit(50);
       final rawRooms = List<Map<String, dynamic>>.from(res);
 
@@ -191,18 +190,6 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
       }
 
       if (mounted) setState(() { _rooms = rooms; _loading = false; });
-=======
-      final res = await _sb
-          .from('chatrooms')
-          .select('*')
-          .order('created_at', ascending: false)
-          .limit(50);
-      if (mounted)
-        setState(() {
-          _rooms = List<Map<String, dynamic>>.from(res);
-          _loading = false;
-        });
->>>>>>> 03fed4d (Your commit message)
     } catch (e) {
       debugPrint('Load rooms: $e');
       if (mounted) setState(() => _loading = false);

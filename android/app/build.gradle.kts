@@ -16,8 +16,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.example.meetra_app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.12077973"
-    ndkPath = "C:\\Users\\Anurag\\AppData\\Local\\Android\\sdk\\ndk\\27.0.12077973"
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -36,10 +35,12 @@ android {
 
     signingConfigs {
         create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
-            storeFile = file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["storePassword"] as String
+            if (keystoreProperties.containsKey("keyAlias")) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
         }
     }
 

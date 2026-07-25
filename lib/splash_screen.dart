@@ -22,8 +22,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   void initState() {
     super.initState();
 
-    // Total sequence duration: 2.2 seconds for a fast, snappy cinematic feel
-    _sequenceCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200));
+    // Total sequence duration: 1800ms for a fast, snappy cinematic feel
+    _sequenceCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
 
     // Phase 1: Fade In (0ms to 800ms -> 0.0 to 0.23)
     _slothOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -100,80 +100,91 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   child: Transform.translate(
                     offset: Offset(0, _slothOffsetY.value),
                     child: SizedBox(
-                      width: 200,
+                      width: 203,
                       height: 150,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        clipBehavior: Clip.none,
-                        children: [
-                          // Base Head
-                          Positioned.fill(
-                            child: Image.asset(
-                              'assets/images/Sloth_Base_Head.png',
-                              fit: BoxFit.contain,
-                              errorBuilder: (c, e, s) => const SizedBox(),
-                            ),
-                          ),
-
-                          // Eyelids (Winking - clips right half so only left eyelid animates)
-                          Positioned.fill(
-                            child: ClipRect(
-                              clipper: HalfClipper(),
-                              child: Transform.scale(
-                                scaleY: _winkScale.value,
-                                alignment: Alignment.center,
+                      child: FittedBox(
+                        child: SizedBox(
+                          width: 553,
+                          height: 408,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            clipBehavior: Clip.none,
+                            children: [
+                              // Base Head
+                              Positioned.fill(
                                 child: Image.asset(
-                                  'assets/images/Sloth_Eyelids.png',
+                                  'assets/images/Relaya_Base_Head_EmptyEyes.png',
                                   fit: BoxFit.contain,
                                   errorBuilder: (c, e, s) => const SizedBox(),
                                 ),
                               ),
-                            ),
-                          ),
-                          // Left Paw (Animating diagonally out from center)
-                          Positioned.fill(
-                            child: Transform.translate(
-                              offset: Offset(-4.0 * _pawPopValue.value, -8.0 * _pawPopValue.value),
-                              child: Image.asset(
-                                'assets/images/Sloth_Left_Paw.png',
-                                fit: BoxFit.contain,
-                                errorBuilder: (c, e, s) => const SizedBox(),
-                              ),
-                            ),
-                          ),
 
-                          // Right Paw (Animating diagonally out from center)
-                          Positioned.fill(
-                            child: Transform.translate(
-                              offset: Offset(4.0 * _pawPopValue.value, -8.0 * _pawPopValue.value),
-                              child: Image.asset(
-                                'assets/images/Sloth_Right_Paw.png',
-                                fit: BoxFit.contain,
-                                errorBuilder: (c, e, s) => const SizedBox(),
+                              // Left Iris
+                              Positioned(
+                                left: 159,
+                                top: 200,
+                                width: 68,
+                                height: 68,
+                                child: Image.asset('assets/images/Relaya_Iris_Left.png'),
                               ),
-                            ),
-                          ),
 
-                          // Hide the bottom edge of the sloth using a dark gradient/box
-                          Positioned(
-                            bottom: -20,
-                            child: Container(
-                              width: 220,
-                              height: 30,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    const Color(0xFF030303).withValues(alpha: 0.0),
-                                    const Color(0xFF030303),
-                                    const Color(0xFF030303),
-                                  ],
+                              // Right Iris
+                              Positioned(
+                                left: 319,
+                                top: 195,
+                                width: 68,
+                                height: 68,
+                                child: Image.asset('assets/images/Relaya_Iris_Right.png'),
+                              ),
+
+                              // Left Eyelid (Winking! Scales from top to close eye)
+                              Positioned(
+                                left: 129,
+                                top: 120,
+                                width: 134,
+                                height: 124,
+                                child: Transform(
+                                  alignment: Alignment.topCenter,
+                                  transform: Matrix4.identity()..scale(1.0, 1.0 - _winkScale.value),
+                                  child: Image.asset('assets/images/Relaya_Eyelid_Left.png'),
                                 ),
                               ),
-                            ),
+
+                              // Right Eyelid (Static)
+                              Positioned(
+                                left: 287,
+                                top: 110,
+                                width: 135,
+                                height: 129,
+                                child: Image.asset('assets/images/Relaya_Eyelid_Right.png'),
+                              ),
+
+                              // Left Paw (Animating diagonally out from center - much more subtle)
+                              Positioned.fill(
+                                child: Transform.translate(
+                                  offset: Offset(-2.0 * _pawPopValue.value, -4.0 * _pawPopValue.value),
+                                  child: Image.asset(
+                                    'assets/images/Sloth_Left_Paw.png',
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (c, e, s) => const SizedBox(),
+                                  ),
+                                ),
+                              ),
+
+                              // Right Paw (Animating diagonally out from center - much more subtle)
+                              Positioned.fill(
+                                child: Transform.translate(
+                                  offset: Offset(2.0 * _pawPopValue.value, -4.0 * _pawPopValue.value),
+                                  child: Image.asset(
+                                    'assets/images/Sloth_Right_Paw.png',
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (c, e, s) => const SizedBox(),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -217,13 +228,3 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 }
 
-class HalfClipper extends CustomClipper<Rect> {
-  @override
-  Rect getClip(Size size) {
-    // Only clip the left half of the image
-    return Rect.fromLTRB(0, 0, size.width / 2, size.height);
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Rect> oldClipper) => false;
-}

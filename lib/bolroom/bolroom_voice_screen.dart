@@ -161,7 +161,6 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
 
       final rawRooms = List<Map<String, dynamic>>.from(res);
 
-<<<<<<< HEAD
       // Fetch active member counts for all loaded rooms
       final membersRes = await _sb.from('chatroom_members').select('room_id');
       final memberCounts = <String, int>{};
@@ -200,12 +199,9 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
         }
       }
 
-      // ── Live host-name and avatar lookup from bolroom_profiles ────────────────
-=======
       // ── Live host-name lookup ─────────────────────────────────────────────
       // chatrooms.host_name and chatroom_members.user_name can be stale if the
       // user updated their profile. Always fetch the absolute latest name from profiles.
->>>>>>> 03fed4d (Your commit message)
       if (rooms.isNotEmpty) {
         try {
           final hostIds = rooms
@@ -854,18 +850,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
-<<<<<<< HEAD
                 doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 16, child: Icon(Icons.person, color: DoodleColors.cream, size: 16)) : _buildGlowingAvatar(auraColor, 32, userId: room['host_id']?.toString(), avatarKey: room['host_avatar_key']?.toString() ?? room['host_avatar']?.toString()),
-=======
-                doodle
-                    ? CircleAvatar(
-                        backgroundColor: DoodleColors.orange,
-                        radius: 16,
-                        child: Icon(Icons.person,
-                            color: DoodleColors.cream, size: 16))
-                    : _buildGlowingAvatar(auraColor, 32,
-                        userId: room['host_id']?.toString()),
->>>>>>> 03fed4d (Your commit message)
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -1427,25 +1412,12 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                         setSheetState(() => _isCreating = true);
 
                         String hostName = 'Host';
-<<<<<<< HEAD
                         String? hostAvatarKey;
                         final bp = await _sb.from('bolroom_profiles').select('anon_name, avatar_key').eq('id', myId).maybeSingle();
                         if (bp != null) {
                           final anon = (bp['anon_name'] ?? '').toString().trim();
                           if (anon.isNotEmpty) hostName = anon;
                           hostAvatarKey = bp['avatar_key']?.toString();
-=======
-                        String? hostAvatar;
-                        final profile = await _sb
-                            .from('profiles')
-                            .select('full_name, avatar_url')
-                            .eq('id', myId)
-                            .maybeSingle();
-                        if (profile != null) {
-                          if (profile['full_name'] != null)
-                            hostName = profile['full_name'];
-                          hostAvatar = profile['avatar_url']?.toString();
->>>>>>> 03fed4d (Your commit message)
                         }
                         if (hostName == 'Host') {
                           final profile = await _sb.from('profiles').select('full_name, name').eq('id', myId).maybeSingle();
@@ -1462,7 +1434,12 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                         topic += ' | $_myLocation';
 
                         try {
-<<<<<<< HEAD
+                          await _sb
+                              .from('chatrooms')
+                              .update({'room_status': 'ended'})
+                              .eq('host_id', myId)
+                              .eq('room_status', 'active');
+
                           final res = await _sb.from('chatrooms').insert({
                             'name': name,
                             'host_id': myId,
@@ -1478,34 +1455,6 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                             'scheduled_at': null,
                             'created_at': DateTime.now().toUtc().toIso8601String(),
                           }).select().single();
-=======
-                          await _sb
-                              .from('chatrooms')
-                              .update({'room_status': 'ended'})
-                              .eq('host_id', myId)
-                              .eq('room_status', 'active');
-
-                          final res = await _sb
-                              .from('chatrooms')
-                              .insert({
-                                'name': name,
-                                'host_id': myId,
-                                'host_name': hostName,
-                                'host_avatar': hostAvatar,
-                                'topic': topic,
-                                'speak_permission': 'everyone',
-                                'is_recording': isRecording,
-                                'game_mode': gameMode,
-                                'visibility': visibility,
-                                'max_participants': maxParticipants,
-                                'room_status': 'active',
-                                'scheduled_at': null,
-                                'created_at':
-                                    DateTime.now().toUtc().toIso8601String(),
-                              })
-                              .select()
-                              .single();
->>>>>>> 03fed4d (Your commit message)
 
                           // Update bolroom profile hosted count
                           try {
