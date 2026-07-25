@@ -181,30 +181,24 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
                     ),
                   ),
 
-                  // ── Left Iris (159, 200) 68×68 ─────────────────────────────
+                  // ── Left Iris (159, 200) ─────────────────────────────
                   Positioned(
                     left: 159 + dx,
                     top: 200 + dy,
-                    width: 68,
-                    height: 68,
                     child: Image.asset('assets/images/Relaya_Iris_Left.png'),
                   ),
 
-                  // ── Right Iris (319, 195) 68×68 ────────────────────────────
+                  // ── Right Iris (319, 195) ────────────────────────────
                   Positioned(
                     left: 319 + dx,
                     top: 195 + dy,
-                    width: 68,
-                    height: 68,
                     child: Image.asset('assets/images/Relaya_Iris_Right.png'),
                   ),
 
-                  // ── Left Eyelid (129, 120) 134×124 ─────────────────────────
+                  // ── Left Eyelid (129, 120) ─────────────────────────
                   Positioned(
                     left: 129,
                     top: 120,
-                    width: 134,
-                    height: 124,
                     child: Transform(
                       alignment: Alignment.topCenter,
                       transform: Matrix4.identity()
@@ -213,12 +207,10 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
                     ),
                   ),
 
-                  // ── Right Eyelid (287, 110) 135×129 ────────────────────────
+                  // ── Right Eyelid (287, 110) ────────────────────────
                   Positioned(
                     left: 287,
                     top: 110,
-                    width: 135,
-                    height: 129,
                     child: Transform(
                       alignment: Alignment.topCenter,
                       transform: Matrix4.identity()

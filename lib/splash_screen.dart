@@ -123,8 +123,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                               Positioned(
                                 left: 159,
                                 top: 200,
-                                width: 68,
-                                height: 68,
                                 child: Image.asset('assets/images/Relaya_Iris_Left.png'),
                               ),
 
@@ -132,8 +130,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                               Positioned(
                                 left: 319,
                                 top: 195,
-                                width: 68,
-                                height: 68,
                                 child: Image.asset('assets/images/Relaya_Iris_Right.png'),
                               ),
 
@@ -141,8 +137,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                               Positioned(
                                 left: 129,
                                 top: 120,
-                                width: 134,
-                                height: 124,
                                 child: Transform(
                                   alignment: Alignment.topCenter,
                                   transform: Matrix4.identity()..scale(1.0, 1.0 - _winkScale.value),
@@ -154,8 +148,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                               Positioned(
                                 left: 287,
                                 top: 110,
-                                width: 135,
-                                height: 129,
                                 child: Image.asset('assets/images/Relaya_Eyelid_Right.png'),
                               ),
 
