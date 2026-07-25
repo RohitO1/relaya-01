@@ -200,11 +200,94 @@ class _MeetraAppState extends State<MeetraApp> {
                     if (mounted) setState(() => _showLocationGate = false);
                   },
                 )
-<<<<<<< HEAD
-            : _AuthGate(
-                fetchOnboardingDone: _fetchOnboardingDone,
-              ),
-=======
+            : StreamBuilder<AuthState>(
+                stream: Supabase.instance.client.auth.onAuthStateChange,
+                builder: (context, snapshot) {
+                  final session = snapshot.hasData ? snapshot.data!.session : null;
+                  if (session != null) {
+                    // User is logged in - check onboarding
+                    return FutureBuilder<Map<String, dynamic>?>(
+                      future: Supabase.instance.client
+                          .from('profiles')
+                          .select('onboarding_complete')
+                          .eq('id', session.user.id)
+                          .maybeSingle(),
+                      builder: (context, profileSnap) {
+                        if (profileSnap.connectionState == ConnectionState.waiting) {
+                          return Scaffold(
+                            backgroundColor: const Color(0xFF050508),
+                            body: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Image.asset(
+                                    'assets/images/meetra_icon.png',
+                                    width: 80,
+                                    height: 80,
+                                  )
+                                      .animate(
+                                          onPlay: (controller) => controller.repeat(reverse: true))
+                                      .scale(
+                                          begin: const Offset(0.9, 0.9),
+                                          end: const Offset(1.1, 1.1),
+                                          duration: 800.ms,
+                                          curve: Curves.easeInOut),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        final profile = profileSnap.data;
+                        final onboardingDone = profile != null && profile['onboarding_complete'] == true;
+
+                        if (!onboardingDone) {
+                          return Scaffold(
+                            backgroundColor: Colors.black,
+                            body: Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 500),
+                                child: const OnboardingScreen(),
+                              ),
+                            ),
+                          );
+                        }
+
+                        return ValueListenableBuilder<bool>(
+                            valueListenable: locationService.isLocationGrantedNotifier,
+                            builder: (context, isGranted, _) {
+                              if (!isGranted) {
+                                return LocationPermissionScreen(
+                                  onPermissionGranted: () {
+                                    // Trigger rebuild; fetchLiveLocation sets notifier to true.
+                                  },
+                                );
+                              }
+
+                              return Scaffold(
+                                backgroundColor: Colors.black,
+                                body: Center(
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 500),
+                                    child: const MainDashboard(),
+                                  ),
+                                ),
+                              );
+                            });
+                      },
+                    );
+                  }
+                  return Scaffold(
+                    backgroundColor: Colors.black,
+                    body: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 500),
+                        child: const AuthScreen(),
+                      ),
+                    ),
+                  );
+                },
+              )
               : StreamBuilder<AuthState>(
                   stream: Supabase.instance.client.auth.onAuthStateChange,
                   builder: (context, snapshot) {
