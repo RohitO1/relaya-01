@@ -16,63 +16,70 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late Animation<double> _slothOffsetY;
   late Animation<double> _pawPopValue;
   late Animation<double> _textOpacity;
+  late Animation<double> _textScale;
   late Animation<double> _blinkScale;
 
   @override
   void initState() {
     super.initState();
 
-    // Total sequence duration: 1800ms for a fast, snappy cinematic feel
-    _sequenceCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+    // Cinematic 3.5 second sequence
+    _sequenceCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 3500));
 
-    // Phase 1: Fade In (0ms to 800ms -> 0.0 to 0.23)
+    // Phase 1: Fade In Head (0% - 15% -> 0 to 525ms)
     _slothOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _sequenceCtrl,
-        curve: const Interval(0.0, 0.23, curve: Curves.easeIn),
+        curve: const Interval(0.0, 0.15, curve: Curves.easeIn),
       ),
     );
 
-    // Phase 2: Pop Up Head (1000ms to 1600ms -> 0.28 to 0.45)
+    // Phase 2: Rise up (15% - 40% -> 525 to 1400ms)
     _slothOffsetY = TweenSequence<double>([
-      TweenSequenceItem(tween: ConstantTween(50.0), weight: 28),
-      TweenSequenceItem(
-          tween: Tween(begin: 50.0, end: 0.0).chain(CurveTween(curve: Curves.easeOutBack)), weight: 17),
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 55),
+      TweenSequenceItem(tween: ConstantTween(50.0), weight: 15),
+      TweenSequenceItem(tween: Tween(begin: 50.0, end: 0.0).chain(CurveTween(curve: Curves.easeOutBack)), weight: 25),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 60),
     ]).animate(_sequenceCtrl);
 
-    // Phase 2b: Paws pop out and stick back
+    // Phase 3: Eyelids open smoothly, then hold, then cinematic blink
+    _blinkScale = TweenSequence<double>([
+      // 0 - 35%: Closed (value = 1.0)
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 35),
+      // 35 - 45%: Eyelids slowly open (1.0 -> 0.0)
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 10),
+      // 45 - 80%: Hold open (value = 0.0)
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 35),
+      // 80 - 86%: Close for blink
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 6),
+      // 86 - 92%: Open from blink
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 6),
+      // 92 - 100%: Hold open
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 8),
+    ]).animate(_sequenceCtrl);
+
+    // Phase 4: Paws slowly reach out
     _pawPopValue = TweenSequence<double>([
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 40),
-      TweenSequenceItem(
-          tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 12), // pop out
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 6), // hold
-      TweenSequenceItem(
-          tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 12), // stick back
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 30),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 45), // Wait for eyes to open
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOutCubic)), weight: 35),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 20),
     ]).animate(_sequenceCtrl);
 
-    // Text fades in (1300ms to 2000ms -> 0.37 to 0.57)
+    // Phase 5: Text fades in & scales up slightly
     _textOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _sequenceCtrl,
-        curve: const Interval(0.37, 0.57, curve: Curves.easeIn),
+        curve: const Interval(0.55, 0.75, curve: Curves.easeIn),
+      ),
+    );
+    _textScale = Tween<double>(begin: 0.95, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _sequenceCtrl,
+        curve: const Interval(0.55, 1.0, curve: Curves.easeOut),
       ),
     );
 
-    // Phase 3: Blink (both eyelids close and open)
-    _blinkScale = TweenSequence<double>([
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 68), // Starts fully open
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 6), // close
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 4), // hold closed
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 6), // open
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 16),
-    ]).animate(_sequenceCtrl);
-
     _sequenceCtrl.forward().then((_) {
-      if (mounted) {
-        widget.onComplete();
-      }
+      if (mounted) widget.onComplete();
     });
   }
 
@@ -84,7 +91,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    // Pure black background matching the storyboard
     return Scaffold(
       backgroundColor: const Color(0xFF030303),
       body: Center(
@@ -94,7 +100,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             return Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Container holding the sloth components
                 Opacity(
                   opacity: _slothOpacity.value,
                   child: Transform.translate(
@@ -110,30 +115,19 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                             alignment: Alignment.center,
                             clipBehavior: Clip.none,
                             children: [
-                              // Base Head
                               Positioned.fill(
-                                child: Image.asset(
-                                  'assets/images/Relaya_Base_Head_EmptyEyes.png',
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (c, e, s) => const SizedBox(),
-                                ),
+                                child: Image.asset('assets/images/Relaya_Base_Head_EmptyEyes.png', fit: BoxFit.contain, errorBuilder: (c, e, s) => const SizedBox()),
                               ),
-
-                              // Left Iris
                               Positioned(
                                 left: 159,
                                 top: 200,
                                 child: Image.asset('assets/images/Relaya_Iris_Left.png'),
                               ),
-
-                              // Right Iris
                               Positioned(
                                 left: 319,
                                 top: 195,
                                 child: Image.asset('assets/images/Relaya_Iris_Right.png'),
                               ),
-
-                              // Left Eyelid (Blinking)
                               Positioned(
                                 left: 129,
                                 top: 120,
@@ -143,8 +137,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                   child: Image.asset('assets/images/Relaya_Eyelid_Left.png'),
                                 ),
                               ),
-
-                              // Right Eyelid (Blinking)
                               Positioned(
                                 left: 287,
                                 top: 110,
@@ -154,29 +146,17 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                   child: Image.asset('assets/images/Relaya_Eyelid_Right.png'),
                                 ),
                               ),
-
-                              // Left Paw (Pops out and sticks back)
+                              // Cinematic gentle reach: paws slide from center slightly out and up to cradle the body
                               Positioned.fill(
                                 child: Transform.translate(
-                                  offset: Offset(-12.0 * _pawPopValue.value, -20.0 * _pawPopValue.value),
-                                  child: Image.asset(
-                                    'assets/images/Sloth_Left_Paw.png',
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (c, e, s) => const SizedBox(),
-                                  ),
+                                  offset: Offset(-22.0 * _pawPopValue.value, -30.0 * _pawPopValue.value),
+                                  child: Image.asset('assets/images/Sloth_Left_Paw.png', fit: BoxFit.contain, errorBuilder: (c, e, s) => const SizedBox()),
                                 ),
                               ),
-
-                              // Right Paw (Pops out and sticks back)
                               Positioned.fill(
                                 child: Transform.translate(
-                                  offset: Offset(12.0 * _pawPopValue.value, -20.0 * _pawPopValue.value),
-                                  child: Image.asset(
-                                    'assets/images/Sloth_Right_Paw.png',
-
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (c, e, s) => const SizedBox(),
-                                  ),
+                                  offset: Offset(22.0 * _pawPopValue.value, -30.0 * _pawPopValue.value),
+                                  child: Image.asset('assets/images/Sloth_Right_Paw.png', fit: BoxFit.contain, errorBuilder: (c, e, s) => const SizedBox()),
                                 ),
                               ),
                             ],
@@ -186,34 +166,34 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
-                // RELAYA Text
                 Opacity(
                   opacity: _textOpacity.value,
-                  child: Column(
-                    children: [
-                      Text(
-                        'RELAYA',
-                        style: GoogleFonts.montserrat(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w200,
-                          letterSpacing: 10.0,
+                  child: Transform.scale(
+                    scale: _textScale.value,
+                    child: Column(
+                      children: [
+                        Text(
+                          'RELAYA',
+                          style: GoogleFonts.montserrat(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w200,
+                            letterSpacing: 10.0,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'WHERE CONNECTIONS BEGIN.',
-                        style: GoogleFonts.inter(
-                          color: const Color(0xFFFF8A00),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
+                        const SizedBox(height: 6),
+                        Text(
+                          'WHERE CONNECTIONS BEGIN.',
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFFFF8A00),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.2,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -224,4 +204,3 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     );
   }
 }
-

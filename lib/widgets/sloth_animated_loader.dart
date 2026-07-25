@@ -1,22 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// Premium animated Sloth face loader.
-///
-/// Uses separate PNG layers placed at their exact canvas coordinates
-/// (canvas size 553 × 408):
-///   • Base_Head_EmptyEyes  –  Positioned.fill (full canvas)
-///   • Iris_Left            –  (159, 200)  68×68
-///   • Iris_Right           –  (319, 195)  68×68
-///   • Eyelid_Left          –  (129, 120)  134×124
-///   • Eyelid_Right         –  (287, 110)  135×129
-///
-/// Animation loop:
-///   1. Eyes glide left  (easeInOutSine)
-///   2. Pause briefly
-///   3. Eyes glide right (easeInOutSine)
-///   4. Eyes return to centre
-///   5. Subtle blink (both eyelids scale-Y close then open)
-///   Repeat forever.
 class SlothAnimatedLoader extends StatefulWidget {
   final double size;
 
@@ -28,115 +11,88 @@ class SlothAnimatedLoader extends StatefulWidget {
 
 class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
     with TickerProviderStateMixin {
-  // Horizontal eye-travel animation
   late final AnimationController _gazeCtrl;
-  // Blink animation (runs periodically, separate from gaze)
   late final AnimationController _blinkCtrl;
+  late final AnimationController _breathCtrl;
 
-  late final Animation<double> _gazeX;    // –1 … +1
-  late final Animation<double> _gazeY;    // slight arc
-  late final Animation<double> _blinkL;   // 0 open … 1 closed
-  late final Animation<double> _blinkR;   // same, tiny offset for realism
+  late final Animation<double> _gazeX;
+  late final Animation<double> _gazeY;
+  late final Animation<double> _blinkL;
+  late final Animation<double> _blinkR;
+  late final Animation<double> _breathScale;
 
   @override
   void initState() {
     super.initState();
 
-    // ── Gaze controller – 2.8 s per cycle (look left → centre → right → centre) ──
-    _gazeCtrl = AnimationController(
+    // ── Breathing Controller (Continuous subtle scale in/out) ──
+    _breathCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2800),
-    )..repeat();
+      duration: const Duration(milliseconds: 3000),
+    )..repeat(reverse: true);
 
-    // Eyes travel in a smooth S-curve: left, pause, right, pause, centre
-    _gazeX = TweenSequence<double>([
-      // Glide left
-      TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: -1.0)
-            .chain(CurveTween(curve: Curves.easeInOutSine)),
-        weight: 18,
-      ),
-      // Hold left
-      TweenSequenceItem(tween: ConstantTween(-1.0), weight: 8),
-      // Glide right
-      TweenSequenceItem(
-        tween: Tween(begin: -1.0, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInOutSine)),
-        weight: 25,
-      ),
-      // Hold right
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 8),
-      // Return centre
-      TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeInOutSine)),
-        weight: 18,
-      ),
-      // Pause at centre (before blink window)
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 23),
-    ]).animate(_gazeCtrl);
-
-    // Slight arc: irises dip very slightly when at extremes
-    _gazeY = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: 5.0)
-            .chain(CurveTween(curve: Curves.easeInOutSine)),
-        weight: 18,
-      ),
-      TweenSequenceItem(tween: ConstantTween(5.0), weight: 8),
-      TweenSequenceItem(
-        tween: Tween(begin: 5.0, end: 5.0).chain(CurveTween(curve: Curves.linear)),
-        weight: 25,
-      ),
-      TweenSequenceItem(tween: ConstantTween(5.0), weight: 8),
-      TweenSequenceItem(
-        tween: Tween(begin: 5.0, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeInOutSine)),
-        weight: 18,
-      ),
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 23),
-    ]).animate(_gazeCtrl);
-
-    // ── Blink controller – 400 ms, triggers in last 25% of gaze cycle ──
-    _blinkCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
+    _breathScale = Tween<double>(begin: 1.0, end: 1.02).animate(
+      CurvedAnimation(parent: _breathCtrl, curve: Curves.easeInOutSine),
     );
 
-    // Left eyelid: scaleY 0→1→0
+    // ── Gaze Controller – 6s Cinematic Look Cycle ──
+    _gazeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 6000),
+    )..repeat();
+
+    _gazeX = TweenSequence<double>([
+      // Centre to Left
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: -1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 15),
+      TweenSequenceItem(tween: ConstantTween(-1.0), weight: 15),
+      // Left to Right
+      TweenSequenceItem(tween: Tween(begin: -1.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 25),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 15),
+      // Right to Centre
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 15),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 15),
+    ]).animate(_gazeCtrl);
+
+    _gazeY = TweenSequence<double>([
+      // Look slightly down when traversing
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 6.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 15),
+      TweenSequenceItem(tween: ConstantTween(6.0), weight: 15),
+      TweenSequenceItem(tween: Tween(begin: 6.0, end: 6.0).chain(CurveTween(curve: Curves.linear)), weight: 25),
+      TweenSequenceItem(tween: ConstantTween(6.0), weight: 15),
+      TweenSequenceItem(tween: Tween(begin: 6.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 15),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 15),
+    ]).animate(_gazeCtrl);
+
+    // ── Blink Controller (Triggered occasionally) ──
+    // A cinematic sloth blink is slow and deliberate.
+    _blinkCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+
     _blinkL = TweenSequence<double>([
-      TweenSequenceItem(
-          tween: Tween(begin: 0.0, end: 1.0)
-              .chain(CurveTween(curve: Curves.easeOut)),
-          weight: 40),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 20),
-      TweenSequenceItem(
-          tween: Tween(begin: 1.0, end: 0.0)
-              .chain(CurveTween(curve: Curves.easeIn)),
-          weight: 40),
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 45),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 45),
     ]).animate(_blinkCtrl);
 
-    // Right eyelid: same shape, 30 ms delay gives naturalistic feel
+    // Right eyelid has a tiny delay for realism
     _blinkR = TweenSequence<double>([
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 8),
-      TweenSequenceItem(
-          tween: Tween(begin: 0.0, end: 1.0)
-              .chain(CurveTween(curve: Curves.easeOut)),
-          weight: 35),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 18),
-      TweenSequenceItem(
-          tween: Tween(begin: 1.0, end: 0.0)
-              .chain(CurveTween(curve: Curves.easeIn)),
-          weight: 35),
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 4),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 5),
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 45),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 35),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 5),
     ]).animate(_blinkCtrl);
 
-    // Trigger a blink whenever the gaze cycle enters its last quarter
     _gazeCtrl.addListener(() {
-      if (_gazeCtrl.value >= 0.76 && _gazeCtrl.value <= 0.78) {
-        if (!_blinkCtrl.isAnimating) {
-          _blinkCtrl.forward(from: 0.0);
-        }
+      // Trigger slow blink near the end of the cycle
+      if (_gazeCtrl.value > 0.85 && _gazeCtrl.value < 0.87) {
+        if (!_blinkCtrl.isAnimating) _blinkCtrl.forward(from: 0.0);
+      }
+      // Occasional double blink around the left gaze
+      if (_gazeCtrl.value > 0.20 && _gazeCtrl.value < 0.22) {
+        if (!_blinkCtrl.isAnimating) _blinkCtrl.forward(from: 0.0);
       }
     });
   }
@@ -145,6 +101,7 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
   void dispose() {
     _gazeCtrl.dispose();
     _blinkCtrl.dispose();
+    _breathCtrl.dispose();
     super.dispose();
   }
 
@@ -152,7 +109,6 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
   Widget build(BuildContext context) {
     const double canvasW = 553.0;
     const double canvasH = 408.0;
-
     final double widgetH = widget.size * (canvasH / canvasW);
 
     return SizedBox(
@@ -164,61 +120,51 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
           width: canvasW,
           height: canvasH,
           child: AnimatedBuilder(
-            animation: Listenable.merge([_gazeCtrl, _blinkCtrl]),
+            animation: Listenable.merge([_gazeCtrl, _blinkCtrl, _breathCtrl]),
             builder: (context, _) {
-              const double maxDx = 22.0; // pixels on 553-wide canvas
+              const double maxDx = 25.0; 
               final double dx = _gazeX.value * maxDx;
               final double dy = _gazeY.value;
 
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // ── Base Head ──────────────────────────────────────────────
-                  Positioned.fill(
-                    child: Image.asset(
-                      'assets/images/Relaya_Base_Head_EmptyEyes.png',
-                      fit: BoxFit.fill,
+              return Transform.scale(
+                scale: _breathScale.value,
+                alignment: Alignment.center,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned.fill(
+                      child: Image.asset('assets/images/Relaya_Base_Head_EmptyEyes.png', fit: BoxFit.fill),
                     ),
-                  ),
-
-                  // ── Left Iris (159, 200) ─────────────────────────────
-                  Positioned(
-                    left: 159 + dx,
-                    top: 200 + dy,
-                    child: Image.asset('assets/images/Relaya_Iris_Left.png'),
-                  ),
-
-                  // ── Right Iris (319, 195) ────────────────────────────
-                  Positioned(
-                    left: 319 + dx,
-                    top: 195 + dy,
-                    child: Image.asset('assets/images/Relaya_Iris_Right.png'),
-                  ),
-
-                  // ── Left Eyelid (129, 120) ─────────────────────────
-                  Positioned(
-                    left: 129,
-                    top: 120,
-                    child: Transform(
-                      alignment: Alignment.topCenter,
-                      transform: Matrix4.identity()
-                        ..scale(1.0, _blinkL.value == 0.0 ? 0.001 : _blinkL.value),
-                      child: Image.asset('assets/images/Relaya_Eyelid_Left.png'),
+                    Positioned(
+                      left: 159 + dx,
+                      top: 200 + dy,
+                      child: Image.asset('assets/images/Relaya_Iris_Left.png'),
                     ),
-                  ),
-
-                  // ── Right Eyelid (287, 110) ────────────────────────
-                  Positioned(
-                    left: 287,
-                    top: 110,
-                    child: Transform(
-                      alignment: Alignment.topCenter,
-                      transform: Matrix4.identity()
-                        ..scale(1.0, _blinkR.value == 0.0 ? 0.001 : _blinkR.value),
-                      child: Image.asset('assets/images/Relaya_Eyelid_Right.png'),
+                    Positioned(
+                      left: 319 + dx,
+                      top: 195 + dy,
+                      child: Image.asset('assets/images/Relaya_Iris_Right.png'),
                     ),
-                  ),
-                ],
+                    Positioned(
+                      left: 129,
+                      top: 120,
+                      child: Transform(
+                        alignment: Alignment.topCenter,
+                        transform: Matrix4.identity()..scale(1.0, _blinkL.value == 0.0 ? 0.001 : _blinkL.value),
+                        child: Image.asset('assets/images/Relaya_Eyelid_Left.png'),
+                      ),
+                    ),
+                    Positioned(
+                      left: 287,
+                      top: 110,
+                      child: Transform(
+                        alignment: Alignment.topCenter,
+                        transform: Matrix4.identity()..scale(1.0, _blinkR.value == 0.0 ? 0.001 : _blinkR.value),
+                        child: Image.asset('assets/images/Relaya_Eyelid_Right.png'),
+                      ),
+                    ),
+                  ],
+                ),
               );
             },
           ),
