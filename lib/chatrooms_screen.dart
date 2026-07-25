@@ -24,7 +24,7 @@ class BolRoomColors {
   static const purple = Color(0xFFFF7E40);
   static const textPrimary = Colors.white;
   static const textSecondary = Color(0xFFA19EAD);
-  
+
   // Backward compatibility for chatroom_live_screen.dart
   static const card = Color(0xFF111827);
   static const cardHover = Color(0xFF1E293B);
@@ -60,21 +60,30 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.white)),
+      content: Text(msg,
+          style: GoogleFonts.inter(
+              fontWeight: FontWeight.w700, fontSize: 13, color: Colors.white)),
       backgroundColor: const Color(0xFF151121),
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: EdgeInsets.only(bottom: MediaQuery.of(context).size.height * 0.1, left: 24, right: 24),
+      margin: EdgeInsets.only(
+          bottom: MediaQuery.of(context).size.height * 0.1,
+          left: 24,
+          right: 24),
       duration: const Duration(seconds: 2),
     ));
   }
 
-  String _getTopic(dynamic t) => (t ?? 'Topic').toString().split('|').first.trim();
+  String _getTopic(dynamic t) =>
+      (t ?? 'Topic').toString().split('|').first.trim();
   String _getLoc(dynamic t) {
     final p = (t ?? '').toString().split('|');
     if (p.length > 1) {
       final loc = p.last.trim();
-      if (loc.isNotEmpty && !loc.toLowerCase().contains('could not') && !loc.toLowerCase().contains('error') && !loc.toLowerCase().contains('denied')) return loc;
+      if (loc.isNotEmpty &&
+          !loc.toLowerCase().contains('could not') &&
+          !loc.toLowerCase().contains('error') &&
+          !loc.toLowerCase().contains('denied')) return loc;
     }
     return 'Global';
   }
@@ -86,10 +95,15 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
     _loadUnreadCount();
     _setupNotifListener();
     _startLobbySweepTimer();
-    _roomsSub = _sb.channel('public:chatrooms:list').onPostgresChanges(
-      event: PostgresChangeEvent.all, schema: 'public', table: 'chatrooms',
-      callback: (_) => _loadRooms(),
-    ).subscribe();
+    _roomsSub = _sb
+        .channel('public:chatrooms:list')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chatrooms',
+          callback: (_) => _loadRooms(),
+        )
+        .subscribe();
   }
 
   @override
@@ -108,7 +122,8 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
         if (roomsRes.isEmpty) return;
 
         final membersRes = await _sb.from('chatroom_members').select('room_id');
-        final activeRoomIds = (membersRes as List).map((m) => m['room_id'].toString()).toSet();
+        final activeRoomIds =
+            (membersRes as List).map((m) => m['room_id'].toString()).toSet();
 
         final now = DateTime.now();
         for (var r in roomsRes) {
@@ -121,7 +136,8 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
               if (age.inSeconds > 5 && !activeRoomIds.contains(roomId)) {
                 await _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', roomId);
                 await _sb.from('chatrooms').delete().eq('id', roomId);
-                debugPrint('Lobby Sweep (Chatrooms): Deleted empty room $roomId');
+                debugPrint(
+                    'Lobby Sweep (Chatrooms): Deleted empty room $roomId');
               }
             }
           }
@@ -134,6 +150,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
 
   Future<void> _loadRooms() async {
     try {
+<<<<<<< HEAD
       final res = await _sb.from('chatrooms').select('*').neq('room_status', 'deleted').order('created_at', ascending: false).limit(50);
       final rawRooms = List<Map<String, dynamic>>.from(res);
 
@@ -174,6 +191,18 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
       }
 
       if (mounted) setState(() { _rooms = rooms; _loading = false; });
+=======
+      final res = await _sb
+          .from('chatrooms')
+          .select('*')
+          .order('created_at', ascending: false)
+          .limit(50);
+      if (mounted)
+        setState(() {
+          _rooms = List<Map<String, dynamic>>.from(res);
+          _loading = false;
+        });
+>>>>>>> 03fed4d (Your commit message)
     } catch (e) {
       debugPrint('Load rooms: $e');
       if (mounted) setState(() => _loading = false);
@@ -190,7 +219,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
   void _setupNotifListener() {
     final uid = _sb.auth.currentUser?.id;
     if (uid == null) return;
-    
+
     _notifSub = _sb
         .channel('public:notifications')
         .onPostgresChanges(
@@ -210,7 +239,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
   void _showNotificationsSheet() {
     final uid = _sb.auth.currentUser?.id;
     if (uid == null) return;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -223,11 +252,17 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
 
   void _showCreateModal() {
     showModalBottomSheet(
-      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) => _CreateRoomModal(onCreated: (room) {
-        BolRoomManager.openRoom(context,
-          roomId: room['id'].toString(), roomName: room['name'] ?? 'Untitled', topic: room['topic'] ?? 'General',
-          hostId: room['host_id']?.toString() ?? '', hostName: room['host_name'] ?? 'Host',
+        BolRoomManager.openRoom(
+          context,
+          roomId: room['id'].toString(),
+          roomName: room['name'] ?? 'Untitled',
+          topic: room['topic'] ?? 'General',
+          hostId: room['host_id']?.toString() ?? '',
+          hostName: room['host_name'] ?? 'Host',
         );
       }),
     );
@@ -243,7 +278,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
         BolRoomManager.maximizeRoom(context);
         return;
       }
-      
+
       // Different room, show dialog
       showDialog(
         context: context,
@@ -260,7 +295,8 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Stay', style: TextStyle(color: Colors.white54)),
+              child:
+                  const Text('Stay', style: TextStyle(color: Colors.white54)),
             ),
             TextButton(
               onPressed: () {
@@ -271,10 +307,11 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
                 } else {
                   BolRoomManager.completelyCloseRoom();
                 }
-                
+
                 // Wait briefly for UI to close then open new one
                 Future.delayed(const Duration(milliseconds: 300), () {
-                  BolRoomManager.openRoom(context,
+                  BolRoomManager.openRoom(
+                    context,
                     roomId: newRoomId,
                     roomName: room['name'] ?? 'Untitled',
                     topic: room['topic'] ?? 'General',
@@ -284,7 +321,8 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
                 });
               },
               child: const Text('Leave & Join',
-                  style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                  style: TextStyle(
+                      color: Colors.amber, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -292,9 +330,13 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
       return;
     }
 
-    BolRoomManager.openRoom(context,
-      roomId: newRoomId, roomName: room['name'] ?? 'Untitled', topic: room['topic'] ?? 'General',
-      hostId: room['host_id']?.toString() ?? '', hostName: room['host_name'] ?? 'Host',
+    BolRoomManager.openRoom(
+      context,
+      roomId: newRoomId,
+      roomName: room['name'] ?? 'Untitled',
+      topic: room['topic'] ?? 'General',
+      hostId: room['host_id']?.toString() ?? '',
+      hostName: room['host_name'] ?? 'Host',
     );
   }
 
@@ -309,7 +351,13 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
     }).toList();
 
     final now = DateTime.now();
-    final liveRooms = filteredRooms.where((r) => r['scheduled_at'] == null || DateTime.tryParse(r['scheduled_at']?.toString() ?? '')?.isBefore(now) == true).toList();
+    final liveRooms = filteredRooms
+        .where((r) =>
+            r['scheduled_at'] == null ||
+            DateTime.tryParse(r['scheduled_at']?.toString() ?? '')
+                    ?.isBefore(now) ==
+                true)
+        .toList();
     final scheduledRooms = filteredRooms.where((r) {
       if (r['scheduled_at'] == null) return false;
       final t = DateTime.tryParse(r['scheduled_at'].toString());
@@ -318,33 +366,40 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
 
     final featuredRooms = liveRooms.take(2).toList();
     final bannerRoom = liveRooms.length > 2 ? liveRooms[2] : null;
-    final trendingRooms = liveRooms.length > 3 ? liveRooms.skip(3).toList() : liveRooms.toList();
+    final trendingRooms =
+        liveRooms.length > 3 ? liveRooms.skip(3).toList() : liveRooms.toList();
 
     return Scaffold(
-      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : BolRoomColors.bg,
+      backgroundColor:
+          isDoodleMode(context) ? DoodleColors.cream : BolRoomColors.bg,
       body: SafeArea(
-        child: _loading 
-          ? const Center(child: CircularProgressIndicator(color: BolRoomColors.cyan))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(),
-                  const SizedBox(height: 24),
-                  _buildSearchBar(),
-                  const SizedBox(height: 20),
-                  _buildCategories(),
-                  const SizedBox(height: 32),
-                  if (featuredRooms.isNotEmpty) _buildFeaturedRooms(featuredRooms),
-                  if (scheduledRooms.isNotEmpty) _buildScheduledSection(scheduledRooms),
-                  if (bannerRoom != null) _buildLiveBanner(bannerRoom),
-                  if (trendingRooms.isNotEmpty) _buildTrendingRooms(trendingRooms),
-                  if (_rooms.isEmpty && !_loading) _emptyState(),
-                  const SizedBox(height: 80), // space for FAB
-                ],
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: BolRoomColors.cyan))
+            : SingleChildScrollView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(),
+                    const SizedBox(height: 24),
+                    _buildSearchBar(),
+                    const SizedBox(height: 20),
+                    _buildCategories(),
+                    const SizedBox(height: 32),
+                    if (featuredRooms.isNotEmpty)
+                      _buildFeaturedRooms(featuredRooms),
+                    if (scheduledRooms.isNotEmpty)
+                      _buildScheduledSection(scheduledRooms),
+                    if (bannerRoom != null) _buildLiveBanner(bannerRoom),
+                    if (trendingRooms.isNotEmpty)
+                      _buildTrendingRooms(trendingRooms),
+                    if (_rooms.isEmpty && !_loading) _emptyState(),
+                    const SizedBox(height: 80), // space for FAB
+                  ],
+                ),
               ),
-            ),
       ),
       floatingActionButton: _buildFAB(),
     );
@@ -357,24 +412,36 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('GOOD MORNING ✦', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontWeight: FontWeight.w700, fontSize: 10, letterSpacing: 1.5)),
+            Text('GOOD MORNING ✦',
+                style: GoogleFonts.inter(
+                    color: BolRoomColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10,
+                    letterSpacing: 1.5)),
             GestureDetector(
               onTap: _showNotificationsSheet,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    width: 36, height: 36,
-                    decoration: BoxDecoration(color: BolRoomColors.searchBg, borderRadius: BorderRadius.circular(12)),
-                    child: const Icon(Icons.notifications_none, color: Colors.white, size: 18),
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                        color: BolRoomColors.searchBg,
+                        borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.notifications_none,
+                        color: Colors.white, size: 18),
                   ),
                   if (_unreadCount > 0)
                     Positioned(
-                      top: -2, right: -2,
+                      top: -2,
+                      right: -2,
                       child: Container(
                         padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                        constraints: const BoxConstraints(minWidth: 10, minHeight: 10),
+                        decoration: const BoxDecoration(
+                            color: Colors.red, shape: BoxShape.circle),
+                        constraints:
+                            const BoxConstraints(minWidth: 10, minHeight: 10),
                       ),
                     ),
                 ],
@@ -383,12 +450,24 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        Text('Discover', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900, height: 1.1)),
+        Text('Discover',
+            style: GoogleFonts.montserrat(
+                color: Colors.white,
+                fontSize: 36,
+                fontWeight: FontWeight.w900,
+                height: 1.1)),
         Row(
           children: [
             ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(colors: [BolRoomColors.accent, BolRoomColors.cyan]).createShader(bounds),
-              child: Text('Rooms', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900, height: 1.1)),
+              shaderCallback: (bounds) => const LinearGradient(
+                      colors: [BolRoomColors.accent, BolRoomColors.cyan])
+                  .createShader(bounds),
+              child: Text('Rooms',
+                  style: GoogleFonts.montserrat(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.w900,
+                      height: 1.1)),
             ),
             const SizedBox(width: 8),
             const Icon(Icons.auto_awesome, color: Colors.white, size: 28),
@@ -411,9 +490,14 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
         onChanged: (_) => setState(() {}),
         style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
         decoration: InputDecoration(
-          prefixIcon: Icon(Icons.search, color: BolRoomColors.textSecondary.withValues(alpha: 0.6), size: 20),
+          prefixIcon: Icon(Icons.search,
+              color: BolRoomColors.textSecondary.withValues(alpha: 0.6),
+              size: 20),
           hintText: 'Search rooms, topics, or UID...',
-          hintStyle: GoogleFonts.inter(color: BolRoomColors.textSecondary.withValues(alpha: 0.6), fontSize: 14, fontWeight: FontWeight.w500),
+          hintStyle: GoogleFonts.inter(
+              color: BolRoomColors.textSecondary.withValues(alpha: 0.6),
+              fontSize: 14,
+              fontWeight: FontWeight.w500),
           border: InputBorder.none,
         ),
       ),
@@ -439,14 +523,25 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(25),
-              color: active ? const Color(0xFF7856FF).withValues(alpha: 0.15) : BolRoomColors.searchBg,
-              border: Border.all(color: active ? const Color(0xFF7856FF) : BolRoomColors.searchBorder, width: 1.5),
+              color: active
+                  ? const Color(0xFF7856FF).withValues(alpha: 0.15)
+                  : BolRoomColors.searchBg,
+              border: Border.all(
+                  color: active
+                      ? const Color(0xFF7856FF)
+                      : BolRoomColors.searchBorder,
+                  width: 1.5),
             ),
             child: Row(
               children: [
                 Text(c['icon'] as String, style: const TextStyle(fontSize: 16)),
                 const SizedBox(width: 8),
-                Text(c['label'] as String, style: GoogleFonts.inter(color: active ? Colors.white : BolRoomColors.textSecondary, fontWeight: FontWeight.w700, fontSize: 13)),
+                Text(c['label'] as String,
+                    style: GoogleFonts.inter(
+                        color:
+                            active ? Colors.white : BolRoomColors.textSecondary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
               ],
             ),
           );
@@ -463,7 +558,11 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
           children: [
             const Icon(Icons.bolt, color: Color(0xFF7856FF), size: 22),
             const SizedBox(width: 8),
-            Text('Happening now', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
+            Text('Happening now',
+                style: GoogleFonts.montserrat(
+                    color: Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900)),
           ],
         ),
         const SizedBox(height: 18),
@@ -476,16 +575,24 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
               return GestureDetector(
                 onTap: () => _joinRoom(room),
                 child: Container(
-                  width: 280, height: 185,
+                  width: 280,
+                  height: 185,
                   margin: const EdgeInsets.only(right: 18),
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
                     gradient: const LinearGradient(
                       colors: [Color(0xFF7856FF), Color(0xFF4C1D95)],
-                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    boxShadow: [BoxShadow(color: const Color(0xFF7856FF).withValues(alpha: 0.25), blurRadius: 15, offset: const Offset(0, 8))],
+                    boxShadow: [
+                      BoxShadow(
+                          color:
+                              const Color(0xFF7856FF).withValues(alpha: 0.25),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8))
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -494,38 +601,78 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.25), borderRadius: BorderRadius.circular(10)),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.25),
+                                borderRadius: BorderRadius.circular(10)),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                      color: Colors.redAccent,
+                                      shape: BoxShape.circle)),
                               const SizedBox(width: 6),
-                              Text('LIVE', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
+                              Text('LIVE',
+                                  style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900)),
                             ]),
                           ),
-                          if (room['game_mode'] != null && room['game_mode'].toString().isNotEmpty)
+                          if (room['game_mode'] != null &&
+                              room['game_mode'].toString().isNotEmpty)
                             Container(
                               margin: const EdgeInsets.only(left: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(colors: [Color(0xFF3DCFA0), Color(0xFF0099CC)]),
+                                gradient: const LinearGradient(colors: [
+                                  Color(0xFF3DCFA0),
+                                  Color(0xFF0099CC)
+                                ]),
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                const Icon(Icons.sports_esports, color: Colors.white, size: 12),
-                                const SizedBox(width: 4),
-                                Text('GAME', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                              ]),
+                              child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.sports_esports,
+                                        color: Colors.white, size: 12),
+                                    const SizedBox(width: 4),
+                                    Text('GAME',
+                                        style: GoogleFonts.inter(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 1)),
+                                  ]),
                             ),
                           const Spacer(),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(10)),
-                            child: Text(_getTopic(room['topic']), style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                                color: Colors.white10,
+                                borderRadius: BorderRadius.circular(10)),
+                            child: Text(_getTopic(room['topic']),
+                                style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
                           ),
                         ],
                       ),
                       const Spacer(),
-                      Text(room['name'] ?? 'Space Name', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.1), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(room['name'] ?? 'Space Name',
+                          style: GoogleFonts.montserrat(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              height: 1.1),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 12),
                       Row(
                         children: [
@@ -535,17 +682,27 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
                             height: 28,
                             child: Stack(
                               children: [
-                                _avatarCircle('👨‍💻', const Color(0xFFE2E8F0), 0),
-                                Positioned(left: 14, child: _avatarCircle('👩‍🚀', const Color(0xFFFFD166), 1)),
-                                Positioned(left: 28, child: _avatarCircle('🕺', const Color(0xFF06D6A0), 2)),
+                                _avatarCircle(
+                                    '👨‍💻', const Color(0xFFE2E8F0), 0),
+                                Positioned(
+                                    left: 14,
+                                    child: _avatarCircle(
+                                        '👩‍🚀', const Color(0xFFFFD166), 1)),
+                                Positioned(
+                                    left: 28,
+                                    child: _avatarCircle(
+                                        '🕺', const Color(0xFF06D6A0), 2)),
                               ],
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              '${room['listener_count'] ?? (100 + i*42)} listening',
-                              style: GoogleFonts.inter(color: Colors.white.withValues(alpha: 0.8), fontSize: 12, fontWeight: FontWeight.w600),
+                              '${room['listener_count'] ?? (100 + i * 42)} listening',
+                              style: GoogleFonts.inter(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600),
                             ),
                           ),
                         ],
@@ -555,21 +712,34 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Row(children: [
-                            const Icon(Icons.mic, color: Colors.white60, size: 12),
+                            const Icon(Icons.mic,
+                                color: Colors.white60, size: 12),
                             const SizedBox(width: 4),
-                            Text('Host: ${room['host_name'] ?? 'User'}', style: GoogleFonts.inter(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.w500)),
+                            Text('Host: ${room['host_name'] ?? 'User'}',
+                                style: GoogleFonts.inter(
+                                    color: Colors.white60,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500)),
                           ]),
                           Row(children: [
-                            const Icon(Icons.location_on, color: Color(0xFF3DCFA0), size: 12),
+                            const Icon(Icons.location_on,
+                                color: Color(0xFF3DCFA0), size: 12),
                             const SizedBox(width: 2),
-                            Text(_getLoc(room['topic']), style: GoogleFonts.inter(color: const Color(0xFF3DCFA0), fontSize: 11, fontWeight: FontWeight.w700)),
+                            Text(_getLoc(room['topic']),
+                                style: GoogleFonts.inter(
+                                    color: const Color(0xFF3DCFA0),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700)),
                           ]),
                         ],
                       ),
                     ],
                   ),
                 ),
-              ).animate().fadeIn(delay: Duration(milliseconds: 100 * i)).slideX(begin: 0.05, end: 0);
+              )
+                  .animate()
+                  .fadeIn(delay: Duration(milliseconds: 100 * i))
+                  .slideX(begin: 0.05, end: 0);
             }),
           ),
         ),
@@ -579,16 +749,25 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
 
   Widget _avatarCircle(String emoji, Color bg, int zIndex) {
     return Container(
-      width: 28, height: 28,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: bg, border: Border.all(color: const Color(0xFF4C1D95), width: 2)),
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: bg,
+          border: Border.all(color: const Color(0xFF4C1D95), width: 2)),
       child: Center(child: Text(emoji, style: const TextStyle(fontSize: 14))),
     );
   }
 
   Widget _buildAvatarCircle(String emoji, Color bg) {
     return Container(
-      width: 26, height: 26,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: bg, border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.5)),
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: bg,
+          border: Border.all(
+              color: Colors.white.withValues(alpha: 0.5), width: 1.5)),
       child: Center(child: Text(emoji, style: const TextStyle(fontSize: 12))),
     );
   }
@@ -607,8 +786,11 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
         child: Row(
           children: [
             Container(
-              width: 46, height: 46,
-              decoration: BoxDecoration(color: BolRoomColors.cyan, borderRadius: BorderRadius.circular(14)),
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                  color: BolRoomColors.cyan,
+                  borderRadius: BorderRadius.circular(14)),
               child: const Icon(Icons.mic, color: Colors.black, size: 24),
             ),
             const SizedBox(width: 14),
@@ -616,15 +798,35 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(room['name'] ?? 'Voice Room Live', style: GoogleFonts.inter(color: BolRoomColors.cyan, fontSize: 15, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(room['name'] ?? 'Voice Room Live',
+                      style: GoogleFonts.inter(
+                          color: BolRoomColors.cyan,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Flexible(child: Text('${_getTopic(room['topic'])} • ${math.Random().nextInt(300) + 10} listening', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      Flexible(
+                          child: Text(
+                              '${_getTopic(room['topic'])} • ${math.Random().nextInt(300) + 10} listening',
+                              style: GoogleFonts.inter(
+                                  color: BolRoomColors.textSecondary,
+                                  fontSize: 12),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis)),
                       const SizedBox(width: 6),
-                      const Icon(Icons.location_on, color: BolRoomColors.accent, size: 10),
+                      const Icon(Icons.location_on,
+                          color: BolRoomColors.accent, size: 10),
                       const SizedBox(width: 2),
-                      Flexible(child: Text(_getLoc(room['topic']), style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      Flexible(
+                          child: Text(_getLoc(room['topic']),
+                              style: GoogleFonts.inter(
+                                  color: BolRoomColors.textSecondary,
+                                  fontSize: 10),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis)),
                     ],
                   ),
                 ],
@@ -633,8 +835,14 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(color: BolRoomColors.cyan, borderRadius: BorderRadius.circular(12)),
-              child: Text('Tap In', style: GoogleFonts.inter(color: Colors.black, fontSize: 13, fontWeight: FontWeight.bold)),
+              decoration: BoxDecoration(
+                  color: BolRoomColors.cyan,
+                  borderRadius: BorderRadius.circular(12)),
+              child: Text('Tap In',
+                  style: GoogleFonts.inter(
+                      color: Colors.black,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold)),
             )
           ],
         ),
@@ -650,17 +858,45 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
           children: [
             const Text('🔥', style: TextStyle(fontSize: 18)),
             const SizedBox(width: 8),
-            Text('Trending Now', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+            Text('Trending Now',
+                style: GoogleFonts.montserrat(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800)),
           ],
         ),
         const SizedBox(height: 16),
         ...List.generate(rooms.length, (i) {
           final room = rooms[i];
           final icons = [
-            {'icon': '🚀', 'bg': const Color(0xFF3B1E4A), 'tag': '🔥 HOT', 'tagColor': const Color(0xFF6B1B2F), 'tagText': const Color(0xFFFF4D4D)},
-            {'icon': '🎨', 'bg': const Color(0xFF14453D), 'tag': '✨ NEW', 'tagColor': const Color(0xFF1B4D36), 'tagText': const Color(0xFF00FF88)},
-            {'icon': '🎮', 'bg': const Color(0xFF4A2B2B), 'tag': '⭐ TOP', 'tagColor': const Color(0xFF4A3E1B), 'tagText': const Color(0xFFFFD700)},
-            {'icon': '🧘‍♂️', 'bg': const Color(0xFF1B3A5A), 'tag': '✨ NEW', 'tagColor': const Color(0xFF1B4D36), 'tagText': const Color(0xFF00FF88)},
+            {
+              'icon': '🚀',
+              'bg': const Color(0xFF3B1E4A),
+              'tag': '🔥 HOT',
+              'tagColor': const Color(0xFF6B1B2F),
+              'tagText': const Color(0xFFFF4D4D)
+            },
+            {
+              'icon': '🎨',
+              'bg': const Color(0xFF14453D),
+              'tag': '✨ NEW',
+              'tagColor': const Color(0xFF1B4D36),
+              'tagText': const Color(0xFF00FF88)
+            },
+            {
+              'icon': '🎮',
+              'bg': const Color(0xFF4A2B2B),
+              'tag': '⭐ TOP',
+              'tagColor': const Color(0xFF4A3E1B),
+              'tagText': const Color(0xFFFFD700)
+            },
+            {
+              'icon': '🧘‍♂️',
+              'bg': const Color(0xFF1B3A5A),
+              'tag': '✨ NEW',
+              'tagColor': const Color(0xFF1B4D36),
+              'tagText': const Color(0xFF00FF88)
+            },
           ];
           final style = icons[i % icons.length];
           return GestureDetector(
@@ -676,40 +912,80 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
               child: Row(
                 children: [
                   Container(
-                    width: 48, height: 48,
-                    decoration: BoxDecoration(color: style['bg'] as Color, borderRadius: BorderRadius.circular(14)),
-                    child: Center(child: Text(style['icon'] as String, style: const TextStyle(fontSize: 22))),
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                        color: style['bg'] as Color,
+                        borderRadius: BorderRadius.circular(14)),
+                    child: Center(
+                        child: Text(style['icon'] as String,
+                            style: const TextStyle(fontSize: 22))),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(room['name'] ?? 'Room Name', style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Text(room['name'] ?? 'Room Name',
+                            style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFFFF6B00), shape: BoxShape.circle)),
+                            Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                    color: Color(0xFFFF6B00),
+                                    shape: BoxShape.circle)),
                             const SizedBox(width: 6),
-                            Flexible(child: Text('${room['listener_count'] ?? 0} listening • ${_getTopic(room['topic'])}', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            Flexible(
+                                child: Text(
+                                    '${room['listener_count'] ?? 0} listening • ${_getTopic(room['topic'])}',
+                                    style: GoogleFonts.inter(
+                                        color: BolRoomColors.textSecondary,
+                                        fontSize: 12),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis)),
                             const SizedBox(width: 6),
-                            const Icon(Icons.location_on, color: BolRoomColors.accent, size: 10),
+                            const Icon(Icons.location_on,
+                                color: BolRoomColors.accent, size: 10),
                             const SizedBox(width: 2),
-                            Flexible(child: Text(_getLoc(room['topic']), style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            Flexible(
+                                child: Text(_getLoc(room['topic']),
+                                    style: GoogleFonts.inter(
+                                        color: BolRoomColors.textSecondary,
+                                        fontSize: 10),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis)),
                           ],
                         ),
                       ],
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: style['tagColor'] as Color, borderRadius: BorderRadius.circular(8)),
-                    child: Text(style['tag'] as String, style: GoogleFonts.inter(color: style['tagText'] as Color, fontSize: 10, fontWeight: FontWeight.bold)),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                        color: style['tagColor'] as Color,
+                        borderRadius: BorderRadius.circular(8)),
+                    child: Text(style['tag'] as String,
+                        style: GoogleFonts.inter(
+                            color: style['tagText'] as Color,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold)),
                   )
                 ],
               ),
             ),
-          ).animate().fadeIn(delay: Duration(milliseconds: 50 * i)).slideY(begin: 0.1, end: 0);
+          )
+              .animate()
+              .fadeIn(delay: Duration(milliseconds: 50 * i))
+              .slideY(begin: 0.1, end: 0);
         }),
       ],
     );
@@ -724,17 +1000,25 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
         Row(children: [
           const Icon(Icons.schedule, color: Color(0xFFFF7E40), size: 18),
           const SizedBox(width: 8),
-          Text('Scheduled', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+          Text('Scheduled',
+              style: GoogleFonts.montserrat(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800)),
         ]),
         const SizedBox(height: 16),
         ...rooms.map((room) {
-          final scheduledAt = DateTime.tryParse(room['scheduled_at']?.toString() ?? '');
+          final scheduledAt =
+              DateTime.tryParse(room['scheduled_at']?.toString() ?? '');
           final diff = scheduledAt?.difference(DateTime.now());
           String countdown = 'Soon';
           if (diff != null) {
-            if (diff.inDays > 0) countdown = 'in ${diff.inDays}d ${diff.inHours % 24}h';
-            else if (diff.inHours > 0) countdown = 'in ${diff.inHours}h ${diff.inMinutes % 60}m';
-            else countdown = 'in ${diff.inMinutes}m';
+            if (diff.inDays > 0)
+              countdown = 'in ${diff.inDays}d ${diff.inHours % 24}h';
+            else if (diff.inHours > 0)
+              countdown = 'in ${diff.inHours}h ${diff.inMinutes % 60}m';
+            else
+              countdown = 'in ${diff.inMinutes}m';
           }
           return Container(
             margin: const EdgeInsets.only(bottom: 16),
@@ -742,27 +1026,52 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
             decoration: BoxDecoration(
               color: BolRoomColors.searchBg,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFFF7E40).withValues(alpha: 0.15)),
+              border: Border.all(
+                  color: const Color(0xFFFF7E40).withValues(alpha: 0.15)),
             ),
             child: Column(children: [
               Row(children: [
                 Container(
-                  width: 48, height: 48,
-                  decoration: BoxDecoration(color: const Color(0xFFFF7E40).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.calendar_today, color: Color(0xFFFF7E40), size: 22),
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFFF7E40).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16)),
+                  child: const Icon(Icons.calendar_today,
+                      color: Color(0xFFFF7E40), size: 22),
                 ),
                 const SizedBox(width: 14),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(room['name'] ?? 'Scheduled Space', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 4),
-                  Text('@${room['host_name'] ?? 'host'} • $countdown', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
-                ])),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(room['name'] ?? 'Scheduled Space',
+                          style: GoogleFonts.montserrat(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 4),
+                      Text('@${room['host_name'] ?? 'host'} • $countdown',
+                          style: GoogleFonts.inter(
+                              color: BolRoomColors.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500)),
+                    ])),
                 GestureDetector(
                   onTap: () => _showToast('Reminder set! 🔔'),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(color: const Color(0xFFFF7E40), borderRadius: BorderRadius.circular(20)),
-                    child: Text('Remind me', style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFFFF7E40),
+                        borderRadius: BorderRadius.circular(20)),
+                    child: Text('Remind me',
+                        style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800)),
                   ),
                 ),
               ]),
@@ -775,18 +1084,38 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
   }
 
   Widget _emptyState() {
-    return Center(child: Padding(
+    return Center(
+        child: Padding(
       padding: const EdgeInsets.only(top: 40),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 110, height: 110, decoration: BoxDecoration(shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [BolRoomColors.cyan.withValues(alpha: 0.12), Colors.transparent]),
-          border: Border.all(color: BolRoomColors.cyan.withValues(alpha: 0.15))),
-          child: const Icon(Icons.headset_mic, size: 48, color: BolRoomColors.cyan))
-            .animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(1,1), end: const Offset(1.06,1.06), duration: 2.seconds),
+        Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(colors: [
+                      BolRoomColors.cyan.withValues(alpha: 0.12),
+                      Colors.transparent
+                    ]),
+                    border: Border.all(
+                        color: BolRoomColors.cyan.withValues(alpha: 0.15))),
+                child: const Icon(Icons.headset_mic,
+                    size: 48, color: BolRoomColors.cyan))
+            .animate(onPlay: (c) => c.repeat(reverse: true))
+            .scale(
+                begin: const Offset(1, 1),
+                end: const Offset(1.06, 1.06),
+                duration: 2.seconds),
         const SizedBox(height: 24),
-        Text('No active rooms', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+        Text('No active rooms',
+            style: GoogleFonts.montserrat(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Text('Be the first to go live! 🎙️', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 14)),
+        Text('Be the first to go live! 🎙️',
+            style: GoogleFonts.inter(
+                color: BolRoomColors.textSecondary, fontSize: 14)),
       ]),
     ));
   }
@@ -796,16 +1125,29 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
       onTap: _showCreateModal,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(30),
-          gradient: const LinearGradient(colors: [BolRoomColors.cyan, BolRoomColors.purple]),
-          boxShadow: [BoxShadow(color: BolRoomColors.cyan.withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 8))]),
+        decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            gradient: const LinearGradient(
+                colors: [BolRoomColors.cyan, BolRoomColors.purple]),
+            boxShadow: [
+              BoxShadow(
+                  color: BolRoomColors.cyan.withValues(alpha: 0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8))
+            ]),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.add, color: Colors.black, size: 22),
           const SizedBox(width: 8),
-          Text('Create Room', style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.w800, fontSize: 15)),
+          Text('Create Room',
+              style: GoogleFonts.inter(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15)),
         ]),
       ),
-    ).animate().slideY(begin: 1, end: 0, duration: 600.ms, curve: Curves.easeOutBack);
+    )
+        .animate()
+        .slideY(begin: 1, end: 0, duration: 600.ms, curve: Curves.easeOutBack);
   }
 }
 
@@ -822,7 +1164,8 @@ class _CreateRoomModal extends StatefulWidget {
 class _CreateRoomModalState extends State<_CreateRoomModal> {
   final _nameCtrl = TextEditingController();
   String _topic = 'Bollywood';
-  String _speakPermission = 'everyone'; // 'everyone' | 'followers' | 'invite_only'
+  String _speakPermission =
+      'everyone'; // 'everyone' | 'followers' | 'invite_only'
   String? _gameMode; // null = normal room, 'truth_dare' = game room
   bool _isScheduled = false;
   DateTime? _scheduledAt;
@@ -856,37 +1199,58 @@ class _CreateRoomModalState extends State<_CreateRoomModal> {
         return;
       }
 
-      final pos = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.low, timeLimit: Duration(seconds: 10)));
+      final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.low,
+              timeLimit: Duration(seconds: 10)));
       final res = await http.get(
-        Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.latitude}&lon=${pos.longitude}&addressdetails=1'),
+        Uri.parse(
+            'https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.latitude}&lon=${pos.longitude}&addressdetails=1'),
         headers: {'User-Agent': 'MeetraApp/1.0'},
       ).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final address = data['address'] ?? {};
-        final city = address['city'] ?? address['town'] ?? address['village'] ?? address['hamlet'] ?? '';
+        final city = address['city'] ??
+            address['town'] ??
+            address['village'] ??
+            address['hamlet'] ??
+            '';
         final district = address['state_district'] ?? address['county'] ?? '';
         final state = address['state'] ?? '';
-        
+
         // Prefer city + state, fallback to district + state
         String locStr = '';
         if (city.toString().trim().isNotEmpty) {
-          locStr = [city, state].where((e) => e.toString().trim().isNotEmpty).join(', ');
+          locStr = [city, state]
+              .where((e) => e.toString().trim().isNotEmpty)
+              .join(', ');
         } else {
-          locStr = [district, state].where((e) => e.toString().trim().isNotEmpty).join(', ');
+          locStr = [district, state]
+              .where((e) => e.toString().trim().isNotEmpty)
+              .join(', ');
         }
         if (locStr.isEmpty) locStr = 'Unknown Location';
-        
-        if (mounted) setState(() {
-          _location = locStr;
-          _locationFetched = true;
-        });
+
+        if (mounted)
+          setState(() {
+            _location = locStr;
+            _locationFetched = true;
+          });
       } else {
-        if (mounted) setState(() { _location = 'Global'; _locationFetched = true; });
+        if (mounted)
+          setState(() {
+            _location = 'Global';
+            _locationFetched = true;
+          });
       }
     } catch (e) {
       debugPrint('Location fetch error: $e');
-      if (mounted) setState(() { _location = 'Global'; _locationFetched = true; });
+      if (mounted)
+        setState(() {
+          _location = 'Global';
+          _locationFetched = true;
+        });
     }
   }
 
@@ -908,31 +1272,61 @@ class _CreateRoomModalState extends State<_CreateRoomModal> {
     setState(() => _creating = true);
     final sb = Supabase.instance.client;
     final uid = sb.auth.currentUser?.id;
-    if (uid == null) { setState(() => _creating = false); return; }
+    if (uid == null) {
+      setState(() => _creating = false);
+      return;
+    }
 
     String hName = 'Host';
     String? hAvatar;
     try {
-      final p = await sb.from('profiles').select('name, full_name, avatar_url').eq('id', uid).maybeSingle();
-      if (p != null) { hName = p['name'] ?? p['full_name'] ?? 'Host'; hAvatar = p['avatar_url']; }
+      final p = await sb
+          .from('profiles')
+          .select('name, full_name, avatar_url')
+          .eq('id', uid)
+          .maybeSingle();
+      if (p != null) {
+        hName = p['name'] ?? p['full_name'] ?? 'Host';
+        hAvatar = p['avatar_url'];
+      }
     } catch (_) {}
 
     try {
-      final res = await sb.from('chatrooms').insert({
-        'name': _nameCtrl.text.trim(),
-        'topic': '$_topic | $_location',
-        'host_id': uid, 'host_name': hName, 'host_avatar': hAvatar,
-        'speak_permission': _speakPermission,
-        'game_mode': _gameMode,
-        'scheduled_at': _isScheduled && _scheduledAt != null ? _scheduledAt!.toUtc().toIso8601String() : null,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      }).select().single();
+      await sb
+          .from('chatrooms')
+          .update({'room_status': 'ended'})
+          .eq('host_id', uid)
+          .eq('room_status', 'active');
+
+      final res = await sb
+          .from('chatrooms')
+          .insert({
+            'name': _nameCtrl.text.trim(),
+            'topic': '$_topic | $_location',
+            'host_id': uid,
+            'host_name': hName,
+            'host_avatar': hAvatar,
+            'speak_permission': _speakPermission,
+            'game_mode': _gameMode,
+            'scheduled_at': _isScheduled && _scheduledAt != null
+                ? _scheduledAt!.toUtc().toIso8601String()
+                : null,
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .select()
+          .single();
 
       // Give the host credit for creating a room in their BolRoom profile
       try {
-        final profile = await sb.from('bolroom_profiles').select('rooms_hosted').eq('id', uid).maybeSingle();
+        final profile = await sb
+            .from('bolroom_profiles')
+            .select('rooms_hosted')
+            .eq('id', uid)
+            .maybeSingle();
         final int currentCount = profile?['rooms_hosted'] ?? 0;
-        await sb.from('bolroom_profiles').update({'rooms_hosted': currentCount + 1}).eq('id', uid);
+        await sb
+            .from('bolroom_profiles')
+            .update({'rooms_hosted': currentCount + 1}).eq('id', uid);
       } catch (e) {
         debugPrint('Failed to increment rooms_hosted: $e');
       }
@@ -940,135 +1334,330 @@ class _CreateRoomModalState extends State<_CreateRoomModal> {
       if (mounted) {
         Navigator.pop(context);
         // Only navigate into room if going live now (not scheduled)
-        if (!_isScheduled || _scheduledAt == null) widget.onCreated(res);
+        if (!_isScheduled || _scheduledAt == null)
+          widget.onCreated(res);
         else {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Space scheduled for ${DateFormat('MMM d, h:mm a').format(_scheduledAt!)}'),
+            content: Text(
+                'Space scheduled for ${DateFormat('MMM d, h:mm a').format(_scheduledAt!)}'),
             backgroundColor: const Color(0xFFFF7E40),
           ));
         }
       }
     } catch (e) {
       debugPrint('Create room error: $e');
-      if (mounted) { setState(() => _creating = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red)); }
+      if (mounted) {
+        setState(() => _creating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
     }
   }
 
   Future<void> _pickScheduleTime() async {
     final now = DateTime.now();
-    final date = await showDatePicker(context: context, initialDate: now.add(const Duration(hours: 1)), firstDate: now, lastDate: now.add(const Duration(days: 30)),
-      builder: (ctx, child) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFFFF7E40))), child: child!));
+    final date = await showDatePicker(
+        context: context,
+        initialDate: now.add(const Duration(hours: 1)),
+        firstDate: now,
+        lastDate: now.add(const Duration(days: 30)),
+        builder: (ctx, child) => Theme(
+            data: ThemeData.dark().copyWith(
+                colorScheme:
+                    const ColorScheme.dark(primary: Color(0xFFFF7E40))),
+            child: child!));
     if (date == null || !mounted) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
-      builder: (ctx, child) => Theme(data: ThemeData.dark().copyWith(colorScheme: const ColorScheme.dark(primary: Color(0xFFFF7E40))), child: child!));
+    final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
+        builder: (ctx, child) => Theme(
+            data: ThemeData.dark().copyWith(
+                colorScheme:
+                    const ColorScheme.dark(primary: Color(0xFFFF7E40))),
+            child: child!));
     if (time == null || !mounted) return;
-    setState(() => _scheduledAt = DateTime(date.year, date.month, date.day, time.hour, time.minute));
+    setState(() => _scheduledAt =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute));
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: BolRoomColors.bg, borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        border: Border.all(color: BolRoomColors.searchBorder),
-        boxShadow: [BoxShadow(color: BolRoomColors.purple.withValues(alpha: 0.1), blurRadius: 40, offset: const Offset(0, -10))]),
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 32, left: 24, right: 24, top: 20),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Center(child: Container(width: 48, height: 5, decoration: BoxDecoration(color: BolRoomColors.searchBorder, borderRadius: BorderRadius.circular(3)))),
-        const SizedBox(height: 24),
-        Row(children: [
-          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: BolRoomColors.cyan.withValues(alpha: 0.15), shape: BoxShape.circle),
-            child: const Icon(Icons.mic, color: BolRoomColors.cyan, size: 24)),
-          const SizedBox(width: 14),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Start a BolRoom', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 4),
-            Row(children: [
-              const Icon(Icons.location_on, color: BolRoomColors.accent, size: 12),
-              const SizedBox(width: 4),
-              Text(_location, style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
-            ]),
+      decoration: BoxDecoration(
+          color: BolRoomColors.bg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border.all(color: BolRoomColors.searchBorder),
+          boxShadow: [
+            BoxShadow(
+                color: BolRoomColors.purple.withValues(alpha: 0.1),
+                blurRadius: 40,
+                offset: const Offset(0, -10))
           ]),
-        ]),
-        const SizedBox(height: 32),
-        Text('ROOM NAME', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-        const SizedBox(height: 10),
-        TextField(controller: _nameCtrl, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-          decoration: InputDecoration(hintText: 'e.g. Late Night Vibes ✨', hintStyle: TextStyle(color: BolRoomColors.textSecondary.withValues(alpha: 0.5)),
-            filled: true, fillColor: BolRoomColors.searchBg, prefixIcon: Icon(Icons.edit, color: BolRoomColors.textSecondary.withValues(alpha: 0.5), size: 18),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: BolRoomColors.cyan)))),
-        const SizedBox(height: 28),
-        Text('TOPIC', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-        const SizedBox(height: 12),
-        Wrap(spacing: 12, runSpacing: 12, children: _topics.map((t) {
-          final selected = _topic == t['name'];
-          return GestureDetector(onTap: () => setState(() => _topic = t['name']!),
-            child: AnimatedContainer(duration: 200.ms, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: selected ? BolRoomColors.cyan.withValues(alpha: 0.15) : BolRoomColors.searchBg,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: selected ? BolRoomColors.cyan : BolRoomColors.searchBorder, width: 1.5),
-                boxShadow: selected ? [BoxShadow(color: BolRoomColors.cyan.withValues(alpha: 0.2), blurRadius: 12)] : []),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text(t['emoji']!, style: const TextStyle(fontSize: 16)),
-                const SizedBox(width: 8),
-                Text(t['name']!, style: GoogleFonts.inter(color: selected ? BolRoomColors.cyan : BolRoomColors.textSecondary, fontSize: 14, fontWeight: FontWeight.w600)),
-              ])));
-        }).toList()),
-        const SizedBox(height: 28),
-        // ── GAME MODE ──
-        Text('GAME MODE', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-        const SizedBox(height: 6),
-        Text('Add a party game to your voice room', style: GoogleFonts.inter(color: BolRoomColors.textSecondary.withValues(alpha: 0.6), fontSize: 10)),
-        const SizedBox(height: 12),
-        Wrap(spacing: 10, runSpacing: 10, children: [
-          _gameChip(null, '🚫 None'),
-          _gameChip('truth_dare', '🍾 Truth or Dare'),
-          _gameChip('two_truths', '🎭 Two Truths, One Lie'),
-          _gameChip('blind_date', '🔥 Blind Date'),
-        ]),
-        const SizedBox(height: 28),
-        // ── SPEAK PERMISSION ──
-        Text('WHO CAN SPEAK', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-        const SizedBox(height: 12),
-        Wrap(spacing: 10, runSpacing: 10, children: [
-          _permissionChip('everyone', '🌐 Everyone'),
-          _permissionChip('followers', '👥 Followers'),
-          _permissionChip('invite_only', '🔒 Invite Only'),
-        ]),
-        const SizedBox(height: 28),
-        // ── SCHEDULE TOGGLE ──
-        Row(children: [
-          Expanded(child: Text('Schedule for later', style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600))),
-          Switch(value: _isScheduled, onChanged: (v) => setState(() { _isScheduled = v; if (v && _scheduledAt == null) _pickScheduleTime(); }), activeTrackColor: const Color(0xFFFF7E40)),
-        ]),
-        if (_isScheduled) ...[const SizedBox(height: 8),
-          GestureDetector(onTap: _pickScheduleTime, child: Container(
-            padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: const Color(0xFFFF7E40).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFFF7E40).withValues(alpha: 0.3))),
-            child: Row(children: [
-              const Icon(Icons.calendar_today, color: Color(0xFFFF7E40), size: 18),
-              const SizedBox(width: 12),
-              Text(_scheduledAt != null ? DateFormat('MMM d, y  h:mm a').format(_scheduledAt!) : 'Tap to choose time',
-                style: GoogleFonts.inter(color: const Color(0xFFFF7E40), fontWeight: FontWeight.w600)),
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+          left: 24,
+          right: 24,
+          top: 20),
+      child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+                child: Container(
+                    width: 48,
+                    height: 5,
+                    decoration: BoxDecoration(
+                        color: BolRoomColors.searchBorder,
+                        borderRadius: BorderRadius.circular(3)))),
+            const SizedBox(height: 24),
+            Row(children: [
+              Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                      color: BolRoomColors.cyan.withValues(alpha: 0.15),
+                      shape: BoxShape.circle),
+                  child: const Icon(Icons.mic,
+                      color: BolRoomColors.cyan, size: 24)),
+              const SizedBox(width: 14),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Start a BolRoom',
+                    style: GoogleFonts.montserrat(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                Row(children: [
+                  const Icon(Icons.location_on,
+                      color: BolRoomColors.accent, size: 12),
+                  const SizedBox(width: 4),
+                  Text(_location,
+                      style: GoogleFonts.inter(
+                          color: BolRoomColors.textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500)),
+                ]),
+              ]),
             ]),
-          )),
-        ],
-        const SizedBox(height: 40),
-        SizedBox(width: double.infinity, height: 56, child: ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, padding: EdgeInsets.zero, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
-          onPressed: _creating ? null : _create,
-          child: Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(colors: _isScheduled ? [const Color(0xFFFF7E40), const Color(0xFF5B2DBF)] : [BolRoomColors.accent, BolRoomColors.purple]),
-            boxShadow: [BoxShadow(color: (_isScheduled ? const Color(0xFFFF7E40) : BolRoomColors.accent).withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))]),
-            alignment: Alignment.center,
-            child: _creating ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(_isScheduled ? Icons.schedule : Icons.bolt, color: Colors.white, size: 24),
-                  const SizedBox(width: 10),
-                  Text(_isScheduled ? 'Schedule Space' : 'Go Live', style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
-                ])))),
-      ]),
+            const SizedBox(height: 32),
+            Text('ROOM NAME',
+                style: GoogleFonts.inter(
+                    color: BolRoomColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5)),
+            const SizedBox(height: 10),
+            TextField(
+                controller: _nameCtrl,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
+                decoration: InputDecoration(
+                    hintText: 'e.g. Late Night Vibes ✨',
+                    hintStyle: TextStyle(
+                        color:
+                            BolRoomColors.textSecondary.withValues(alpha: 0.5)),
+                    filled: true,
+                    fillColor: BolRoomColors.searchBg,
+                    prefixIcon: Icon(Icons.edit,
+                        color:
+                            BolRoomColors.textSecondary.withValues(alpha: 0.5),
+                        size: 18),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: BolRoomColors.cyan)))),
+            const SizedBox(height: 28),
+            Text('TOPIC',
+                style: GoogleFonts.inter(
+                    color: BolRoomColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5)),
+            const SizedBox(height: 12),
+            Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: _topics.map((t) {
+                  final selected = _topic == t['name'];
+                  return GestureDetector(
+                      onTap: () => setState(() => _topic = t['name']!),
+                      child: AnimatedContainer(
+                          duration: 200.ms,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                              color: selected
+                                  ? BolRoomColors.cyan.withValues(alpha: 0.15)
+                                  : BolRoomColors.searchBg,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                  color: selected
+                                      ? BolRoomColors.cyan
+                                      : BolRoomColors.searchBorder,
+                                  width: 1.5),
+                              boxShadow: selected
+                                  ? [
+                                      BoxShadow(
+                                          color: BolRoomColors.cyan
+                                              .withValues(alpha: 0.2),
+                                          blurRadius: 12)
+                                    ]
+                                  : []),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Text(t['emoji']!,
+                                style: const TextStyle(fontSize: 16)),
+                            const SizedBox(width: 8),
+                            Text(t['name']!,
+                                style: GoogleFonts.inter(
+                                    color: selected
+                                        ? BolRoomColors.cyan
+                                        : BolRoomColors.textSecondary,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600)),
+                          ])));
+                }).toList()),
+            const SizedBox(height: 28),
+            // ── GAME MODE ──
+            Text('GAME MODE',
+                style: GoogleFonts.inter(
+                    color: BolRoomColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5)),
+            const SizedBox(height: 6),
+            Text('Add a party game to your voice room',
+                style: GoogleFonts.inter(
+                    color: BolRoomColors.textSecondary.withValues(alpha: 0.6),
+                    fontSize: 10)),
+            const SizedBox(height: 12),
+            Wrap(spacing: 10, runSpacing: 10, children: [
+              _gameChip(null, '🚫 None'),
+              _gameChip('truth_dare', '🍾 Truth or Dare'),
+              _gameChip('two_truths', '🎭 Two Truths, One Lie'),
+              _gameChip('blind_date', '🔥 Blind Date'),
+            ]),
+            const SizedBox(height: 28),
+            // ── SPEAK PERMISSION ──
+            Text('WHO CAN SPEAK',
+                style: GoogleFonts.inter(
+                    color: BolRoomColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5)),
+            const SizedBox(height: 12),
+            Wrap(spacing: 10, runSpacing: 10, children: [
+              _permissionChip('everyone', '🌐 Everyone'),
+              _permissionChip('followers', '👥 Followers'),
+              _permissionChip('invite_only', '🔒 Invite Only'),
+            ]),
+            const SizedBox(height: 28),
+            // ── SCHEDULE TOGGLE ──
+            Row(children: [
+              Expanded(
+                  child: Text('Schedule for later',
+                      style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600))),
+              Switch(
+                  value: _isScheduled,
+                  onChanged: (v) => setState(() {
+                        _isScheduled = v;
+                        if (v && _scheduledAt == null) _pickScheduleTime();
+                      }),
+                  activeTrackColor: const Color(0xFFFF7E40)),
+            ]),
+            if (_isScheduled) ...[
+              const SizedBox(height: 8),
+              GestureDetector(
+                  onTap: _pickScheduleTime,
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFFFF7E40).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color: const Color(0xFFFF7E40)
+                                .withValues(alpha: 0.3))),
+                    child: Row(children: [
+                      const Icon(Icons.calendar_today,
+                          color: Color(0xFFFF7E40), size: 18),
+                      const SizedBox(width: 12),
+                      Text(
+                          _scheduledAt != null
+                              ? DateFormat('MMM d, y  h:mm a')
+                                  .format(_scheduledAt!)
+                              : 'Tap to choose time',
+                          style: GoogleFonts.inter(
+                              color: const Color(0xFFFF7E40),
+                              fontWeight: FontWeight.w600)),
+                    ]),
+                  )),
+            ],
+            const SizedBox(height: 40),
+            SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18))),
+                    onPressed: _creating ? null : _create,
+                    child: Container(
+                        decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            gradient: LinearGradient(
+                                colors: _isScheduled
+                                    ? [
+                                        const Color(0xFFFF7E40),
+                                        const Color(0xFF5B2DBF)
+                                      ]
+                                    : [
+                                        BolRoomColors.accent,
+                                        BolRoomColors.purple
+                                      ]),
+                            boxShadow: [
+                              BoxShadow(
+                                  color: (_isScheduled
+                                          ? const Color(0xFFFF7E40)
+                                          : BolRoomColors.accent)
+                                      .withValues(alpha: 0.3),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 6))
+                            ]),
+                        alignment: Alignment.center,
+                        child: _creating
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 2))
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                    Icon(
+                                        _isScheduled
+                                            ? Icons.schedule
+                                            : Icons.bolt,
+                                        color: Colors.white,
+                                        size: 24),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                        _isScheduled
+                                            ? 'Schedule Space'
+                                            : 'Go Live',
+                                        style: GoogleFonts.inter(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w800)),
+                                  ])))),
+          ]),
     );
   }
 
@@ -1080,11 +1669,23 @@ class _CreateRoomModalState extends State<_CreateRoomModal> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFF7E40).withValues(alpha: 0.15) : BolRoomColors.searchBg,
+          color: selected
+              ? const Color(0xFFFF7E40).withValues(alpha: 0.15)
+              : BolRoomColors.searchBg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: selected ? const Color(0xFFFF7E40) : BolRoomColors.searchBorder, width: 1.5),
+          border: Border.all(
+              color: selected
+                  ? const Color(0xFFFF7E40)
+                  : BolRoomColors.searchBorder,
+              width: 1.5),
         ),
-        child: Text(label, style: GoogleFonts.inter(color: selected ? const Color(0xFFFF7E40) : BolRoomColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        child: Text(label,
+            style: GoogleFonts.inter(
+                color: selected
+                    ? const Color(0xFFFF7E40)
+                    : BolRoomColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -1097,12 +1698,30 @@ class _CreateRoomModalState extends State<_CreateRoomModal> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF3DCFA0).withValues(alpha: 0.15) : BolRoomColors.searchBg,
+          color: selected
+              ? const Color(0xFF3DCFA0).withValues(alpha: 0.15)
+              : BolRoomColors.searchBg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: selected ? const Color(0xFF3DCFA0) : BolRoomColors.searchBorder, width: 1.5),
-          boxShadow: selected ? [BoxShadow(color: const Color(0xFF3DCFA0).withValues(alpha: 0.15), blurRadius: 8)] : [],
+          border: Border.all(
+              color: selected
+                  ? const Color(0xFF3DCFA0)
+                  : BolRoomColors.searchBorder,
+              width: 1.5),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                      color: const Color(0xFF3DCFA0).withValues(alpha: 0.15),
+                      blurRadius: 8)
+                ]
+              : [],
         ),
-        child: Text(label, style: GoogleFonts.inter(color: selected ? const Color(0xFF3DCFA0) : BolRoomColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        child: Text(label,
+            style: GoogleFonts.inter(
+                color: selected
+                    ? const Color(0xFF3DCFA0)
+                    : BolRoomColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -1130,7 +1749,11 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
 
   Future<void> _load() async {
     final res = await NotificationService.fetchNotifications(widget.userId);
-    if (mounted) setState(() { _notifs = res; _loading = false; });
+    if (mounted)
+      setState(() {
+        _notifs = res;
+        _loading = false;
+      });
   }
 
   @override
@@ -1144,14 +1767,23 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
       height: MediaQuery.of(context).size.height * 0.8,
       child: Column(
         children: [
-          Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+          Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 20),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Notifications', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                Text('Notifications',
+                    style: GoogleFonts.montserrat(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900)),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.white54),
                   onPressed: () => Navigator.pop(context),
@@ -1161,37 +1793,60 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
           ),
           const SizedBox(height: 12),
           Expanded(
-            child: _loading 
-              ? const Center(child: CircularProgressIndicator(color: BolRoomColors.cyan))
-              : _notifs.isEmpty 
-                ? Center(child: Text('No notifications yet.', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 16)))
-                : ListView.builder(
-                    itemCount: _notifs.length,
-                    itemBuilder: (context, index) {
-                      final n = _notifs[index];
-                      final isRead = n['is_read'] == true;
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                        leading: Container(
-                          width: 48, height: 48,
-                          decoration: BoxDecoration(
-                            color: isRead ? BolRoomColors.searchBg : BolRoomColors.accent.withValues(alpha: 0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            n['type'] == 'message' ? Icons.person_add : Icons.notifications,
-                            color: isRead ? Colors.white54 : BolRoomColors.accent,
-                          ),
-                        ),
-                        title: Text(n['title'] ?? 'Notification', style: GoogleFonts.inter(color: Colors.white, fontWeight: isRead ? FontWeight.normal : FontWeight.bold)),
-                        subtitle: Text(n['body'] ?? '', style: GoogleFonts.inter(color: BolRoomColors.textSecondary, fontSize: 13)),
-                        trailing: Text(
-                          _formatTime(n['created_at']),
-                          style: GoogleFonts.inter(color: Colors.white38, fontSize: 11),
-                        ),
-                      );
-                    },
-                  ),
+            child: _loading
+                ? const Center(
+                    child: CircularProgressIndicator(color: BolRoomColors.cyan))
+                : _notifs.isEmpty
+                    ? Center(
+                        child: Text('No notifications yet.',
+                            style: GoogleFonts.inter(
+                                color: BolRoomColors.textSecondary,
+                                fontSize: 16)))
+                    : ListView.builder(
+                        itemCount: _notifs.length,
+                        itemBuilder: (context, index) {
+                          final n = _notifs[index];
+                          final isRead = n['is_read'] == true;
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 8),
+                            leading: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: isRead
+                                    ? BolRoomColors.searchBg
+                                    : BolRoomColors.accent
+                                        .withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                n['type'] == 'message'
+                                    ? Icons.person_add
+                                    : Icons.notifications,
+                                color: isRead
+                                    ? Colors.white54
+                                    : BolRoomColors.accent,
+                              ),
+                            ),
+                            title: Text(n['title'] ?? 'Notification',
+                                style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontWeight: isRead
+                                        ? FontWeight.normal
+                                        : FontWeight.bold)),
+                            subtitle: Text(n['body'] ?? '',
+                                style: GoogleFonts.inter(
+                                    color: BolRoomColors.textSecondary,
+                                    fontSize: 13)),
+                            trailing: Text(
+                              _formatTime(n['created_at']),
+                              style: GoogleFonts.inter(
+                                  color: Colors.white38, fontSize: 11),
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),
@@ -1208,7 +1863,3 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
     return '${diff.inDays}d';
   }
 }
-
-
-
-

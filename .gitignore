@@ -65,3 +65,8 @@ scratch/
 app-release-v8.apk
 *.apk
 *.zip
+
+# Release signing keys
+android/key.properties
+android/app/release-keystore.jks
+*.jks

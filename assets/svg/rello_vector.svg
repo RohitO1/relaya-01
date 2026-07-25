@@ -1,0 +1,191 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-600 -400 1200 1200" width="100%" height="100%">
+  <defs>
+    <!-- Sophisticated glowing rims (No filters used, purely gradients to support flutter_svg) -->
+    <radialGradient id="rimGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="65%" stop-color="#080300" />
+      <stop offset="90%" stop-color="#542300" />
+      <stop offset="97%" stop-color="#FF8A00" />
+      <stop offset="100%" stop-color="#FFC266" />
+    </radialGradient>
+
+    <radialGradient id="armGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="60%" stop-color="#0a0400" />
+      <stop offset="85%" stop-color="#7a3400" />
+      <stop offset="96%" stop-color="#FF8A00" />
+      <stop offset="100%" stop-color="#FFC266" />
+    </radialGradient>
+
+    <radialGradient id="faceGrad" cx="50%" cy="40%" r="65%">
+      <stop offset="0%" stop-color="#ffebd1" />
+      <stop offset="60%" stop-color="#db9d5e" />
+      <stop offset="100%" stop-color="#a35d1f" />
+    </radialGradient>
+
+    <!-- Warm, glassy golden eyes -->
+    <radialGradient id="irisGrad" cx="50%" cy="75%" r="50%">
+      <stop offset="0%" stop-color="#ffc76b" />
+      <stop offset="45%" stop-color="#b05400" />
+      <stop offset="100%" stop-color="#0a0500" />
+    </radialGradient>
+    
+    <linearGradient id="legGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#080300" />
+      <stop offset="70%" stop-color="#4d2000" />
+      <stop offset="100%" stop-color="#FF8A00" />
+    </linearGradient>
+  </defs>
+
+  <g id="rello_character">
+    
+    <!-- Body -->
+    <g id="body">
+      <!-- Plump pear-shaped body -->
+      <path d="M 0,-70 
+               C 280,-70 380,100 380,300 
+               C 380,550 200,600 0,600 
+               C -200,600 -380,550 -380,300 
+               C -380,100 -280,-70 0,-70 Z" 
+            fill="url(#rimGlow)" />
+            
+       <!-- Gentle warm belly -->
+       <path d="M 0,220 
+                C 140,220 200,340 200,440 
+                C 200,530 140,570 0,570 
+                C -140,570 -200,530 -200,440 
+                C -200,340 -140,220 0,220 Z" 
+             fill="url(#faceGrad)" opacity="0.12" />
+    </g>
+
+    <!-- Legs -->
+    <g id="legs">
+        <!-- Left Leg -->
+        <g id="leg_left" transform="translate(-180, 500)">
+            <path d="M -60,-80 C 60,-80 80,60 50,110 C -20,130 -100,90 -80,-30 Z" fill="url(#legGlow)"/>
+            <ellipse cx="-15" cy="90" rx="45" ry="35" fill="url(#faceGrad)" />
+            <path d="M -40,120 Q -45,170 -25,140" stroke="#FFE8CC" stroke-width="8" stroke-linecap="round" fill="none"/>
+            <path d="M -15,125 Q -15,180 -5,145" stroke="#FFE8CC" stroke-width="8" stroke-linecap="round" fill="none"/>
+            <path d="M 10,120 Q 15,170 15,140" stroke="#FFE8CC" stroke-width="8" stroke-linecap="round" fill="none"/>
+        </g>
+        
+        <!-- Right Leg -->
+        <g id="leg_right" transform="translate(180, 500)">
+            <path d="M 60,-80 C -60,-80 -80,60 -50,110 C 20,130 100,90 80,-30 Z" fill="url(#legGlow)"/>
+            <ellipse cx="15" cy="90" rx="45" ry="35" fill="url(#faceGrad)" />
+            <path d="M 40,120 Q 45,170 25,140" stroke="#FFE8CC" stroke-width="8" stroke-linecap="round" fill="none"/>
+            <path d="M 15,125 Q 15,180 5,145" stroke="#FFE8CC" stroke-width="8" stroke-linecap="round" fill="none"/>
+            <path d="M -10,120 Q -15,170 -15,140" stroke="#FFE8CC" stroke-width="8" stroke-linecap="round" fill="none"/>
+        </g>
+    </g>
+
+    <!-- Head -->
+    <g id="head" transform="translate(0, -100)">
+      
+      <!-- Crown / Silhouette with precise distinct tufts mirroring the reference -->
+      <path d="M 0,-300 
+               C 30,-300 40,-270 80,-260
+               C 130,-250 180,-260 200,-220
+               C 220,-180 200,-150 240,-130
+               C 280,-110 300,-60 270,-20
+               C 250,10 230,40 240,70
+               C 250,100 210,150 160,170
+               C 110,190 60,200 0,200
+               
+               C -60,200 -110,190 -160,170
+               C -210,150 -250,100 -240,70
+               C -230,40 -250,10 -270,-20
+               C -300,-60 -280,-110 -240,-130
+               C -200,-150 -220,-180 -200,-220
+               C -180,-260 -130,-250 -80,-260
+               C -40,-270 -30,-300 0,-300 Z" 
+            fill="url(#rimGlow)" />
+
+      <!-- Face Mask Heart (Wide sloped curve covering raccoon eyes) -->
+      <path d="M 0,-120
+               C 90,-230 230,-170 240,-70
+               C 250,30 210,120 130,160
+               C 70,190 20,180 0,180
+               C -20,180 -70,190 -130,160
+               C -210,120 -250,30 -240,-70
+               C -230,-170 -90,-230 0,-120 Z" 
+            fill="url(#faceGrad)" />
+
+      <!-- Dark Slanted Eye Sockets (Raccoon/Sloth vibe) -->
+      <g id="eye_sockets">
+        <ellipse cx="-110" cy="-20" rx="72" ry="98" transform="rotate(18 -110 -20)" fill="#1c0b00" />
+        <ellipse cx="110" cy="-20" rx="72" ry="98" transform="rotate(-18 110 -20)" fill="#1c0b00" />
+      </g>
+
+      <!-- Eyes (Huge anime/glass style) -->
+      <g id="eyes">
+        <!-- Left Eye -->
+        <g id="eye_left" transform="translate(-110, -20)">
+          <!-- Base -->
+          <circle cx="0" cy="0" r="60" fill="#030100" />
+          <!-- Glow rim inside eye -->
+          <circle cx="0" cy="12" r="48" fill="url(#irisGrad)" />
+          <!-- Pure black pupil core -->
+          <circle cx="0" cy="0" r="42" fill="#000000" />
+          
+          <!-- Highlights -->
+          <circle cx="-16" cy="-20" r="23" fill="#FFFFFF" />
+          <circle cx="22" cy="22" r="8" fill="#FFFFFF" />
+          <circle cx="-28" cy="18" r="4" fill="#FFFFFF" opacity="0.4"/>
+        </g>
+        
+        <!-- Right Eye -->
+        <g id="eye_right" transform="translate(110, -20)">
+          <!-- Base -->
+          <circle cx="0" cy="0" r="60" fill="#030100" />
+          <!-- Glow rim inside eye -->
+          <circle cx="0" cy="12" r="48" fill="url(#irisGrad)" />
+          <!-- Pure black pupil core -->
+          <circle cx="0" cy="0" r="42" fill="#000000" />
+          
+          <!-- Highlights -->
+          <circle cx="-16" cy="-20" r="23" fill="#FFFFFF" />
+          <circle cx="22" cy="22" r="8" fill="#FFFFFF" />
+          <circle cx="-28" cy="18" r="4" fill="#FFFFFF" opacity="0.4"/>
+        </g>
+      </g>
+
+      <!-- Expressive Eyebrows -->
+      <g id="eyebrows" stroke="#1f0e00" stroke-width="15" stroke-linecap="round" fill="none">
+        <path d="M -165,-155 Q -110,-185 -55,-135" />
+        <path d="M 165,-155 Q 110,-185 55,-135" />
+      </g>
+
+      <!-- Nose -->
+      <g id="nose" transform="translate(0, 85)">
+        <ellipse cx="0" cy="0" rx="22" ry="15" fill="#120800" />
+        <ellipse cx="-4" cy="-3" rx="9" ry="4" fill="#4d2300" />
+      </g>
+
+      <!-- Mouth (Soft upward curve) -->
+      <g id="mouth" transform="translate(0, 125)">
+        <path d="M -45,-15 C -25,18 25,18 45,-15" stroke="#1f0e00" stroke-width="11" stroke-linecap="round" fill="none" />
+      </g>
+    </g>
+
+    <!-- Arms -->
+    <g id="arms">
+      <!-- Left Arm (Fluffy, reaching forward) -->
+      <g id="arm_left" transform="translate(-200, 150)">
+        <path d="M 0,0 C -120,40 -170,180 -40,220 C 60,240 100,150 70,0 Z" fill="url(#armGlow)" />
+        <ellipse cx="-20" cy="180" rx="55" ry="45" fill="url(#faceGrad)" />
+        <path d="M -60,200 Q -70,260 -40,225" stroke="#FFE8CC" stroke-width="10" stroke-linecap="round" fill="none"/>
+        <path d="M -20,215 Q -20,270 -5,235" stroke="#FFE8CC" stroke-width="10" stroke-linecap="round" fill="none"/>
+        <path d="M 20,200 Q 30,260 20,225" stroke="#FFE8CC" stroke-width="10" stroke-linecap="round" fill="none"/>
+      </g>
+      
+      <!-- Right Arm -->
+      <g id="arm_right" transform="translate(200, 150)">
+        <path d="M 0,0 C 120,40 170,180 40,220 C -60,240 -100,150 -70,0 Z" fill="url(#armGlow)" />
+        <ellipse cx="20" cy="180" rx="55" ry="45" fill="url(#faceGrad)" />
+        <path d="M 60,200 Q 70,260 40,225" stroke="#FFE8CC" stroke-width="10" stroke-linecap="round" fill="none"/>
+        <path d="M 20,215 Q 20,270 5,235" stroke="#FFE8CC" stroke-width="10" stroke-linecap="round" fill="none"/>
+        <path d="M -20,200 Q -30,260 -20,225" stroke="#FFE8CC" stroke-width="10" stroke-linecap="round" fill="none"/>
+      </g>
+    </g>
+
+  </g>
+</svg>

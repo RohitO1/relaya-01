@@ -53,6 +53,22 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
+  static bool _hasPlayedSplash = false;
+  late AnimationController _splashCtrl;
+  late Animation<double> _slideAnim;
+
+  // ── Rello Tween Animations ──────────────────────────────────────
+  // Phase 0=peek, 1=half, 2=full
+  int _relloPhase = 0;
+  // Rise: character slides up from off-screen
+  late Animation<double> _riseAnim;
+  // Blink: quick scaleY squash to simulate a blink
+  late Animation<double> _blinkAnim;
+  // Rotation: gentle head tilt for "look around"
+  late Animation<double> _rotationAnim;
+  // Bounce: happy scale pulse when card arrives
+  late Animation<double> _bounceAnim;
+
   bool _isPhoneMode = true; // true = Phone, false = Username
   int _phoneStep = 0; // 0 = Entry, 1 = OTP
 
@@ -62,27 +78,28 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   bool _isSigningIn = false;
   bool _obscurePassword = true;
   bool _isSendingReset = false;
-  
+
   // Phone Entry
   final _phoneCtrl = TextEditingController();
   bool _isLoading = false;
   String _countryCode = '+91';
 
   final List<Map<String, String>> _countryCodes = [
-    {'code': '+91',  'flag': '🇮🇳', 'name': 'India'},
-    {'code': '+1',   'flag': '🇺🇸', 'name': 'USA / Canada'},
-    {'code': '+44',  'flag': '🇬🇧', 'name': 'United Kingdom'},
-    {'code': '+61',  'flag': '🇦🇺', 'name': 'Australia'},
+    {'code': '+91', 'flag': '🇮🇳', 'name': 'India'},
+    {'code': '+1', 'flag': '🇺🇸', 'name': 'USA / Canada'},
+    {'code': '+44', 'flag': '🇬🇧', 'name': 'United Kingdom'},
+    {'code': '+61', 'flag': '🇦🇺', 'name': 'Australia'},
     {'code': '+971', 'flag': '🇦🇪', 'name': 'UAE'},
-    {'code': '+65',  'flag': '🇸🇬', 'name': 'Singapore'},
-    {'code': '+60',  'flag': '🇲🇾', 'name': 'Malaysia'},
-    {'code': '+49',  'flag': '🇩🇪', 'name': 'Germany'},
-    {'code': '+33',  'flag': '🇫🇷', 'name': 'France'},
-    {'code': '+81',  'flag': '🇯🇵', 'name': 'Japan'},
+    {'code': '+65', 'flag': '🇸🇬', 'name': 'Singapore'},
+    {'code': '+60', 'flag': '🇲🇾', 'name': 'Malaysia'},
+    {'code': '+49', 'flag': '🇩🇪', 'name': 'Germany'},
+    {'code': '+33', 'flag': '🇫🇷', 'name': 'France'},
+    {'code': '+81', 'flag': '🇯🇵', 'name': 'Japan'},
   ];
 
   // OTP Entry
-  final List<TextEditingController> _otpCtrl = List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _otpCtrl =
+      List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _otpFoci = List.generate(6, (_) => FocusNode());
   bool _isVerifying = false;
   bool _isResending = false;
@@ -97,16 +114,195 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   late AnimationController _floatCtrl;
   late Animation<double> _floatAnim;
 
+  final List<String> _relloImages = [
+    'assets/images/rello/pose_1.png',
+    'assets/images/rello/pose_2.png',
+    'assets/images/rello/pose_3.png',
+    'assets/images/rello/pose_4.png',
+    'assets/images/rello/pose_5.png',
+    'assets/images/rello/pose_6.png',
+    'assets/images/rello/pose_7.png',
+    'assets/images/rello/pose_8.png',
+  ];
+
   @override
   void initState() {
     super.initState();
-    _orbCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 10))..repeat(reverse: true);
-    _floatCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat(reverse: true);
-    _floatAnim = Tween<double>(begin: -6, end: 6).animate(CurvedAnimation(parent: _floatCtrl, curve: Curves.easeInOut));
+    _orbCtrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 10))
+          ..repeat(reverse: true);
+    _floatCtrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 3))
+          ..repeat(reverse: true);
+    _floatAnim = Tween<double>(begin: -6, end: 6)
+        .animate(CurvedAnimation(parent: _floatCtrl, curve: Curves.easeInOut));
+
+    _splashCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 3600));
+
+    // Card slide-in (same as before)
+    _slideAnim = Tween<double>(begin: 300.0, end: 0.0).animate(CurvedAnimation(
+        parent: _splashCtrl,
+        curve:
+            const Interval(2.7 / 3.6, 3.4 / 3.6, curve: Curves.easeOutCubic)));
+
+    // ── Rello character tweens ────────────────────────────────────
+    // Rise: 0.0s–1.3s → translateY from 220 to 0 with overshoot
+    _riseAnim = TweenSequence<double>([
+      // Phase 1: peek rise (0.0–0.8s) — rise from 220 to 80
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 220.0, end: 80.0)
+            .chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 0.8,
+      ),
+      // Phase 2: hold during blink (0.8–1.3s)
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 80.0, end: 80.0),
+        weight: 0.5,
+      ),
+      // Phase 3: emerge rise (1.3–1.8s) — rise from 80 to 20
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 80.0, end: 20.0)
+            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 0.5,
+      ),
+      // Phase 4: hold during look (1.8–2.3s)
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 20.0, end: 20.0),
+        weight: 0.5,
+      ),
+      // Phase 5: final settle (2.3–3.6s) — ease to 0
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 20.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeOutQuint)),
+        weight: 1.3,
+      ),
+    ]).animate(_splashCtrl);
+
+    // Blink: quick scaleY squash at 0.8–1.2s
+    _blinkAnim = TweenSequence<double>([
+      // Before blink: normal
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1.0),
+        weight: 0.8,
+      ),
+      // Squash down
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.82)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 0.15,
+      ),
+      // Bounce back
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.82, end: 1.0)
+            .chain(CurveTween(curve: Curves.elasticOut)),
+        weight: 0.25,
+      ),
+      // Normal for rest
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1.0),
+        weight: 2.4,
+      ),
+    ]).animate(_splashCtrl);
+
+    // Rotation: gentle tilt at 1.8–2.3s for "look around"
+    _rotationAnim = TweenSequence<double>([
+      // Before look: no rotation
+      TweenSequenceItem(
+        tween: ConstantTween<double>(0.0),
+        weight: 1.8,
+      ),
+      // Look left
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: -0.06)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 0.15,
+      ),
+      // Look right
+      TweenSequenceItem(
+        tween: Tween<double>(begin: -0.06, end: 0.06)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 0.2,
+      ),
+      // Return center
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.06, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 0.15,
+      ),
+      // Hold
+      TweenSequenceItem(
+        tween: ConstantTween<double>(0.0),
+        weight: 1.3,
+      ),
+    ]).animate(_splashCtrl);
+
+    // Bounce: happy pulse at 2.7–3.2s (card pull moment)
+    _bounceAnim = TweenSequence<double>([
+      // Before bounce: normal
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1.0),
+        weight: 2.7,
+      ),
+      // Scale up
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 1.12)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 0.2,
+      ),
+      // Scale back with elastic overshoot
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.12, end: 1.0)
+            .chain(CurveTween(curve: Curves.elasticOut)),
+        weight: 0.4,
+      ),
+      // Normal for rest
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1.0),
+        weight: 0.3,
+      ),
+    ]).animate(_splashCtrl);
+
+    if (!_hasPlayedSplash) {
+      _hasPlayedSplash = true;
+      _playSplashSequence();
+    } else {
+      _splashCtrl.value = 1.0;
+      _relloPhase = 2;
+    }
+  }
+
+  void _playSplashSequence() {
+    _splashCtrl.forward();
+    _splashCtrl.addListener(() {
+      final t = _splashCtrl.value * 3.6; // Time in seconds
+      int nextPhase = 0;
+      if (t < 0.4)
+        nextPhase = 0;
+      else if (t < 0.8)
+        nextPhase = 1;
+      else if (t < 1.3)
+        nextPhase = 2;
+      else if (t < 1.8)
+        nextPhase = 3;
+      else if (t < 2.3)
+        nextPhase = 4;
+      else if (t < 2.7)
+        nextPhase = 5;
+      else if (t < 3.4)
+        nextPhase = 6;
+      else
+        nextPhase = 7;
+
+      if (nextPhase != _relloPhase && mounted) {
+        setState(() => _relloPhase = nextPhase);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _splashCtrl.dispose();
     _orbCtrl.dispose();
     _floatCtrl.dispose();
     _phoneCtrl.dispose();
@@ -124,7 +320,11 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Row(children: [const Icon(Icons.error_outline, color: Colors.white, size: 18), const SizedBox(width: 10), Expanded(child: Text(msg, style: const TextStyle(color: Colors.white)))]),
+      content: Row(children: [
+        const Icon(Icons.error_outline, color: Colors.white, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text(msg, style: const TextStyle(color: Colors.white)))
+      ]),
       backgroundColor: _red,
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 4),
@@ -136,7 +336,11 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Row(children: [const Icon(Icons.check_circle_outline, color: Colors.white, size: 18), const SizedBox(width: 10), Expanded(child: Text(msg, style: const TextStyle(color: Colors.white)))]),
+      content: Row(children: [
+        const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text(msg, style: const TextStyle(color: Colors.white)))
+      ]),
       backgroundColor: _green,
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 6),
@@ -153,7 +357,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.info_outline_rounded, color: Colors.white, size: 18),
+            const Icon(Icons.info_outline_rounded,
+                color: Colors.white, size: 18),
             const SizedBox(width: 10),
             const Expanded(
               child: Text(
@@ -195,7 +400,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     setState(() => _isSigningIn = true);
     try {
       // ── Tier 1: Try username@relaya.app (the email set during onboarding) ──
-      final usernameEmail = rawInput.contains('@') ? rawInput : '${rawInput.toLowerCase()}@relaya.app';
+      final usernameEmail = rawInput.contains('@')
+          ? rawInput
+          : '${rawInput.toLowerCase()}@relaya.app';
       bool loggedIn = false;
 
       try {
@@ -224,6 +431,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
             final phoneEmail = 'phone_$digits@relaya.app';
             try {
+<<<<<<< HEAD
               final res = await Supabase.instance.client.auth
                   .signInWithPassword(email: phoneEmail, password: pass)
                   .timeout(const Duration(seconds: 10));
@@ -236,6 +444,26 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                     .updateUser(UserAttributes(email: usernameEmail))
                     .then((_) => debugPrint('[Login] Migrated auth email to $usernameEmail'))
                     .catchError((e) => debugPrint('[Login] Email migration failed (non-fatal): $e'));
+=======
+              final res =
+                  await Supabase.instance.client.auth.signInWithPassword(
+                email: phoneEmail,
+                password: pass,
+              );
+              if (res.user != null) {
+                loggedIn = true;
+                // Now that we successfully logged in, migrate the email so future
+                // logins with username@relaya.app also work
+                try {
+                  await Supabase.instance.client.auth.updateUser(
+                    UserAttributes(email: usernameEmail),
+                  );
+                  debugPrint('[Login] Migrated auth email to $usernameEmail');
+                } catch (migrateErr) {
+                  debugPrint(
+                      '[Login] Email migration failed (non-fatal): $migrateErr');
+                }
+>>>>>>> 03fed4d (Your commit message)
               }
             } on AuthException catch (_) {
               // Tier 2 also failed
@@ -265,6 +493,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     }
   }
 
+<<<<<<< HEAD
 
   bool _isTestPhoneNumber(String phone) {
     final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
@@ -281,6 +510,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     return knownTestNumbers.contains(cleanPhone) || cleanPhone.contains('555');
   }
 
+=======
+>>>>>>> 03fed4d (Your commit message)
   // ── Phone Auth Actions ──────────────────────────────────────────
 
   Future<void> _sendOtp() async {
@@ -322,7 +553,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         phoneNumber: _fullPhoneNumber,
         verificationCompleted: (fba.PhoneAuthCredential credential) async {
           try {
-            final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+            final userCredential = await fba.FirebaseAuth.instance
+                .signInWithCredential(credential);
             final idToken = await userCredential.user?.getIdToken();
             if (idToken != null && mounted) {
               _verifyOtpWithFirebaseToken(idToken);
@@ -373,7 +605,10 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     _countdown = 60;
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) { t.cancel(); return; }
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
       if (_countdown == 0) {
         t.cancel();
       } else {
@@ -400,7 +635,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         smsCode: _otpVal,
       );
 
-      final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+      final userCredential =
+          await fba.FirebaseAuth.instance.signInWithCredential(credential);
       final idToken = await userCredential.user?.getIdToken();
 
       if (idToken != null) {
@@ -461,7 +697,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           }
         }
       } else {
-        final err = data != null ? data['error'] : 'Verification failed on server.';
+        final err =
+            data != null ? data['error'] : 'Verification failed on server.';
         if (mounted) {
           _showError(err ?? 'Verification failed.');
           for (final c in _otpCtrl) c.clear();
@@ -489,7 +726,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
       if (existing == null) {
         final phone = _fullPhoneNumber;
-        final suffix = phone.length >= 4 ? phone.substring(phone.length - 4) : phone;
+        final suffix =
+            phone.length >= 4 ? phone.substring(phone.length - 4) : phone;
         await Supabase.instance.client.from('profiles').upsert({
           'id': user.id,
           'name': 'User_$suffix',
@@ -517,7 +755,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         phoneNumber: _fullPhoneNumber,
         verificationCompleted: (fba.PhoneAuthCredential credential) async {
           try {
-            final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+            final userCredential = await fba.FirebaseAuth.instance
+                .signInWithCredential(credential);
             final idToken = await userCredential.user?.getIdToken();
             if (idToken != null && mounted) {
               _verifyOtpWithFirebaseToken(idToken);
@@ -568,9 +807,15 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(height: 12),
-          Container(width: 40, height: 4, decoration: BoxDecoration(color: _muted, borderRadius: BorderRadius.circular(2))),
+          Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: _muted, borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
-          Text('Select Country', style: GoogleFonts.inter(color: _txt, fontWeight: FontWeight.bold, fontSize: 16)),
+          Text('Select Country',
+              style: GoogleFonts.inter(
+                  color: _txt, fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 8),
           Expanded(
             child: ListView.builder(
@@ -578,9 +823,12 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
               itemBuilder: (context, index) {
                 final c = _countryCodes[index];
                 return ListTile(
-                  leading: Text(c['flag']!, style: const TextStyle(fontSize: 26)),
-                  title: Text(c['name']!, style: GoogleFonts.inter(color: _txt, fontSize: 14)),
-                  trailing: Text(c['code']!, style: GoogleFonts.inter(color: _txt2, fontSize: 14)),
+                  leading:
+                      Text(c['flag']!, style: const TextStyle(fontSize: 26)),
+                  title: Text(c['name']!,
+                      style: GoogleFonts.inter(color: _txt, fontSize: 14)),
+                  trailing: Text(c['code']!,
+                      style: GoogleFonts.inter(color: _txt2, fontSize: 14)),
                   onTap: () {
                     setState(() => _countryCode = c['code']!);
                     Navigator.pop(context);
@@ -603,10 +851,12 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         child: Container(
           height: 42,
           alignment: Alignment.center,
-          child: Text(label, style: GoogleFonts.inter(
-            fontSize: 14, fontWeight: FontWeight.w600,
-            color: active ? _cyan : _muted,
-          )),
+          child: Text(label,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: active ? _cyan : _muted,
+              )),
         ),
       ),
     );
@@ -618,80 +868,132 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       backgroundColor: isDoodleMode(context) ? DoodleColors.cream : _bg,
       body: Stack(
         children: [
-          _buildAmbientOrbs(),
+          // Background content stripped directly ambient orbs for a clean splash effect.
           SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  const SizedBox(height: 40),
-
-                  // Logo
-                  AnimatedBuilder(
-                    animation: _floatAnim,
-                    builder: (_, child) => Transform.translate(offset: Offset(0, _floatAnim.value), child: child),
-                    child: SizedBox(
-                      width: 90,
-                      height: 90,
-                      child: CustomPaint(painter: YinYangCrescentPainter()),
-                    ),
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  // Tab Selector
-                  if (_phoneStep == 0) ...[
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: _card,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: _gb),
-                      ),
-                      child: Stack(
+            child: AnimatedBuilder(
+                animation: _splashCtrl,
+                builder: (context, child) {
+                  // If splash hasn't reached card pull, we might want to slide entirely.
+                  // The _slideAnim translates from 300 to 0.
+                  return Transform.translate(
+                    offset: Offset(0, _slideAnim.value),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
                         children: [
-                          // Slider
-                          AnimatedAlign(
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.elasticOut,
-                            alignment: _isPhoneMode ? Alignment.centerLeft : Alignment.centerRight,
-                            child: FractionallySizedBox(
-                              widthFactor: 0.5,
-                              child: Container(
-                                height: 42,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  gradient: LinearGradient(
-                                    colors: [_cyan.withValues(alpha: 0.15), _pink.withValues(alpha: 0.1)],
+                          SizedBox(
+                              height: _splashCtrl.value < 0.75
+                                  ? 120
+                                  : 40), // Push down initially, slide up later
+
+                          // ── Rello Animated Character ──────────────
+                          Transform.translate(
+                            offset: Offset(0, _riseAnim.value),
+                            child: Transform.rotate(
+                              angle: _rotationAnim.value,
+                              child: Transform.scale(
+                                scaleY: _blinkAnim.value,
+                                scaleX: _bounceAnim.value,
+                                alignment: Alignment.center,
+                                child: SizedBox(
+                                  height: 200,
+                                  width: 200,
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 300),
+                                    switchInCurve: Curves.easeOut,
+                                    switchOutCurve: Curves.easeIn,
+                                    transitionBuilder: (child, animation) {
+                                      return FadeTransition(
+                                          opacity: animation, child: child);
+                                    },
+                                    child: Image.asset(
+                                      _relloImages[_relloPhase],
+                                      key: ValueKey<int>(_relloPhase),
+                                      height: 200,
+                                      fit: BoxFit.contain,
+                                      gaplessPlayback: true,
+                                    ),
                                   ),
-                                  border: Border.all(color: _cyan.withValues(alpha: 0.2)),
                                 ),
                               ),
                             ),
                           ),
-                          // Tabs
-                          Row(
-                            children: [
-                              _tab('Phone Auth', _isPhoneMode, () => setState(() => _isPhoneMode = true)),
-                              _tab('Username', !_isPhoneMode, () => setState(() => _isPhoneMode = false)),
-                            ],
+
+                          const SizedBox(height: 20),
+
+                          // Tab Selector
+                          if (_phoneStep == 0) ...[
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: _card,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: _gb),
+                              ),
+                              child: Stack(
+                                children: [
+                                  // Slider
+                                  AnimatedAlign(
+                                    duration: const Duration(milliseconds: 400),
+                                    curve: Curves.elasticOut,
+                                    alignment: _isPhoneMode
+                                        ? Alignment.centerLeft
+                                        : Alignment.centerRight,
+                                    child: FractionallySizedBox(
+                                      widthFactor: 0.5,
+                                      child: Container(
+                                        height: 42,
+                                        decoration: BoxDecoration(
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              _cyan.withValues(alpha: 0.15),
+                                              _pink.withValues(alpha: 0.1)
+                                            ],
+                                          ),
+                                          border: Border.all(
+                                              color:
+                                                  _cyan.withValues(alpha: 0.2)),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  // Tabs
+                                  Row(
+                                    children: [
+                                      _tab(
+                                          'Phone Auth',
+                                          _isPhoneMode,
+                                          () => setState(
+                                              () => _isPhoneMode = true)),
+                                      _tab(
+                                          'Username',
+                                          !_isPhoneMode,
+                                          () => setState(
+                                              () => _isPhoneMode = false)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 30),
+                          ],
+
+                          // Content
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            child: _isPhoneMode
+                                ? (_phoneStep == 0
+                                    ? _buildPhoneEntryStep()
+                                    : _buildOtpVerifyStep())
+                                : _buildUsernameLoginStep(),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 30),
-                  ],
-
-                  // Content
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: _isPhoneMode 
-                      ? (_phoneStep == 0 ? _buildPhoneEntryStep() : _buildOtpVerifyStep())
-                      : _buildUsernameLoginStep(),
-                  ),
-                ],
-              ),
-            ),
+                  );
+                }),
           ),
         ],
       ),
@@ -704,7 +1006,11 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       key: const ValueKey('username'),
       children: [
         Text('Welcome Back',
-            style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.bold, color: _txt, height: 1.2)),
+            style: GoogleFonts.inter(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: _txt,
+                height: 1.2)),
         const SizedBox(height: 10),
         Text("Sign in with your username and password.",
             textAlign: TextAlign.center,
@@ -713,16 +1019,21 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
         // Username
         Container(
-          decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _gb)),
+          decoration: BoxDecoration(
+              color: _card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _gb)),
           child: TextField(
             controller: _usernameCtrl,
             style: GoogleFonts.inter(color: _txt, fontSize: 16),
             decoration: InputDecoration(
               hintText: 'Username',
               hintStyle: GoogleFonts.inter(color: _muted, fontSize: 15),
-              prefixIcon: const Icon(Icons.person_outline, color: _muted, size: 18),
+              prefixIcon:
+                  const Icon(Icons.person_outline, color: _muted, size: 18),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             ),
           ),
         ),
@@ -730,7 +1041,10 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
         // Password
         Container(
-          decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _gb)),
+          decoration: BoxDecoration(
+              color: _card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _gb)),
           child: TextField(
             controller: _passwordCtrl,
             obscureText: _obscurePassword,
@@ -738,13 +1052,19 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             decoration: InputDecoration(
               hintText: 'Password',
               hintStyle: GoogleFonts.inter(color: _muted, fontSize: 15),
-              prefixIcon: const Icon(Icons.lock_outline, color: _muted, size: 18),
+              prefixIcon:
+                  const Icon(Icons.lock_outline, color: _muted, size: 18),
               suffixIcon: GestureDetector(
-                onTap: () => setState(() => _obscurePassword = !_obscurePassword),
-                child: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: _muted, size: 18),
+                onTap: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
+                child: Icon(
+                    _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                    color: _muted,
+                    size: 18),
               ),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             ),
             onSubmitted: (_) => _handleUsernameSignin(),
           ),
@@ -759,20 +1079,38 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 16),
             decoration: BoxDecoration(
-              gradient: _isSigningIn ? null : const LinearGradient(colors: [_cyan, _pink]),
+              gradient: _isSigningIn
+                  ? null
+                  : const LinearGradient(colors: [_cyan, _pink]),
               color: _isSigningIn ? _muted.withValues(alpha: 0.3) : null,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: _isSigningIn ? [] : [BoxShadow(color: _cyan.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 8))],
+              boxShadow: _isSigningIn
+                  ? []
+                  : [
+                      BoxShadow(
+                          color: _cyan.withValues(alpha: 0.35),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8))
+                    ],
             ),
             child: Center(
               child: _isSigningIn
-                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5))
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          color: Colors.black, strokeWidth: 2.5))
                   : Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.login_rounded, color: Colors.black, size: 18),
+                        const Icon(Icons.login_rounded,
+                            color: Colors.black, size: 18),
                         const SizedBox(width: 8),
-                        Text('Sign In', style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 16)),
+                        Text('Sign In',
+                            style: GoogleFonts.inter(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16)),
                       ],
                     ),
             ),
@@ -829,9 +1167,14 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       key: const ValueKey('phone_entry'),
       children: [
         Text('Create an Account',
-            style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.bold, color: _txt, height: 1.2)),
+            style: GoogleFonts.inter(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: _txt,
+                height: 1.2)),
         const SizedBox(height: 10),
-        Text("Enter your phone number to continue.\nWe'll send you a verification code.",
+        Text(
+            "Enter your phone number to continue.\nWe'll send you a verification code.",
             textAlign: TextAlign.center,
             style: GoogleFonts.inter(fontSize: 14, color: _txt2, height: 1.4)),
         const SizedBox(height: 40),
@@ -840,7 +1183,11 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         Align(
           alignment: Alignment.centerLeft,
           child: Text('PHONE NUMBER',
-              style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 1.2)),
+              style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: _muted,
+                  letterSpacing: 1.2)),
         ),
         const SizedBox(height: 8),
         Row(children: [
@@ -848,9 +1195,16 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             onTap: _showCountryPicker,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-              decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _gb)),
+              decoration: BoxDecoration(
+                  color: _card,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _gb)),
               child: Row(children: [
-                Text(_countryCode, style: GoogleFonts.inter(color: _txt, fontWeight: FontWeight.w600, fontSize: 15)),
+                Text(_countryCode,
+                    style: GoogleFonts.inter(
+                        color: _txt,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15)),
                 const SizedBox(width: 4),
                 const Icon(Icons.arrow_drop_down, color: _muted, size: 18),
               ]),
@@ -859,17 +1213,25 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           const SizedBox(width: 10),
           Expanded(
             child: Container(
-              decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _gb)),
+              decoration: BoxDecoration(
+                  color: _card,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _gb)),
               child: TextField(
                 controller: _phoneCtrl,
                 keyboardType: TextInputType.phone,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
-                style: GoogleFonts.inter(color: _txt, fontSize: 16, fontWeight: FontWeight.w500),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(10)
+                ],
+                style: GoogleFonts.inter(
+                    color: _txt, fontSize: 16, fontWeight: FontWeight.w500),
                 decoration: InputDecoration(
                   hintText: '9876543210',
                   hintStyle: GoogleFonts.inter(color: _muted, fontSize: 15),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 ),
                 onSubmitted: (_) => _sendOtp(),
               ),
@@ -882,7 +1244,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           children: [
             const Icon(Icons.lock_outline, color: _muted, size: 12),
             const SizedBox(width: 5),
-            Text('Secured by Supabase.', style: GoogleFonts.inter(fontSize: 11, color: _muted)),
+            Text('Secured by Supabase.',
+                style: GoogleFonts.inter(fontSize: 11, color: _muted)),
           ],
         ),
 
@@ -896,35 +1259,57 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 16),
             decoration: BoxDecoration(
-              gradient: _isLoading ? null : const LinearGradient(colors: [_cyan, _pink]),
+              gradient: _isLoading
+                  ? null
+                  : const LinearGradient(colors: [_cyan, _pink]),
               color: _isLoading ? _muted.withValues(alpha: 0.3) : null,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: _isLoading ? [] : [BoxShadow(color: _cyan.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 8))],
+              boxShadow: _isLoading
+                  ? []
+                  : [
+                      BoxShadow(
+                          color: _cyan.withValues(alpha: 0.35),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8))
+                    ],
             ),
             child: Center(
               child: _isLoading
-                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5))
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          color: Colors.black, strokeWidth: 2.5))
                   : Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.arrow_forward_rounded, color: Colors.black, size: 18),
+                        const Icon(Icons.arrow_forward_rounded,
+                            color: Colors.black, size: 18),
                         const SizedBox(width: 8),
-                        Text('Send Code', style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 16)),
+                        Text('Send Code',
+                            style: GoogleFonts.inter(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16)),
                       ],
                     ),
             ),
           ),
         ),
-        
+
         const SizedBox(height: 30),
         Text.rich(
           TextSpan(
             text: 'By continuing, you agree to our ',
             style: GoogleFonts.inter(fontSize: 11, color: _muted),
             children: [
-              TextSpan(text: 'Terms of Service', style: GoogleFonts.inter(color: _cyan, fontSize: 11)),
+              TextSpan(
+                  text: 'Terms of Service',
+                  style: GoogleFonts.inter(color: _cyan, fontSize: 11)),
               const TextSpan(text: ' and '),
-              TextSpan(text: 'Privacy Policy', style: GoogleFonts.inter(color: _cyan, fontSize: 11)),
+              TextSpan(
+                  text: 'Privacy Policy',
+                  style: GoogleFonts.inter(color: _cyan, fontSize: 11)),
             ],
           ),
           textAlign: TextAlign.center,
@@ -941,7 +1326,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         Align(
           alignment: Alignment.centerLeft,
           child: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: _txt2, size: 20),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                color: _txt2, size: 20),
             onPressed: () {
               setState(() => _phoneStep = 0);
             },
@@ -949,7 +1335,11 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         ),
         const SizedBox(height: 10),
         Text('Verify your number',
-            style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.bold, color: _txt, height: 1.2)),
+            style: GoogleFonts.inter(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: _txt,
+                height: 1.2)),
         const SizedBox(height: 10),
         RichText(
           textAlign: TextAlign.center,
@@ -959,7 +1349,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             children: [
               TextSpan(
                 text: _fullPhoneNumber,
-                style: GoogleFonts.inter(fontSize: 14, color: _cyan, fontWeight: FontWeight.w600),
+                style: GoogleFonts.inter(
+                    fontSize: 14, color: _cyan, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -980,7 +1371,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
               Flexible(
                 child: Text(
                   'Note: Please check your spam/blocked folder if you do not receive the OTP.',
-                  style: GoogleFonts.inter(color: _red, fontSize: 11, fontWeight: FontWeight.w500),
+                  style: GoogleFonts.inter(
+                      color: _red, fontSize: 11, fontWeight: FontWeight.w500),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -1004,20 +1396,38 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 16),
             decoration: BoxDecoration(
-              gradient: _isVerifying ? null : const LinearGradient(colors: [_cyan, _pink]),
+              gradient: _isVerifying
+                  ? null
+                  : const LinearGradient(colors: [_cyan, _pink]),
               color: _isVerifying ? _muted.withValues(alpha: 0.3) : null,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: _isVerifying ? [] : [BoxShadow(color: _cyan.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 8))],
+              boxShadow: _isVerifying
+                  ? []
+                  : [
+                      BoxShadow(
+                          color: _cyan.withValues(alpha: 0.35),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8))
+                    ],
             ),
             child: Center(
               child: _isVerifying
-                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5))
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          color: Colors.black, strokeWidth: 2.5))
                   : Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.check_circle_outline_rounded, color: Colors.black, size: 18),
+                        const Icon(Icons.check_circle_outline_rounded,
+                            color: Colors.black, size: 18),
                         const SizedBox(width: 8),
-                        Text('Verify & Login', style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 16)),
+                        Text('Verify & Login',
+                            style: GoogleFonts.inter(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16)),
                       ],
                     ),
             ),
@@ -1028,7 +1438,11 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         // Resend row
         Center(
           child: _isResending
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: _cyan, strokeWidth: 2))
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child:
+                      CircularProgressIndicator(color: _cyan, strokeWidth: 2))
               : GestureDetector(
                   onTap: _countdown == 0 ? _resendOtp : null,
                   child: RichText(
@@ -1037,7 +1451,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                       style: GoogleFonts.inter(fontSize: 13, color: _txt2),
                       children: [
                         TextSpan(
-                          text: _countdown > 0 ? 'Resend in ${_countdown}s' : 'Resend OTP',
+                          text: _countdown > 0
+                              ? 'Resend in ${_countdown}s'
+                              : 'Resend OTP',
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             color: _countdown > 0 ? _muted : _cyan,
@@ -1064,7 +1480,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         textAlign: TextAlign.center,
         maxLength: 1,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        style: GoogleFonts.inter(color: _txt, fontSize: 24, fontWeight: FontWeight.bold),
+        style: GoogleFonts.inter(
+            color: _txt, fontSize: 24, fontWeight: FontWeight.bold),
         decoration: InputDecoration(
           counterText: '',
           filled: true,
@@ -1097,7 +1514,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           setState(() {});
         },
         onTap: () {
-          if (_otpVal.length < 6) _otpCtrl[i].selection = TextSelection.fromPosition(TextPosition(offset: _otpCtrl[i].text.length));
+          if (_otpVal.length < 6)
+            _otpCtrl[i].selection = TextSelection.fromPosition(
+                TextPosition(offset: _otpCtrl[i].text.length));
         },
       ),
     );
@@ -1137,7 +1556,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: RadialGradient(colors: [color.withValues(alpha: 0.12), Colors.transparent]),
+        gradient: RadialGradient(
+            colors: [color.withValues(alpha: 0.12), Colors.transparent]),
       ),
     );
   }
@@ -1167,22 +1587,30 @@ class YinYangCrescentPainter extends CustomPainter {
 
     final path1 = Path();
     path1.moveTo(center.dx - radius + 5, center.dy);
-    path1.arcToPoint(Offset(center.dx + radius - 5, center.dy), radius: Radius.circular(radius - 5), clockwise: true);
-    path1.arcToPoint(Offset(center.dx, center.dy), radius: Radius.circular((radius - 5) / 2), clockwise: true);
-    path1.arcToPoint(Offset(center.dx - radius + 5, center.dy), radius: Radius.circular((radius - 5) / 2), clockwise: false);
+    path1.arcToPoint(Offset(center.dx + radius - 5, center.dy),
+        radius: Radius.circular(radius - 5), clockwise: true);
+    path1.arcToPoint(Offset(center.dx, center.dy),
+        radius: Radius.circular((radius - 5) / 2), clockwise: true);
+    path1.arcToPoint(Offset(center.dx - radius + 5, center.dy),
+        radius: Radius.circular((radius - 5) / 2), clockwise: false);
 
     final path2 = Path();
     path2.moveTo(center.dx + radius - 5, center.dy);
-    path2.arcToPoint(Offset(center.dx - radius + 5, center.dy), radius: Radius.circular(radius - 5), clockwise: true);
-    path2.arcToPoint(Offset(center.dx, center.dy), radius: Radius.circular((radius - 5) / 2), clockwise: true);
-    path2.arcToPoint(Offset(center.dx + radius - 5, center.dy), radius: Radius.circular((radius - 5) / 2), clockwise: false);
+    path2.arcToPoint(Offset(center.dx - radius + 5, center.dy),
+        radius: Radius.circular(radius - 5), clockwise: true);
+    path2.arcToPoint(Offset(center.dx, center.dy),
+        radius: Radius.circular((radius - 5) / 2), clockwise: true);
+    path2.arcToPoint(Offset(center.dx + radius - 5, center.dy),
+        radius: Radius.circular((radius - 5) / 2), clockwise: false);
 
     canvas.drawPath(path1, paint1);
     canvas.drawPath(path2, paint2);
 
     final dotPaint = Paint()..color = const Color(0xFF0A0A0A);
-    canvas.drawCircle(Offset(center.dx + (radius - 5) / 2, center.dy), 6, dotPaint);
-    canvas.drawCircle(Offset(center.dx - (radius - 5) / 2, center.dy), 6, dotPaint);
+    canvas.drawCircle(
+        Offset(center.dx + (radius - 5) / 2, center.dy), 6, dotPaint);
+    canvas.drawCircle(
+        Offset(center.dx - (radius - 5) / 2, center.dy), 6, dotPaint);
   }
 
   @override
@@ -1212,7 +1640,8 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
   String _resolvedSyntheticPassword = ''; // phone_auth_<uid>
 
   // Step 1 — OTP
-  final List<TextEditingController> _otpCtrl = List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _otpCtrl =
+      List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _otpFoci = List.generate(6, (_) => FocusNode());
   String? _verificationId;
   int? _resendToken;
@@ -1245,8 +1674,15 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
     _countdown = 60;
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) { t.cancel(); return; }
-      if (_countdown == 0) { t.cancel(); } else { setState(() => _countdown--); }
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_countdown == 0) {
+        t.cancel();
+      } else {
+        setState(() => _countdown--);
+      }
     });
   }
 
@@ -1256,7 +1692,9 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
       content: Row(children: [
         const Icon(Icons.error_outline, color: Colors.white, size: 16),
         const SizedBox(width: 8),
-        Expanded(child: Text(msg, style: const TextStyle(color: Colors.white, fontSize: 13))),
+        Expanded(
+            child: Text(msg,
+                style: const TextStyle(color: Colors.white, fontSize: 13))),
       ]),
       backgroundColor: _red,
       behavior: SnackBarBehavior.floating,
@@ -1268,12 +1706,16 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
   // ── Step 0: Look up user by username or phone ───────────────────
   Future<void> _handleLookup() async {
     final raw = _identityCtrl.text.trim();
-    if (raw.isEmpty) { _showErr('Please enter your username or phone number.'); return; }
+    if (raw.isEmpty) {
+      _showErr('Please enter your username or phone number.');
+      return;
+    }
     setState(() => _isLookingUp = true);
 
     // Normalize phone formatting (remove spaces, hyphens, parentheses)
     final normalized = raw.replaceAll(RegExp(r'[\s\-()]'), '');
-    final isPhone = normalized.startsWith('+') || RegExp(r'^\d{7,}$').hasMatch(normalized);
+    final isPhone =
+        normalized.startsWith('+') || RegExp(r'^\d{7,}$').hasMatch(normalized);
 
     if (isPhone) {
       // ── Phone entered directly — format to E.164 ──
@@ -1304,7 +1746,8 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
 
         final phone = profile['phone'] as String?;
         if (phone == null || phone.isEmpty) {
-          _showErr('No phone linked to this account. Enter your phone number directly instead.');
+          _showErr(
+              'No phone linked to this account. Enter your phone number directly instead.');
           setState(() => _isLookingUp = false);
           return;
         }
@@ -1312,10 +1755,12 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
         _resolvedPhone = phone;
         await _sendOtp();
       } on PostgrestException catch (e) {
-        _showErr('Could not look up account: ${e.message}. Try entering your phone number directly.');
+        _showErr(
+            'Could not look up account: ${e.message}. Try entering your phone number directly.');
         setState(() => _isLookingUp = false);
       } catch (e) {
-        _showErr('Something went wrong. Try entering your phone number directly.');
+        _showErr(
+            'Something went wrong. Try entering your phone number directly.');
         setState(() => _isLookingUp = false);
       }
     }
@@ -1331,7 +1776,8 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
         phoneNumber: _resolvedPhone,
         verificationCompleted: (fba.PhoneAuthCredential credential) async {
           try {
-            final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+            final userCredential = await fba.FirebaseAuth.instance
+                .signInWithCredential(credential);
             final idToken = await userCredential.user?.getIdToken();
             if (idToken != null && mounted) {
               _verifyOtpWithFirebaseToken(idToken);
@@ -1377,7 +1823,10 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
 
   // ── Step 1: Verify OTP ───────────────────────────────────────────
   Future<void> _verifyOtp() async {
-    if (_otpVal.length < 6) { _showErr('Enter all 6 digits.'); return; }
+    if (_otpVal.length < 6) {
+      _showErr('Enter all 6 digits.');
+      return;
+    }
     if (_verificationId == null) {
       _showErr('Verification session expired. Please request a new code.');
       return;
@@ -1389,7 +1838,8 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
         smsCode: _otpVal,
       );
 
-      final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+      final userCredential =
+          await fba.FirebaseAuth.instance.signInWithCredential(credential);
       final idToken = await userCredential.user?.getIdToken();
 
       if (idToken != null) {
@@ -1429,7 +1879,8 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
           await _afterOtpVerified(_resolvedPhone);
         }
       } else {
-        final err = data != null ? data['error'] : 'Verification failed on server.';
+        final err =
+            data != null ? data['error'] : 'Verification failed on server.';
         if (mounted) {
           _showErr(err ?? 'Verification failed.');
           for (final c in _otpCtrl) c.clear();
@@ -1449,8 +1900,8 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
 
   Future<void> _afterOtpVerified(String phone) async {
     final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    final cleanPhone = digits.startsWith('91') && digits.length > 10 
-        ? digits.substring(2) 
+    final cleanPhone = digits.startsWith('91') && digits.length > 10
+        ? digits.substring(2)
         : digits;
 
     final possiblePhones = [
@@ -1471,10 +1922,11 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
       if (profile != null) {
         _resolvedUsername = profile['username'] as String? ?? '';
       } else {
-        final suffix = phone.length >= 4 ? phone.substring(phone.length - 4) : phone;
+        final suffix =
+            phone.length >= 4 ? phone.substring(phone.length - 4) : phone;
         _resolvedUsername = 'user_$suffix';
       }
-      
+
       if (mounted) {
         setState(() {
           _step = 2;
@@ -1493,8 +1945,14 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
   Future<void> _saveNewPassword() async {
     final newPass = _newPassCtrl.text.trim();
     final confirm = _confirmPassCtrl.text.trim();
-    if (newPass.length < 6) { _showErr('Password must be at least 6 characters.'); return; }
-    if (newPass != confirm) { _showErr('Passwords do not match.'); return; }
+    if (newPass.length < 6) {
+      _showErr('Password must be at least 6 characters.');
+      return;
+    }
+    if (newPass != confirm) {
+      _showErr('Passwords do not match.');
+      return;
+    }
 
     setState(() => _isSaving = true);
     try {
@@ -1507,7 +1965,8 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
       );
 
       if (!success) {
-        _showErr('Could not reset password. No account found with this phone number.');
+        _showErr(
+            'Could not reset password. No account found with this phone number.');
         return;
       }
 
@@ -1529,7 +1988,8 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
         phoneNumber: _resolvedPhone,
         verificationCompleted: (fba.PhoneAuthCredential credential) async {
           try {
-            final userCredential = await fba.FirebaseAuth.instance.signInWithCredential(credential);
+            final userCredential = await fba.FirebaseAuth.instance
+                .signInWithCredential(credential);
             final idToken = await userCredential.user?.getIdToken();
             if (idToken != null && mounted) {
               _verifyOtpWithFirebaseToken(idToken);
@@ -1582,7 +2042,11 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
                 color: _card,
                 borderRadius: BorderRadius.circular(28),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 40)],
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      blurRadius: 40)
+                ],
               ),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
@@ -1600,11 +2064,16 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
 
   Widget _buildStep() {
     switch (_step) {
-      case 0: return _buildStepIdentity();
-      case 1: return _buildStepOtp();
-      case 2: return _buildStepNewPassword();
-      case 3: return _buildStepSuccess();
-      default: return const SizedBox.shrink();
+      case 0:
+        return _buildStepIdentity();
+      case 1:
+        return _buildStepOtp();
+      case 2:
+        return _buildStepNewPassword();
+      case 3:
+        return _buildStepSuccess();
+      default:
+        return const SizedBox.shrink();
     }
   }
 
@@ -1626,20 +2095,25 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
           onTap: () => Navigator.pop(context),
           child: Container(
             padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: _gb, borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+                color: _gb, borderRadius: BorderRadius.circular(8)),
             child: const Icon(Icons.close_rounded, color: _muted, size: 18),
           ),
         ),
       ]),
       const SizedBox(height: 18),
-      Text(title, style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.bold, color: _txt)),
+      Text(title,
+          style: GoogleFonts.inter(
+              fontSize: 22, fontWeight: FontWeight.bold, color: _txt)),
       const SizedBox(height: 6),
-      Text(subtitle, style: GoogleFonts.inter(fontSize: 13, color: _txt2, height: 1.4)),
+      Text(subtitle,
+          style: GoogleFonts.inter(fontSize: 13, color: _txt2, height: 1.4)),
       const SizedBox(height: 24),
     ]);
   }
 
-  Widget _gradientBtn(String label, IconData icon, VoidCallback? onTap, bool loading) {
+  Widget _gradientBtn(
+      String label, IconData icon, VoidCallback? onTap, bool loading) {
     return GestureDetector(
       onTap: loading ? null : onTap,
       child: AnimatedContainer(
@@ -1647,18 +2121,34 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 15),
         decoration: BoxDecoration(
-          gradient: loading ? null : const LinearGradient(colors: [_cyan, _pink]),
+          gradient:
+              loading ? null : const LinearGradient(colors: [_cyan, _pink]),
           color: loading ? _muted.withValues(alpha: 0.25) : null,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: loading ? [] : [BoxShadow(color: _cyan.withValues(alpha: 0.3), blurRadius: 18, offset: const Offset(0, 6))],
+          boxShadow: loading
+              ? []
+              : [
+                  BoxShadow(
+                      color: _cyan.withValues(alpha: 0.3),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6))
+                ],
         ),
         child: Center(
           child: loading
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5))
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      color: Colors.black, strokeWidth: 2.5))
               : Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(icon, color: Colors.black, size: 16),
                   const SizedBox(width: 8),
-                  Text(label, style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 15)),
+                  Text(label,
+                      style: GoogleFonts.inter(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15)),
                 ]),
         ),
       ),
@@ -1667,72 +2157,100 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
 
   // ── Step 0: Identity ─────────────────────────────────────────────
   Widget _buildStepIdentity() {
-    return Column(key: const ValueKey(0), crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _header('Reset Password', 'Enter your username or phone number to receive a verification code.', Icons.lock_reset_rounded),
-      // Step dots
-      _stepDots(0),
-      const SizedBox(height: 24),
-      Text('USERNAME OR PHONE', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 1.2)),
-      const SizedBox(height: 8),
-      Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-        ),
-        child: TextField(
-          controller: _identityCtrl,
-          autofocus: true,
-          style: GoogleFonts.inter(color: _txt, fontSize: 15),
-          decoration: InputDecoration(
-            hintText: 'username  or  +91XXXXXXXXXX',
-            hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
-            prefixIcon: const Icon(Icons.person_search_rounded, color: _muted, size: 18),
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    return Column(
+        key: const ValueKey(0),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _header(
+              'Reset Password',
+              'Enter your username or phone number to receive a verification code.',
+              Icons.lock_reset_rounded),
+          // Step dots
+          _stepDots(0),
+          const SizedBox(height: 24),
+          Text('USERNAME OR PHONE',
+              style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: _muted,
+                  letterSpacing: 1.2)),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            child: TextField(
+              controller: _identityCtrl,
+              autofocus: true,
+              style: GoogleFonts.inter(color: _txt, fontSize: 15),
+              decoration: InputDecoration(
+                hintText: 'username  or  +91XXXXXXXXXX',
+                hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
+                prefixIcon: const Icon(Icons.person_search_rounded,
+                    color: _muted, size: 18),
+                border: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              ),
+              onSubmitted: (_) => _handleLookup(),
+            ),
           ),
-          onSubmitted: (_) => _handleLookup(),
-        ),
-      ),
-      const SizedBox(height: 24),
-      _gradientBtn('Send OTP', Icons.sms_rounded, _handleLookup, _isLookingUp),
-    ]);
+          const SizedBox(height: 24),
+          _gradientBtn(
+              'Send OTP', Icons.sms_rounded, _handleLookup, _isLookingUp),
+        ]);
   }
 
   // ── Step 1: OTP ──────────────────────────────────────────────────
   Widget _buildStepOtp() {
-    return Column(key: const ValueKey(1), crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _header('Enter OTP', 'A 6-digit code was sent to\n$_resolvedPhone', Icons.phone_iphone_rounded),
-      _stepDots(1),
-      const SizedBox(height: 24),
-      // OTP boxes
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: List.generate(6, (i) => _otpBox(i)),
-      ),
-      const SizedBox(height: 30),
-      _gradientBtn('Verify Code', Icons.check_circle_outline_rounded, _verifyOtp, _isVerifying),
-      const SizedBox(height: 16),
-      Center(
-        child: _isResending
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: _cyan, strokeWidth: 2))
-            : GestureDetector(
-                onTap: _countdown == 0 ? _resendOtp : null,
-                child: RichText(
-                  text: TextSpan(
-                    text: "Didn't receive it? ",
-                    style: GoogleFonts.inter(fontSize: 13, color: _txt2),
-                    children: [
-                      TextSpan(
-                        text: _countdown > 0 ? 'Resend in ${_countdown}s' : 'Resend OTP',
-                        style: GoogleFonts.inter(fontSize: 13, color: _countdown > 0 ? _muted : _cyan, fontWeight: FontWeight.w600),
+    return Column(
+        key: const ValueKey(1),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _header('Enter OTP', 'A 6-digit code was sent to\n$_resolvedPhone',
+              Icons.phone_iphone_rounded),
+          _stepDots(1),
+          const SizedBox(height: 24),
+          // OTP boxes
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(6, (i) => _otpBox(i)),
+          ),
+          const SizedBox(height: 30),
+          _gradientBtn('Verify Code', Icons.check_circle_outline_rounded,
+              _verifyOtp, _isVerifying),
+          const SizedBox(height: 16),
+          Center(
+            child: _isResending
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child:
+                        CircularProgressIndicator(color: _cyan, strokeWidth: 2))
+                : GestureDetector(
+                    onTap: _countdown == 0 ? _resendOtp : null,
+                    child: RichText(
+                      text: TextSpan(
+                        text: "Didn't receive it? ",
+                        style: GoogleFonts.inter(fontSize: 13, color: _txt2),
+                        children: [
+                          TextSpan(
+                            text: _countdown > 0
+                                ? 'Resend in ${_countdown}s'
+                                : 'Resend OTP',
+                            style: GoogleFonts.inter(
+                                fontSize: 13,
+                                color: _countdown > 0 ? _muted : _cyan,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-      ),
-    ]);
+          ),
+        ]);
   }
 
   Widget _otpBox(int i) {
@@ -1746,20 +2264,36 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
         textAlign: TextAlign.center,
         maxLength: 1,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        style: GoogleFonts.inter(color: _txt, fontSize: 22, fontWeight: FontWeight.bold),
+        style: GoogleFonts.inter(
+            color: _txt, fontSize: 22, fontWeight: FontWeight.bold),
         decoration: InputDecoration(
           counterText: '',
           filled: true,
           fillColor: Colors.black.withValues(alpha: 0.25),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _cyan, width: 2)),
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+          focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: _cyan, width: 2)),
         ),
         onChanged: (val) {
           if (val.isNotEmpty) {
-            if (i < 5) { _otpFoci[i + 1].requestFocus(); }
-            else { WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted && _otpVal.length == 6) _verifyOtp(); }); }
-          } else if (val.isEmpty && i > 0) { _otpFoci[i - 1].requestFocus(); }
+            if (i < 5) {
+              _otpFoci[i + 1].requestFocus();
+            } else {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _otpVal.length == 6) _verifyOtp();
+              });
+            }
+          } else if (val.isEmpty && i > 0) {
+            _otpFoci[i - 1].requestFocus();
+          }
           setState(() {});
         },
       ),
@@ -1768,99 +2302,141 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
 
   // ── Step 2: New Password ─────────────────────────────────────────
   Widget _buildStepNewPassword() {
-    return Column(key: const ValueKey(2), crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _header('Set New Password', 'Choose a strong password. You can use this with your username to log in.', Icons.lock_outline_rounded),
-      _stepDots(2),
-      const SizedBox(height: 24),
-      if (_resolvedUsername.isNotEmpty) ...[
-        Text('ACCOUNT USERNAME', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 1.2)),
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.account_circle_outlined, color: _cyan, size: 20),
-              const SizedBox(width: 12),
-              Text(
-                '@$_resolvedUsername',
-                style: GoogleFonts.inter(color: _txt, fontSize: 16, fontWeight: FontWeight.bold),
+    return Column(
+        key: const ValueKey(2),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _header(
+              'Set New Password',
+              'Choose a strong password. You can use this with your username to log in.',
+              Icons.lock_outline_rounded),
+          _stepDots(2),
+          const SizedBox(height: 24),
+          if (_resolvedUsername.isNotEmpty) ...[
+            Text('ACCOUNT USERNAME',
+                style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: _muted,
+                    letterSpacing: 1.2)),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-      ],
-      // New password
-      Text('NEW PASSWORD', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 1.2)),
-      const SizedBox(height: 8),
-      Container(
-        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withValues(alpha: 0.1))),
-        child: TextField(
-          controller: _newPassCtrl,
-          obscureText: _obscureNew,
-          style: GoogleFonts.inter(color: _txt, fontSize: 15),
-          onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            hintText: 'Min. 6 characters',
-            hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
-            prefixIcon: const Icon(Icons.lock_outline, color: _muted, size: 18),
-            suffixIcon: GestureDetector(
-              onTap: () => setState(() => _obscureNew = !_obscureNew),
-              child: Icon(_obscureNew ? Icons.visibility_off : Icons.visibility, color: _muted, size: 18),
+              child: Row(
+                children: [
+                  const Icon(Icons.account_circle_outlined,
+                      color: _cyan, size: 20),
+                  const SizedBox(width: 12),
+                  Text(
+                    '@$_resolvedUsername',
+                    style: GoogleFonts.inter(
+                        color: _txt, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
             ),
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          ),
-        ),
-      ),
-      const SizedBox(height: 14),
-      // Confirm password
-      Text('CONFIRM PASSWORD', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 1.2)),
-      const SizedBox(height: 8),
-      Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: _confirmPassCtrl.text.isEmpty
-                ? Colors.white.withValues(alpha: 0.1)
-                : (_newPassCtrl.text == _confirmPassCtrl.text ? _green.withValues(alpha: 0.5) : _red.withValues(alpha: 0.5)),
-            width: _confirmPassCtrl.text.isEmpty ? 1 : 1.5,
-          ),
-        ),
-        child: TextField(
-          controller: _confirmPassCtrl,
-          obscureText: _obscureConfirm,
-          style: GoogleFonts.inter(color: _txt, fontSize: 15),
-          onChanged: (_) => setState(() {}),
-          onSubmitted: (_) => _saveNewPassword(),
-          decoration: InputDecoration(
-            hintText: 'Re-enter password',
-            hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
-            prefixIcon: const Icon(Icons.lock_outline, color: _muted, size: 18),
-            suffixIcon: GestureDetector(
-              onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
-              child: Icon(_obscureConfirm ? Icons.visibility_off : Icons.visibility, color: _muted, size: 18),
+            const SizedBox(height: 20),
+          ],
+          // New password
+          Text('NEW PASSWORD',
+              style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: _muted,
+                  letterSpacing: 1.2)),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1))),
+            child: TextField(
+              controller: _newPassCtrl,
+              obscureText: _obscureNew,
+              style: GoogleFonts.inter(color: _txt, fontSize: 15),
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                hintText: 'Min. 6 characters',
+                hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
+                prefixIcon:
+                    const Icon(Icons.lock_outline, color: _muted, size: 18),
+                suffixIcon: GestureDetector(
+                  onTap: () => setState(() => _obscureNew = !_obscureNew),
+                  child: Icon(
+                      _obscureNew ? Icons.visibility_off : Icons.visibility,
+                      color: _muted,
+                      size: 18),
+                ),
+                border: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              ),
             ),
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           ),
-        ),
-      ),
-      if (_confirmPassCtrl.text.isNotEmpty && _newPassCtrl.text != _confirmPassCtrl.text)
-        Padding(
-          padding: const EdgeInsets.only(top: 6, left: 4),
-          child: Text('Passwords do not match', style: GoogleFonts.inter(color: _red, fontSize: 11)),
-        ),
-      const SizedBox(height: 26),
-      _gradientBtn('Save Password', Icons.check_rounded, _saveNewPassword, _isSaving),
-    ]);
+          const SizedBox(height: 14),
+          // Confirm password
+          Text('CONFIRM PASSWORD',
+              style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: _muted,
+                  letterSpacing: 1.2)),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: _confirmPassCtrl.text.isEmpty
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : (_newPassCtrl.text == _confirmPassCtrl.text
+                        ? _green.withValues(alpha: 0.5)
+                        : _red.withValues(alpha: 0.5)),
+                width: _confirmPassCtrl.text.isEmpty ? 1 : 1.5,
+              ),
+            ),
+            child: TextField(
+              controller: _confirmPassCtrl,
+              obscureText: _obscureConfirm,
+              style: GoogleFonts.inter(color: _txt, fontSize: 15),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _saveNewPassword(),
+              decoration: InputDecoration(
+                hintText: 'Re-enter password',
+                hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
+                prefixIcon:
+                    const Icon(Icons.lock_outline, color: _muted, size: 18),
+                suffixIcon: GestureDetector(
+                  onTap: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
+                  child: Icon(
+                      _obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                      color: _muted,
+                      size: 18),
+                ),
+                border: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              ),
+            ),
+          ),
+          if (_confirmPassCtrl.text.isNotEmpty &&
+              _newPassCtrl.text != _confirmPassCtrl.text)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: Text('Passwords do not match',
+                  style: GoogleFonts.inter(color: _red, fontSize: 11)),
+            ),
+          const SizedBox(height: 26),
+          _gradientBtn('Save Password', Icons.check_rounded, _saveNewPassword,
+              _isSaving),
+        ]);
   }
 
   // ── Step 3: Success ──────────────────────────────────────────────
@@ -1868,16 +2444,20 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
     return Column(key: const ValueKey(3), children: [
       const SizedBox(height: 10),
       Container(
-        width: 72, height: 72,
+        width: 72,
+        height: 72,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [_green.withValues(alpha: 0.3), Colors.transparent]),
+          gradient: RadialGradient(
+              colors: [_green.withValues(alpha: 0.3), Colors.transparent]),
           border: Border.all(color: _green.withValues(alpha: 0.5), width: 2),
         ),
         child: const Icon(Icons.check_rounded, color: _green, size: 36),
       ),
       const SizedBox(height: 22),
-      Text('Password Updated!', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.bold, color: _txt)),
+      Text('Password Updated!',
+          style: GoogleFonts.inter(
+              fontSize: 22, fontWeight: FontWeight.bold, color: _txt)),
       const SizedBox(height: 10),
       Text(
         'Your password has been saved.\nYou can now sign in with your username and new password.',
@@ -1885,7 +2465,8 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
         style: GoogleFonts.inter(fontSize: 13, color: _txt2, height: 1.5),
       ),
       const SizedBox(height: 30),
-      _gradientBtn('Sign In Now', Icons.login_rounded, () => Navigator.pop(context), false),
+      _gradientBtn('Sign In Now', Icons.login_rounded,
+          () => Navigator.pop(context), false),
     ]);
   }
 
@@ -1893,16 +2474,20 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
   Widget _stepDots(int current) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(3, (i) => AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        width: i == current ? 22 : 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: i <= current ? _cyan : Colors.white.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(4),
-        ),
-      )),
+      children: List.generate(
+          3,
+          (i) => AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                width: i == current ? 22 : 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: i <= current
+                      ? _cyan
+                      : Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              )),
     );
   }
 }

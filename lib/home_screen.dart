@@ -434,18 +434,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       'text': text.trim(),
       'created_at': DateTime.now().toUtc().toIso8601String(),
     };
-    setState(() {
-      _commentCounts[postId] = (_commentCounts[postId] ?? 0) + 1;
-      final prev =
-          List<Map<String, dynamic>>.from(_commentPreviews[postId] ?? []);
-      prev.add(newComment);
-      _commentPreviews[postId] =
-          prev.length > 2 ? prev.sublist(prev.length - 2) : prev;
-    });
     try {
-      await _sb.from('post_comments').insert(newComment);
+      final insertedComment =
+          await _sb.from('post_comments').insert(newComment).select().single();
+      setState(() {
+        _commentCounts[postId] = (_commentCounts[postId] ?? 0) + 1;
+        final prev =
+            List<Map<String, dynamic>>.from(_commentPreviews[postId] ?? []);
+        prev.add(insertedComment);
+        _commentPreviews[postId] =
+            prev; // Keep full list to allow deletions in sheet
+      });
     } catch (e) {
       debugPrint('addComment error: $e');
+    }
+  }
+
+  Future<void> _deleteComment(String commentId, String postId) async {
+    try {
+      await _sb.from('post_comments').delete().eq('id', commentId);
+      setState(() {
+        if ((_commentCounts[postId] ?? 0) > 0) {
+          _commentCounts[postId] = _commentCounts[postId]! - 1;
+        }
+        if (_commentPreviews.containsKey(postId)) {
+          _commentPreviews[postId]!
+              .removeWhere((c) => c['id']?.toString() == commentId);
+        }
+      });
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete comment: $e')));
+    }
+  }
+
+  Future<void> _deletePost(String postId) async {
+    try {
+      await _sb.from('posts').delete().eq('id', postId);
+      setState(() {
+        _posts.removeWhere((p) => p['id'].toString() == postId);
+      });
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Failed to delete post: $e')));
     }
   }
 
@@ -945,7 +978,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ]),
                   ],
                 )),
-                _buildPostMoreBtn(postId),
+                _buildPostMoreBtn(post),
               ],
             ),
           ),
@@ -992,7 +1025,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     () => _toggleLike(postId)),
                 const SizedBox(width: 16),
                 _buildActionBtn(Icons.chat_bubble_outline, '$commentCount',
-                    HomeColors.txt2, () => _showCommentSheet(postId)),
+                    HomeColors.txt2, () => _showCommentSheet(post)),
                 const Spacer(),
                 _buildActionBtn(
                     isBookmarked ? Icons.bookmark : Icons.bookmark_border,
@@ -1097,6 +1130,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Full-screen swipeable gallery with pinch-to-zoom, counter and close button.
+  void _showImageGalleryPreview(
+      BuildContext ctx, List<String> images, int initialIndex) {
+    showDialog(
+      context: ctx,
+      barrierColor: Colors.black,
+      builder: (_) => _ImageGalleryViewer(
+        images: images,
+        initialIndex: initialIndex,
+      ),
+    );
+  }
+
   // Instagram-style 1:1 post image carousel
   final Map<String, ValueNotifier<int>> _carouselPageMap = {};
 
@@ -1116,7 +1162,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             controller: controller,
             itemCount: images.length,
             onPageChanged: (i) => pageNotifier.value = i,
-            itemBuilder: (_, i) => _buildSquareImageItem(images[i]),
+            itemBuilder: (_, i) => GestureDetector(
+              onTap: () => _showImageGalleryPreview(context, images, i),
+              child: _buildSquareImageItem(images[i]),
+            ),
           ),
         ),
         // Dot indicators for multi-image posts
@@ -1218,7 +1267,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildPostMoreBtn(String postId) {
+  Widget _buildPostMoreBtn(Map<String, dynamic> post) {
+    final String postId = post['id'].toString();
+    final bool isMyPost =
+        post['user_id']?.toString() == _sb.auth.currentUser?.id;
     return GestureDetector(
       onTap: () {
         showModalBottomSheet(
@@ -1232,19 +1284,41 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               border: Border.all(color: HomeColors.gb),
             ),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              _buildMoreOption(Icons.volume_off, 'Mute User', () {
-                Navigator.pop(ctx);
-              }),
-              _buildMoreOption(Icons.visibility_off, 'Hide Post', () {
-                Navigator.pop(ctx);
-                _hidePost(postId);
-              }),
-              _buildMoreOption(Icons.link, 'Copy Link', () {
-                Navigator.pop(ctx);
-              }),
-              _buildMoreOption(Icons.flag, 'Report Post', () {
-                Navigator.pop(ctx);
-              }, isRed: true),
+              if (isMyPost) ...[
+                _buildMoreOption(Icons.delete_outline, 'Delete Post', () {
+                  Navigator.pop(ctx);
+                  _deletePost(postId);
+                }, isRed: true),
+                _buildMoreOption(Icons.link, 'Copy Link', () {
+                  Navigator.pop(ctx);
+                  Clipboard.setData(
+                      ClipboardData(text: 'https://relaya.in/post/$postId'));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Link copied')));
+                }),
+              ] else ...[
+                _buildMoreOption(Icons.volume_off, 'Mute User', () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('User muted')));
+                }),
+                _buildMoreOption(Icons.visibility_off, 'Hide Post', () {
+                  Navigator.pop(ctx);
+                  _hidePost(postId);
+                }),
+                _buildMoreOption(Icons.link, 'Copy Link', () {
+                  Navigator.pop(ctx);
+                  Clipboard.setData(
+                      ClipboardData(text: 'https://relaya.in/post/$postId'));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Link copied')));
+                }),
+                _buildMoreOption(Icons.flag, 'Report Post', () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Post reported')));
+                }, isRed: true),
+              ],
             ]),
           ),
         );
@@ -1290,7 +1364,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // ==========================================
   // COMMENT SHEET
   // ==========================================
-  void _showCommentSheet(String postId) {
+  void _showCommentSheet(Map<String, dynamic> post) {
+    final postId = post['id'].toString();
     final textCtrl = TextEditingController();
     final previews = _commentPreviews[postId] ?? [];
 
@@ -1346,70 +1421,101 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     color: HomeColors.muted, fontSize: 13)))
                     : ListView(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        children: previews
-                            .map((c) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        doodle
-                                            ? DoodleAvatar(
-                                                size: 28,
-                                                url: '',
-                                                borderColor:
-                                                    DoodleColors.orange,
-                                                fallback: Center(
-                                                    child: Text(
-                                                        (c['user_name'] ??
-                                                            'U')[0],
-                                                        style: DoodleFonts.label(
-                                                            color: DoodleColors
-                                                                .orange))))
-                                            : CircleAvatar(
-                                                radius: 14,
-                                                backgroundColor:
-                                                    HomeColors.card,
+                        children: previews.map((c) {
+                          final isCommentOwner = c['user_id']?.toString() ==
+                              _sb.auth.currentUser?.id;
+                          final isPostOwner = post['user_id']?.toString() ==
+                              _sb.auth.currentUser?.id;
+                          final canDelete = isCommentOwner || isPostOwner;
+
+                          return GestureDetector(
+                            onLongPress: canDelete
+                                ? () {
+                                    showModalBottomSheet(
+                                      context: ctx,
+                                      backgroundColor: Colors.transparent,
+                                      builder: (btmCtx) => Container(
+                                        padding: const EdgeInsets.all(20),
+                                        decoration: BoxDecoration(
+                                          color: HomeColors.bg2,
+                                          borderRadius: BorderRadius.vertical(
+                                              top: Radius.circular(20)),
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            _buildMoreOption(
+                                                Icons.delete_outline,
+                                                'Delete comment', () {
+                                              Navigator.pop(btmCtx);
+                                              final commentId =
+                                                  c['id']?.toString();
+                                              if (commentId != null) {
+                                                _deleteComment(
+                                                    commentId, postId);
+                                              }
+                                            }, isRed: true),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                : null,
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    doodle
+                                        ? DoodleAvatar(
+                                            size: 28,
+                                            url: '',
+                                            borderColor: DoodleColors.orange,
+                                            fallback: Center(
                                                 child: Text(
                                                     (c['user_name'] ?? 'U')[0],
-                                                    style: GoogleFonts.inter(
-                                                        fontSize: 10,
-                                                        color:
-                                                            HomeColors.txt))),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                            child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                              Text(c['user_name'] ?? 'User',
-                                                  style: doodle
-                                                      ? DoodleFonts.body(
-                                                          color: DoodleColors
-                                                              .brown,
-                                                          fontSize: 14)
-                                                      : GoogleFonts.inter(
-                                                          fontSize: 12,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          color:
-                                                              HomeColors.txt)),
-                                              Text(c['text'] ?? '',
-                                                  style: doodle
-                                                      ? DoodleFonts.body(
-                                                          color: DoodleColors
-                                                              .brown
-                                                              .withValues(
-                                                                  alpha: 0.8),
-                                                          fontSize: 14)
-                                                      : GoogleFonts.inter(
-                                                          fontSize: 12,
-                                                          color:
-                                                              HomeColors.txt2)),
-                                            ])),
-                                      ]),
-                                ))
-                            .toList(),
+                                                    style: DoodleFonts.label(
+                                                        color: DoodleColors
+                                                            .orange))))
+                                        : CircleAvatar(
+                                            radius: 14,
+                                            backgroundColor: HomeColors.card,
+                                            child: Text(
+                                                (c['user_name'] ?? 'U')[0],
+                                                style: GoogleFonts.inter(
+                                                    fontSize: 10,
+                                                    color: HomeColors.txt))),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                        child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                          Text(c['user_name'] ?? 'User',
+                                              style: doodle
+                                                  ? DoodleFonts.body(
+                                                      color: DoodleColors.brown,
+                                                      fontSize: 14)
+                                                  : GoogleFonts.inter(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: HomeColors.txt)),
+                                          Text(c['text'] ?? '',
+                                              style: doodle
+                                                  ? DoodleFonts.body(
+                                                      color: DoodleColors.brown
+                                                          .withValues(
+                                                              alpha: 0.8),
+                                                      fontSize: 14)
+                                                  : GoogleFonts.inter(
+                                                      fontSize: 12,
+                                                      color: HomeColors.txt2)),
+                                        ])),
+                                  ]),
+                            ),
+                          );
+                        }).toList(),
                       ),
               ),
               // Input
@@ -3422,5 +3528,241 @@ class _ExpandablePostTextState extends State<_ExpandablePostText> {
         ],
       );
     });
+  }
+}
+
+// ==========================================
+// FULL-SCREEN IMAGE GALLERY VIEWER
+// ==========================================
+
+class _ImageGalleryViewer extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+
+  const _ImageGalleryViewer({
+    required this.images,
+    this.initialIndex = 0,
+  });
+
+  @override
+  State<_ImageGalleryViewer> createState() => _ImageGalleryViewerState();
+}
+
+class _ImageGalleryViewerState extends State<_ImageGalleryViewer>
+    with TickerProviderStateMixin {
+  late PageController _pageController;
+  late int _currentIndex;
+  late AnimationController _fadeController;
+
+  // Per-page transform controllers for pinch-zoom
+  final List<TransformationController> _transformControllers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    )..forward();
+
+    for (int i = 0; i < widget.images.length; i++) {
+      _transformControllers.add(TransformationController());
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _fadeController.dispose();
+    for (final c in _transformControllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Widget _buildImageWidget(String url) {
+    if (url.startsWith('http')) {
+      return Image.network(
+        url,
+        fit: BoxFit.contain,
+        loadingBuilder: (_, child, progress) {
+          if (progress == null) return child;
+          return Center(
+            child: CircularProgressIndicator(
+              value: progress.expectedTotalBytes != null
+                  ? progress.cumulativeBytesLoaded /
+                      progress.expectedTotalBytes!
+                  : null,
+              color: Colors.white54,
+              strokeWidth: 2,
+            ),
+          );
+        },
+        errorBuilder: (_, __, ___) => const Center(
+          child: Icon(Icons.broken_image_outlined,
+              color: Colors.white38, size: 56),
+        ),
+      );
+    } else if (url.startsWith('data:image')) {
+      try {
+        final b64 = url.split(',').last;
+        return Image.memory(
+          base64Decode(b64),
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Center(
+            child: Icon(Icons.broken_image_outlined,
+                color: Colors.white38, size: 56),
+          ),
+        );
+      } catch (_) {}
+    }
+    return const Center(
+      child: Icon(Icons.image_not_supported, color: Colors.white38, size: 56),
+    );
+  }
+
+  void _resetZoomForPage(int index) {
+    if (index < _transformControllers.length) {
+      _transformControllers[index].value = Matrix4.identity();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fadeController,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            // -- Image pager with per-page zoom --
+            PageView.builder(
+              controller: _pageController,
+              itemCount: widget.images.length,
+              onPageChanged: (i) {
+                // Reset previous page zoom
+                _resetZoomForPage(_currentIndex);
+                setState(() => _currentIndex = i);
+              },
+              itemBuilder: (_, i) {
+                return InteractiveViewer(
+                  transformationController: _transformControllers[i],
+                  minScale: 0.8,
+                  maxScale: 5.0,
+                  clipBehavior: Clip.none,
+                  child: Center(child: _buildImageWidget(widget.images[i])),
+                );
+              },
+            ),
+
+            // -- Top bar: close + counter --
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + 8,
+                  left: 8,
+                  right: 16,
+                  bottom: 12,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.65),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Close button
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close,
+                            color: Colors.white, size: 20),
+                      ),
+                    ),
+                    // Image counter (only for multi-image)
+                    if (widget.images.length > 1)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          '${_currentIndex + 1} / ${widget.images.length}',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // -- Bottom: swipe hint dots for multi-image --
+            if (widget.images.length > 1)
+              Positioned(
+                bottom: MediaQuery.of(context).padding.bottom + 20,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(widget.images.length, (i) {
+                    final isActive = i == _currentIndex;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: isActive ? 18 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(3),
+                        color: isActive
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.35),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+
+            // -- Double-tap to reset zoom hint --
+            Positioned(
+              bottom: MediaQuery.of(context).padding.bottom + 52,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  'Pinch to zoom  •  Swipe to browse',
+                  style: GoogleFonts.inter(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
