@@ -16,7 +16,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late Animation<double> _slothOffsetY;
   late Animation<double> _pawPopValue;
   late Animation<double> _textOpacity;
-  late Animation<double> _winkScale;
+  late Animation<double> _blinkScale;
 
   @override
   void initState() {
@@ -60,9 +60,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       ),
     );
 
-    // Phase 3: Wink (2400ms to 2800ms -> 0.68 to 0.80)
-    _winkScale = TweenSequence<double>([
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 68), // Starts fully open (0 scale for eyelid)
+    // Phase 3: Blink (both eyelids close and open)
+    _blinkScale = TweenSequence<double>([
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 68), // Starts fully open
       TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOutCubic)), weight: 4), // close
       TweenSequenceItem(tween: ConstantTween(1.0), weight: 4), // hold closed
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInCubic)), weight: 4), // open
@@ -133,28 +133,32 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                 child: Image.asset('assets/images/Relaya_Iris_Right.png'),
                               ),
 
-                              // Left Eyelid (Winking! Scales from top to close eye)
+                              // Left Eyelid (Blinking)
                               Positioned(
                                 left: 129,
                                 top: 120,
                                 child: Transform(
                                   alignment: Alignment.topCenter,
-                                  transform: Matrix4.identity()..scale(1.0, 1.0 - _winkScale.value),
+                                  transform: Matrix4.identity()..scale(1.0, 1.0 - _blinkScale.value),
                                   child: Image.asset('assets/images/Relaya_Eyelid_Left.png'),
                                 ),
                               ),
 
-                              // Right Eyelid (Static)
+                              // Right Eyelid (Blinking)
                               Positioned(
                                 left: 287,
                                 top: 110,
-                                child: Image.asset('assets/images/Relaya_Eyelid_Right.png'),
+                                child: Transform(
+                                  alignment: Alignment.topCenter,
+                                  transform: Matrix4.identity()..scale(1.0, 1.0 - _blinkScale.value),
+                                  child: Image.asset('assets/images/Relaya_Eyelid_Right.png'),
+                                ),
                               ),
 
-                              // Left Paw (Animating diagonally out from center - much more subtle)
+                              // Left Paw (Pops out and sticks back)
                               Positioned.fill(
                                 child: Transform.translate(
-                                  offset: Offset(-2.0 * _pawPopValue.value, -4.0 * _pawPopValue.value),
+                                  offset: Offset(-12.0 * _pawPopValue.value, -20.0 * _pawPopValue.value),
                                   child: Image.asset(
                                     'assets/images/Sloth_Left_Paw.png',
                                     fit: BoxFit.contain,
@@ -163,12 +167,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                 ),
                               ),
 
-                              // Right Paw (Animating diagonally out from center - much more subtle)
+                              // Right Paw (Pops out and sticks back)
                               Positioned.fill(
                                 child: Transform.translate(
-                                  offset: Offset(2.0 * _pawPopValue.value, -4.0 * _pawPopValue.value),
+                                  offset: Offset(12.0 * _pawPopValue.value, -20.0 * _pawPopValue.value),
                                   child: Image.asset(
                                     'assets/images/Sloth_Right_Paw.png',
+
                                     fit: BoxFit.contain,
                                     errorBuilder: (c, e, s) => const SizedBox(),
                                   ),
