@@ -202,7 +202,7 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
                     child: Transform(
                       alignment: Alignment.topCenter,
                       transform: Matrix4.identity()
-                        ..scale(1.0, 1.0 - _blinkL.value),
+                        ..scale(1.0, _blinkL.value == 0.0 ? 0.001 : _blinkL.value),
                       child: Image.asset('assets/images/Relaya_Eyelid_Left.png'),
                     ),
                   ),
@@ -214,7 +214,7 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
                     child: Transform(
                       alignment: Alignment.topCenter,
                       transform: Matrix4.identity()
-                        ..scale(1.0, 1.0 - _blinkR.value),
+                        ..scale(1.0, _blinkR.value == 0.0 ? 0.001 : _blinkR.value),
                       child: Image.asset('assets/images/Relaya_Eyelid_Right.png'),
                     ),
                   ),

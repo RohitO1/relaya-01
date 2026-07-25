@@ -43,13 +43,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
     // Phase 2b: Paws pop out and stick back
     _pawPopValue = TweenSequence<double>([
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 48),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 40),
       TweenSequenceItem(
-          tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOutCubic)), weight: 5), // pop out
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 4), // hold
+          tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 12), // pop out
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 6), // hold
       TweenSequenceItem(
-          tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInCubic)), weight: 5), // stick back
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 38),
+          tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 12), // stick back
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 30),
     ]).animate(_sequenceCtrl);
 
     // Text fades in (1300ms to 2000ms -> 0.37 to 0.57)
@@ -63,10 +63,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     // Phase 3: Blink (both eyelids close and open)
     _blinkScale = TweenSequence<double>([
       TweenSequenceItem(tween: ConstantTween(0.0), weight: 68), // Starts fully open
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOutCubic)), weight: 4), // close
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 6), // close
       TweenSequenceItem(tween: ConstantTween(1.0), weight: 4), // hold closed
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInCubic)), weight: 4), // open
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 6), // open
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 16),
     ]).animate(_sequenceCtrl);
 
     _sequenceCtrl.forward().then((_) {
@@ -139,7 +139,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                 top: 120,
                                 child: Transform(
                                   alignment: Alignment.topCenter,
-                                  transform: Matrix4.identity()..scale(1.0, 1.0 - _blinkScale.value),
+                                  transform: Matrix4.identity()..scale(1.0, _blinkScale.value == 0.0 ? 0.001 : _blinkScale.value),
                                   child: Image.asset('assets/images/Relaya_Eyelid_Left.png'),
                                 ),
                               ),
@@ -150,7 +150,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                 top: 110,
                                 child: Transform(
                                   alignment: Alignment.topCenter,
-                                  transform: Matrix4.identity()..scale(1.0, 1.0 - _blinkScale.value),
+                                  transform: Matrix4.identity()..scale(1.0, _blinkScale.value == 0.0 ? 0.001 : _blinkScale.value),
                                   child: Image.asset('assets/images/Relaya_Eyelid_Right.png'),
                                 ),
                               ),
