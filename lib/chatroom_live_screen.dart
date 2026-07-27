@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -136,15 +137,16 @@ class BolRoomManager {
   static bool get isRoomFullscreen => hasActiveRoom && !isRoomMinimized;
   static void minimizeRoomIfOpen() => _hostKey?.currentState?.minimize();
 
-  static Future<bool> requestSwitchRoom(BuildContext context, {required VoidCallback onProceed, bool isCreate = false}) async {
+  static Future<bool> requestSwitchRoom(BuildContext context,
+      {required VoidCallback onProceed, bool isCreate = false}) async {
     if (_overlayEntry == null) {
       onProceed();
       return true;
     }
-    
+
     final title = isCreate ? 'Create New Room?' : 'Switch Room?';
-    final content = isCreate 
-        ? 'You are already in an active room. Do you want to leave and create a new room, or stay in the current one?' 
+    final content = isCreate
+        ? 'You are already in an active room. Do you want to leave and create a new room, or stay in the current one?'
         : 'You are already in an active room. Do you want to join this new room or stay in the current one?';
     final confirmText = isCreate ? 'Create new room' : 'Join new room';
 
@@ -153,17 +155,23 @@ class BolRoomManager {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF13101E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(title, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text(title,
+            style: GoogleFonts.inter(
+                color: Colors.white, fontWeight: FontWeight.bold)),
         content: Text(content, style: GoogleFonts.inter(color: Colors.white70)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Stay with existing', style: GoogleFonts.inter(color: Colors.white54)),
+            child: Text('Stay with existing',
+                style: GoogleFonts.inter(color: Colors.white54)),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00FFCC), foregroundColor: Colors.black),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00FFCC),
+                foregroundColor: Colors.black),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(confirmText, style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+            child: Text(confirmText,
+                style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -301,7 +309,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   bool _isVoiceMasked = false;
   String _voiceMaskPreset = 'ghost';
   bool _isEditingVoiceMask = false;
-  int _bgThemeIndex = 0; // 0 = Default Neon, 1 = Deep Space, 2 = Aurora, 3 = Fire, 4 = Ocean
+  int _bgThemeIndex =
+      0; // 0 = Default Neon, 1 = Deep Space, 2 = Aurora, 3 = Fire, 4 = Ocean
   bool _isHost = false;
   String _myId = '';
   String _myName = 'User';
@@ -330,8 +339,10 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   // Realtime Channels
   RealtimeChannel? _memberChannel;
   RealtimeChannel? _msgChannel;
-  RealtimeChannel? _profileChannel; // syncs voice mask state with profile screen
-  RealtimeChannel? _chatroomChannel; // syncs game_mode, host changes, room_status
+  RealtimeChannel?
+      _profileChannel; // syncs voice mask state with profile screen
+  RealtimeChannel?
+      _chatroomChannel; // syncs game_mode, host changes, room_status
   final ValueNotifier<List<Map<String, dynamic>>> _membersNotify =
       ValueNotifier([]);
   final ValueNotifier<Set<String>> _micRequestsNotify = ValueNotifier({});
@@ -463,10 +474,14 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   // Deterministic color from uid — always same color for same user
   String _gameModeLabel(String mode) {
     switch (mode) {
-      case 'truth_dare': return 'Truth or Dare';
-      case 'two_truths': return 'Two Truths, One Lie';
-      case 'blind_date': return 'Blind Date';
-      default: return mode;
+      case 'truth_dare':
+        return 'Truth or Dare';
+      case 'two_truths':
+        return 'Two Truths, One Lie';
+      case 'blind_date':
+        return 'Blind Date';
+      default:
+        return mode;
     }
   }
 
@@ -518,9 +533,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     // host_id is fetched from the DB inside _joinRoom() below.
     _currentHostId = widget.hostId; // temporary placeholder only
     _currentHostName = widget.hostName;
-    _isHost = false;          // always start as non-host
+    _isHost = false; // always start as non-host
     _hasMicPermission = false; // mic off until DB confirms host role
-    _isMuted = true;           // muted until DB confirms host role
+    _isMuted = true; // muted until DB confirms host role
 
     _subscribeRealtime();
     _joinRoom(); // <-- this is where _isHost is authoritatively set from DB
@@ -532,12 +547,15 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     if (state == AppLifecycleState.detached) {
       if (_isHost) {
         // App is being killed from background tabs. Try to destruct the room immediately.
-        _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', widget.roomId);
+        _sb
+            .from('chatrooms')
+            .update({'room_status': 'deleted'}).eq('id', widget.roomId);
         _sb.from('chatroom_members').delete().eq('room_id', widget.roomId);
         _sb.from('chatrooms').delete().eq('id', widget.roomId);
       } else {
         // Participant is leaving. Remove them from the members list.
-        _sb.from('chatroom_members')
+        _sb
+            .from('chatroom_members')
             .delete()
             .eq('room_id', widget.roomId)
             .eq('user_id', _myId);
@@ -629,7 +647,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         }
       } catch (_) {}
 
-      if (dbHostId == _currentHostId && _isHost == (_myId == dbHostId)) return; // no change
+      if (dbHostId == _currentHostId && _isHost == (_myId == dbHostId))
+        return; // no change
       final wasHost = _isHost;
       setState(() {
         _currentHostId = dbHostId;
@@ -650,7 +669,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
       }
     } catch (_) {}
   }
-  
+
   void showExitSheet({VoidCallback? onExitComplete}) {
     _showExitSheet(onExitComplete: onExitComplete);
   }
@@ -751,7 +770,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   void _showVoiceMaskSheet() async {
     // Re-read current voice mask state from DB to stay synced with profile screen
     try {
-      final bp = await _sb.from('bolroom_profiles')
+      final bp = await _sb
+          .from('bolroom_profiles')
           .select('voice_mask_enabled, voice_mask_preset, voice_pitch')
           .eq('id', _myId)
           .maybeSingle();
@@ -775,10 +795,11 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         return StatefulBuilder(builder: (ctx, setSheetState) {
           const presets = VoiceMaskPreset.all;
           return SafeArea(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
-                child: Column(
+              child: SingleChildScrollView(
+                  child: Padding(
+            padding: EdgeInsets.fromLTRB(
+                20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Handle
@@ -794,8 +815,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.masks,
-                        color: Color(0xFFFF6B00), size: 28),
+                    const Icon(Icons.masks, color: Color(0xFFFF6B00), size: 28),
                     const SizedBox(width: 10),
                     const Text('Voice Masking',
                         style: TextStyle(
@@ -829,8 +849,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(
-                    'Disguise your voice so no one can identify you.',
+                Text('Disguise your voice so no one can identify you.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.5),
@@ -870,7 +889,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                       });
                       setSheetState(() {});
                       _updateNativeVoiceMasking();
-                      await _sb.from('bolroom_profiles').update({'voice_mask_enabled': v}).eq('id', _myId);
+                      await _sb
+                          .from('bolroom_profiles')
+                          .update({'voice_mask_enabled': v}).eq('id', _myId);
                     },
                   ),
                 ),
@@ -893,7 +914,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
                         mainAxisSpacing: 20,
                         crossAxisSpacing: 10,
@@ -927,12 +949,15 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                                     colors: p.colors,
                                   ),
                                   border: Border.all(
-                                    color: isActive ? Colors.white : Colors.transparent,
+                                    color: isActive
+                                        ? Colors.white
+                                        : Colors.transparent,
                                     width: 2.5,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: p.colors.first.withValues(alpha: 0.4),
+                                      color:
+                                          p.colors.first.withValues(alpha: 0.4),
                                       blurRadius: 10,
                                       spreadRadius: 1,
                                     )
@@ -947,9 +972,12 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                               Text(
                                 p.name,
                                 style: TextStyle(
-                                  color: isActive ? Colors.white : Colors.white70,
+                                  color:
+                                      isActive ? Colors.white : Colors.white70,
                                   fontSize: 12,
-                                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                                  fontWeight: isActive
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -962,7 +990,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     // Active preset description
                     Text(
                       VoiceMaskPreset.byId(_voiceMaskPreset)?.description ?? '',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 12),
                     ),
 
                     // Custom 2D pad (only for custom preset)
@@ -983,9 +1013,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                         setSheetState(() {});
                         _updateNativeVoiceMasking();
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Voice masking applied successfully! Participants will now hear this voice.'))
-                          );
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                              content: Text(
+                                  'Voice masking applied successfully! Participants will now hear this voice.')));
                         }
                       },
                       child: Container(
@@ -998,7 +1028,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFFFF6B00).withValues(alpha: 0.3),
+                              color: const Color(0xFFFF6B00)
+                                  .withValues(alpha: 0.3),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             )
@@ -1024,17 +1055,22 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.1)),
                       ),
                       child: Column(
                         children: [
                           const Text(
                             "Active Voice Mask",
-                            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 16),
                           Builder(builder: (ctx) {
-                            final p = VoiceMaskPreset.byId(_voiceMaskPreset) ?? VoiceMaskPreset.all.first;
+                            final p = VoiceMaskPreset.byId(_voiceMaskPreset) ??
+                                VoiceMaskPreset.all.first;
                             return Column(
                               children: [
                                 Container(
@@ -1047,17 +1083,20 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                                       end: Alignment.bottomRight,
                                       colors: p.colors,
                                     ),
-                                    border: Border.all(color: Colors.white, width: 2),
+                                    border: Border.all(
+                                        color: Colors.white, width: 2),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: p.colors.first.withValues(alpha: 0.4),
+                                        color: p.colors.first
+                                            .withValues(alpha: 0.4),
                                         blurRadius: 12,
                                         spreadRadius: 2,
                                       )
                                     ],
                                   ),
                                   child: Center(
-                                    child: Text(p.icon, style: const TextStyle(fontSize: 32)),
+                                    child: Text(p.icon,
+                                        style: const TextStyle(fontSize: 32)),
                                   ),
                                 ),
                                 const SizedBox(height: 12),
@@ -1072,7 +1111,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                                 const SizedBox(height: 4),
                                 const Text(
                                   "Turn switch OFF to change voice",
-                                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                                  style: TextStyle(
+                                      color: Colors.white54, fontSize: 11),
                                 ),
                               ],
                             );
@@ -1085,32 +1125,42 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                   // Compelling promotional card when OFF
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 24),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.03),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.05)),
                     ),
                     child: Column(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF6B00).withValues(alpha: 0.1),
+                            color:
+                                const Color(0xFFFF6B00).withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.record_voice_over, color: Color(0xFFFF6B00), size: 36),
+                          child: const Icon(Icons.record_voice_over,
+                              color: Color(0xFFFF6B00), size: 36),
                         ),
                         const SizedBox(height: 16),
                         const Text(
                           "Original Voice Active",
-                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           "Mask your voice to speak freely and anonymously! Choose from fun presets like Ghost, Robot, or Alien to disguise your identity in any BolRoom.",
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13, height: 1.4),
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              fontSize: 13,
+                              height: 1.4),
                         ),
                       ],
                     ),
@@ -1124,22 +1174,32 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     );
   }
 
-    Widget _buildCustomVoicePad(StateSetter setSheetState) {
+  Widget _buildCustomVoicePad(StateSetter setSheetState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Custom Voice Tuner', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+        const Text('Custom Voice Tuner',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        Text('Drag the dot to find your perfect voice texture', style: TextStyle(color: Colors.white70, fontSize: 11)),
+        Text('Drag the dot to find your perfect voice texture',
+            style: TextStyle(color: Colors.white70, fontSize: 11)),
         const SizedBox(height: 10),
         Container(
           height: 180,
-          decoration: BoxDecoration(color: const Color(0xFF13101E), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF231D38))),
+          decoration: BoxDecoration(
+              color: const Color(0xFF13101E),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF231D38))),
           child: LayoutBuilder(builder: (ctx, constraints) {
             final w = constraints.maxWidth;
             final h = constraints.maxHeight;
-            double pitchNorm = ((_myVoicePitch - 0.5) * 24.0).clamp(-12.0, 12.0).toDouble();
-            double formantNorm = 0.0; // Wait, chatroom_live_screen.dart doesn't have _voiceFormant locally?
+            double pitchNorm =
+                ((_myVoicePitch - 0.5) * 24.0).clamp(-12.0, 12.0).toDouble();
+            double formantNorm =
+                0.0; // Wait, chatroom_live_screen.dart doesn't have _voiceFormant locally?
             double dotX = (formantNorm + 6.0) / 12.0 * w;
             double dotY = (1.0 - (pitchNorm + 12.0) / 24.0) * h;
             return GestureDetector(
@@ -1159,26 +1219,61 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               },
               child: Stack(
                 children: [
-                  Positioned.fill(child: CustomPaint(painter: _VoicePadPainter(dotX, dotY))),
-                  Positioned(left: dotX - 14, top: dotY - 14, child: Container(width: 28, height: 28, decoration: BoxDecoration(shape: BoxShape.circle, gradient: const RadialGradient(colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]), boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.6), blurRadius: 12, spreadRadius: 2)]))),
+                  Positioned.fill(
+                      child:
+                          CustomPaint(painter: _VoicePadPainter(dotX, dotY))),
+                  Positioned(
+                      left: dotX - 14,
+                      top: dotY - 14,
+                      child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const RadialGradient(colors: [
+                                Color(0xFFFF6B00),
+                                Color(0xFF007BFF)
+                              ]),
+                              boxShadow: [
+                                BoxShadow(
+                                    color: const Color(0xFFFF6B00)
+                                        .withValues(alpha: 0.6),
+                                    blurRadius: 12,
+                                    spreadRadius: 2)
+                              ]))),
                 ],
               ),
             );
           }),
         ),
         const SizedBox(height: 12),
-        Center(child: Text('Pitch: ${((_myVoicePitch - 0.5) * 24).toStringAsFixed(1)} st', style: TextStyle(color: Colors.white70, fontSize: 11))),
+        Center(
+            child: Text(
+                'Pitch: ${((_myVoicePitch - 0.5) * 24).toStringAsFixed(1)} st',
+                style: TextStyle(color: Colors.white70, fontSize: 11))),
         const SizedBox(height: 16),
         GestureDetector(
           onTap: () {
-            _sb.from('bolroom_profiles').update({'voice_pitch': _myVoicePitch}).eq('id', _myId);
-            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Custom voice saved successfully!')));
+            _sb
+                .from('bolroom_profiles')
+                .update({'voice_pitch': _myVoicePitch}).eq('id', _myId);
+            if (mounted)
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Custom voice saved successfully!')));
           },
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]), borderRadius: BorderRadius.circular(16)),
-            child: const Center(child: Text('Use this voice', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold))),
+            decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                    colors: [Color(0xFFFF6B00), Color(0xFF007BFF)]),
+                borderRadius: BorderRadius.circular(16)),
+            child: const Center(
+                child: Text('Use this voice',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold))),
           ),
         ),
       ],
@@ -1241,7 +1336,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     try {
       final roomMeta = await _sb
           .from('chatrooms')
-          .select('max_participants, is_recording, room_status, host_id, host_name')
+          .select(
+              'max_participants, is_recording, room_status, host_id, host_name')
           .eq('id', widget.roomId)
           .maybeSingle();
       if (roomMeta != null) {
@@ -1257,7 +1353,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         // not the widget prop — so that an ex-host who rejoins is NOT
         // incorrectly treated as host and the correct host name is shown.
         String dbHostId = roomMeta['host_id']?.toString() ?? _currentHostId;
-        String dbHostName = roomMeta['host_name']?.toString() ?? _currentHostName;
+        String dbHostName =
+            roomMeta['host_name']?.toString() ?? _currentHostName;
 
         // EMERGENCY FIX: Due to RLS policies potentially silently failing the chatrooms update
         // when a host transfers ownership, we must also check the chatroom_messages for the
@@ -1271,7 +1368,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               .like('text', 'SYSTEM_CMD:NEW_HOST:%')
               .order('created_at', ascending: false)
               .limit(1);
-          final latestList = (latestCmdRes as List).cast<Map<String, dynamic>>();
+          final latestList =
+              (latestCmdRes as List).cast<Map<String, dynamic>>();
           if (latestList.isNotEmpty) {
             final text = latestList.first['text']?.toString() ?? '';
             final parts = text.split(':');
@@ -1419,12 +1517,14 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
       if (_isHost) {
         _sendSystemCommand('HEARTBEAT', '');
         // Periodically check inactivity for the host
-        if (DateTime.now().difference(_lastActivityTime) > const Duration(minutes: 10)) {
+        if (DateTime.now().difference(_lastActivityTime) >
+            const Duration(minutes: 10)) {
           debugPrint("Silence/inactivity timeout: ending room.");
           _endRoom();
         }
       } else {
-        final secondsSinceHostSeen = DateTime.now().difference(_lastHostSeen).inSeconds;
+        final secondsSinceHostSeen =
+            DateTime.now().difference(_lastHostSeen).inSeconds;
         if (secondsSinceHostSeen > 30) {
           if (!_hostDisconnected) {
             setState(() {
@@ -1434,7 +1534,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
             _showToast("Host disconnected. Room will auto-close in 2 minutes.");
           } else {
             setState(() {
-              _hostDisconnectCountdown = math.max(0, 120 - (secondsSinceHostSeen - 30));
+              _hostDisconnectCountdown =
+                  math.max(0, 120 - (secondsSinceHostSeen - 30));
             });
             if (_hostDisconnectCountdown <= 0) {
               _hostHeartbeatTimer?.cancel();
@@ -1457,7 +1558,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   Future<void> _autoCloseEmptyOrNoHostRoom() async {
     try {
       // Mark room as deleted immediately so it drops from the lobby list
-      await _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', widget.roomId);
+      await _sb
+          .from('chatrooms')
+          .update({'room_status': 'deleted'}).eq('id', widget.roomId);
       // Send system command that room is closing
       await _sendSystemCommand('END', '');
       await Future.delayed(const Duration(milliseconds: 500));
@@ -1526,7 +1629,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           .order('joined_at');
       if (remaining.isEmpty) {
         // Auto-dissolve immediately: no one left
-        await _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', widget.roomId);
+        await _sb
+            .from('chatrooms')
+            .update({'room_status': 'deleted'}).eq('id', widget.roomId);
         await _sendSystemCommand('END', '');
         await _sb.from('chatrooms').delete().eq('id', widget.roomId);
         debugPrint('Empty room ${widget.roomId} deleted immediately.');
@@ -1561,7 +1666,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     try {
       // FIX Bug 3: Mark room as deleted IMMEDIATELY so it vanishes from the list
       // and any rejoiner sees 'deleted' status without the brief active window.
-      await _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', widget.roomId);
+      await _sb
+          .from('chatrooms')
+          .update({'room_status': 'deleted'}).eq('id', widget.roomId);
 
       // 1. Broadcast END command so every participant's listener fires
       await _sendSystemCommand('END', '');
@@ -1597,15 +1704,23 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
       if (!mounted) return;
       final newList = List<Map<String, dynamic>>.from(res);
       // Fetch aura colors for all members (Bug 4)
-      final uids = newList.map((m) => m['user_id']?.toString() ?? '').where((id) => id.isNotEmpty).toList();
+      final uids = newList
+          .map((m) => m['user_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
       if (uids.isNotEmpty) {
-        _sb.from('bolroom_profiles').select('id, aura_color').inFilter('id', uids).then((profiles) {
+        _sb
+            .from('bolroom_profiles')
+            .select('id, aura_color')
+            .inFilter('id', uids)
+            .then((profiles) {
           if (mounted) {
             setState(() {
               for (var p in profiles) {
                 final uid = p['id'].toString();
                 final hex = p['aura_color']?.toString() ?? '#8A2BE2';
-                _memberAuraColors[uid] = Color(int.parse('FF${hex.replaceFirst('#', '')}', radix: 16));
+                _memberAuraColors[uid] = Color(
+                    int.parse('FF${hex.replaceFirst('#', '')}', radix: 16));
               }
             });
           }
@@ -1762,7 +1877,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               _showToast('You are now the host 👑');
             } else if (wasHost) {
               _livekitRoom?.localParticipant?.setMicrophoneEnabled(false);
-              if (newHostName != null) _showToast('$newHostName is now the host 👑');
+              if (newHostName != null)
+                _showToast('$newHostName is now the host 👑');
             } else if (newHostName != null) {
               _showToast('$newHostName is now the host 👑');
             }
@@ -1770,12 +1886,15 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
 
           // Game mode started / changed by host
           final newGameMode = row['game_mode']?.toString();
-          if (newGameMode != null && newGameMode.isNotEmpty && newGameMode != _gameMode) {
+          if (newGameMode != null &&
+              newGameMode.isNotEmpty &&
+              newGameMode != _gameMode) {
             setState(() {
               _gameMode = newGameMode;
               _showGame = true; // auto-open game panel for all participants
             });
-            _showToast('🎮 Host started a game: ${_gameModeLabel(newGameMode)}');
+            _showToast(
+                '🎮 Host started a game: ${_gameModeLabel(newGameMode)}');
           }
         });
     _chatroomChannel!.subscribe();
@@ -1786,15 +1905,19 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         schema: 'public',
         table: 'bolroom_profiles',
         filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'id',
-            value: _myId),
+            type: PostgresChangeFilterType.eq, column: 'id', value: _myId),
         callback: (payload) {
           if (!mounted) return;
           final row = payload.newRecord;
-          final newEnabled = row.containsKey('voice_mask_enabled') ? row['voice_mask_enabled'] == true : _isVoiceMasked;
-          final newPreset = row.containsKey('voice_mask_preset') && row['voice_mask_preset'] != null ? row['voice_mask_preset'].toString() : _voiceMaskPreset;
-          final changed = newEnabled != _isVoiceMasked || newPreset != _voiceMaskPreset;
+          final newEnabled = row.containsKey('voice_mask_enabled')
+              ? row['voice_mask_enabled'] == true
+              : _isVoiceMasked;
+          final newPreset = row.containsKey('voice_mask_preset') &&
+                  row['voice_mask_preset'] != null
+              ? row['voice_mask_preset'].toString()
+              : _voiceMaskPreset;
+          final changed =
+              newEnabled != _isVoiceMasked || newPreset != _voiceMaskPreset;
           if (changed) {
             final wasEnabled = _isVoiceMasked;
             setState(() {
@@ -1802,7 +1925,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               _voiceMaskPreset = newPreset;
             });
             _updateNativeVoiceMasking();
-            
+
             if (newEnabled) {
               _broadcastVoiceMaskChange(true, newPreset);
             } else if (wasEnabled && !newEnabled) {
@@ -1834,11 +1957,18 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               final uid = p.newRecord['user_id']?.toString() ?? '';
               if (!_members.any((m) => m['user_id'] == uid)) {
                 setState(() => _members.add(p.newRecord));
-                _sb.from('bolroom_profiles').select('id, aura_color').eq('id', uid).maybeSingle().then((p2) {
+                _sb
+                    .from('bolroom_profiles')
+                    .select('id, aura_color')
+                    .eq('id', uid)
+                    .maybeSingle()
+                    .then((p2) {
                   if (mounted && p2 != null) {
                     final hex = p2['aura_color']?.toString() ?? '#8A2BE2';
                     setState(() {
-                      _memberAuraColors[uid] = Color(int.parse('FF${hex.replaceFirst('#', '')}', radix: 16));
+                      _memberAuraColors[uid] = Color(int.parse(
+                          'FF${hex.replaceFirst('#', '')}',
+                          radix: 16));
                     });
                   }
                 }).catchError((_) {});
@@ -1870,13 +2000,15 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                       _hasMicPermission = true;
                       _micRequestSent = false;
                       _isMuted = false;
-                      _livekitRoom?.localParticipant?.setMicrophoneEnabled(true);
+                      _livekitRoom?.localParticipant
+                          ?.setMicrophoneEnabled(true);
                       _showToast('You can speak now! 🎙️');
                     } else if (!nowSpeaker && _hasMicPermission) {
                       _hasMicPermission = false;
                       _micRequestSent = false;
                       _isMuted = true;
-                      _livekitRoom?.localParticipant?.setMicrophoneEnabled(false);
+                      _livekitRoom?.localParticipant
+                          ?.setMicrophoneEnabled(false);
                       _showToast('Your mic was revoked by the host');
                     } else if (_hasMicPermission) {
                       if (nowMuted && !_isMuted) {
@@ -1933,7 +2065,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           if (!mounted) return;
           if (p.newRecord.isNotEmpty) {
             final txt = p.newRecord['text']?.toString() ?? '';
-            final isSystemCmd = p.newRecord['is_system'] == true && txt.startsWith('SYSTEM_CMD:');
+            final isSystemCmd = p.newRecord['is_system'] == true &&
+                txt.startsWith('SYSTEM_CMD:');
             if (!isSystemCmd) {
               _lastActivityTime = DateTime.now();
             }
@@ -1948,11 +2081,13 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     data['userId'] == _myId) {
                   _showGameInvitePopup(data['name'] ?? 'Host');
                 }
-                if (data['event'] == 'kick_from_game' && data['userId'] == _myId) {
+                if (data['event'] == 'kick_from_game' &&
+                    data['userId'] == _myId) {
                   setState(() => _showGame = false);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('You have been removed from the game table by the host.'),
+                      content: Text(
+                          'You have been removed from the game table by the host.'),
                       backgroundColor: Colors.redAccent,
                     ));
                   }
@@ -1968,8 +2103,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     if (!_isMuted) _toggleMute(); // Mute automatically
                   }
                 }
-                
-                if (data['event'] == 'end_session' || data['event'] == 'reset_game') {
+
+                if (data['event'] == 'end_session' ||
+                    data['event'] == 'reset_game') {
                   if (_micsLockedByGame) {
                     setState(() => _micsLockedByGame = false);
                     if (_wasUnmutedBeforeGame && _isMuted) {
@@ -2156,7 +2292,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                   final newHostObj = _members.firstWhere(
                       (m) => m['user_id'] == newHostId,
                       orElse: () => {});
-                  newHostNameStr = newHostObj['user_name']?.toString() ?? 'Someone';
+                  newHostNameStr =
+                      newHostObj['user_name']?.toString() ?? 'Someone';
                 }
                 final wasHost = _isHost;
                 setState(() {
@@ -2254,13 +2391,17 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         });
         return;
       }
-      
-      final presetName = VoiceMaskPreset.all.firstWhere((p) => p.id == presetId, orElse: () => VoiceMaskPreset.all.first).name;
+
+      final presetName = VoiceMaskPreset.all
+          .firstWhere((p) => p.id == presetId,
+              orElse: () => VoiceMaskPreset.all.first)
+          .name;
       await _sb.from('chatroom_messages').insert({
         'room_id': widget.roomId,
         'user_id': _myId,
         'user_name': _myName,
-        'text': '🎭 ${_firstName(_myName)} is now speaking with the $presetName voice mask',
+        'text':
+            '🎭 ${_firstName(_myName)} is now speaking with the $presetName voice mask',
         'is_system': true,
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });
@@ -2422,7 +2563,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                   .eq('room_id', widget.roomId)
                   .eq('user_id', uid);
             } catch (ex) {
-              debugPrint('Error removing disconnected participant from DB: $ex');
+              debugPrint(
+                  'Error removing disconnected participant from DB: $ex');
             }
           }
           _loadMembers();
@@ -2597,7 +2739,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   Future<void> _disconnectAndLeave() async {
     // Stop voice masking before leaving
     if (_isVoiceMasked) {
-      try { await _voiceMaskService.stopMasking(); } catch (_) {}
+      try {
+        await _voiceMaskService.stopMasking();
+      } catch (_) {}
     }
     try {
       await _sb
@@ -2787,7 +2931,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
             .eq('following_id', uid)
             .maybeSingle()
             .then((res) {
-          if (res != null && statefulCtx.mounted) setLocal(() => isFollowing = true);
+          if (res != null && statefulCtx.mounted)
+            setLocal(() => isFollowing = true);
         });
         return SafeArea(
           child: Padding(
@@ -2818,9 +2963,10 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: (avatar != null && avatar.startsWith('http'))
-                    ? Image.network(avatar,
+                    ? CachedNetworkImage(
+                        imageUrl: avatar,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Center(
+                        errorWidget: (_, __, ___) => Center(
                             child: Text(
                                 name.isNotEmpty ? name[0].toUpperCase() : '?',
                                 style: TextStyle(
@@ -2887,8 +3033,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     }
 
                     if (!mounted) return;
-                    Navigator.of(context, rootNavigator: true).push(
-                        MaterialPageRoute(
+                    Navigator.of(context, rootNavigator: true)
+                        .push(MaterialPageRoute(
                             builder: (_) => BolroomDmChatScreen(
                                   conversationId: convId,
                                   partnerId: uid,
@@ -2904,7 +3050,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               // Game management buttons
               if (_isHost && _showGame && uid != _myId) ...[
                 Builder(builder: (context) {
-                  final bool isInGame = _gameParticipants?.any((p) => p.userId == uid) ?? false;
+                  final bool isInGame =
+                      _gameParticipants?.any((p) => p.userId == uid) ?? false;
                   return SizedBox(
                     width: double.infinity,
                     height: 52,
@@ -2940,14 +3087,29 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                           _showToast('Invite sent to $name');
                         }
                       },
-                      icon: Icon(isInGame ? Icons.videogame_asset_off : Icons.videogame_asset, size: 18),
+                      icon: Icon(
+                          isInGame
+                              ? Icons.videogame_asset_off
+                              : Icons.videogame_asset,
+                          size: 18),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: (isInGame ? Colors.redAccent : BolRoomColors.cyan).withValues(alpha: 0.1),
-                        foregroundColor: isInGame ? Colors.redAccent : BolRoomColors.cyan,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        side: BorderSide(color: isInGame ? Colors.redAccent : BolRoomColors.cyan, width: 1.5),
+                        backgroundColor:
+                            (isInGame ? Colors.redAccent : BolRoomColors.cyan)
+                                .withValues(alpha: 0.1),
+                        foregroundColor:
+                            isInGame ? Colors.redAccent : BolRoomColors.cyan,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        side: BorderSide(
+                            color: isInGame
+                                ? Colors.redAccent
+                                : BolRoomColors.cyan,
+                            width: 1.5),
                       ),
-                      label: Text(isInGame ? 'Kick from Game Table' : 'Invite to Game Table',
+                      label: Text(
+                          isInGame
+                              ? 'Kick from Game Table'
+                              : 'Invite to Game Table',
                           style: const TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   );
@@ -2968,11 +3130,13 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                               .delete()
                               .eq('follower_id', _myId)
                               .eq('following_id', uid);
-                          if (statefulCtx.mounted) setLocal(() => isFollowing = false);
+                          if (statefulCtx.mounted)
+                            setLocal(() => isFollowing = false);
                         } else {
                           await _sb.from('bolroom_follows').insert(
                               {'follower_id': _myId, 'following_id': uid});
-                          if (statefulCtx.mounted) setLocal(() => isFollowing = true);
+                          if (statefulCtx.mounted)
+                            setLocal(() => isFollowing = true);
                         }
                       } catch (_) {}
                     },
@@ -3032,7 +3196,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         backgroundColor: const Color(0xFF13101E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Row(children: [
-          Text(_gameMode == 'two_truths' ? '🎭 ' : '🍾 ', style: const TextStyle(fontSize: 24)),
+          Text(_gameMode == 'two_truths' ? '🎭 ' : '🍾 ',
+              style: const TextStyle(fontSize: 24)),
           Text('Game Invite',
               style: GoogleFonts.poppins(
                   color: Colors.white, fontWeight: FontWeight.bold)),
@@ -3581,7 +3746,7 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               builder: (ctx, _) {
                 // Background themes
                 final hostColor = _colorForUser(_currentHostId);
-                
+
                 List<Color> getThemeColors() {
                   switch (_bgThemeIndex) {
                     case 1: // Deep Space
@@ -3591,26 +3756,30 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                       ];
                     case 2: // Aurora
                       return [
-                        const Color(0xFF00C9FF).withValues(alpha: 0.3 + (_pulseCtrl.value * 0.1)),
+                        const Color(0xFF00C9FF)
+                            .withValues(alpha: 0.3 + (_pulseCtrl.value * 0.1)),
                         const Color(0xFF92FE9D).withValues(alpha: 0.1),
                         const Color(0xFF0C0914),
                       ];
                     case 3: // Fire
                       return [
-                        const Color(0xFFFF416C).withValues(alpha: 0.3 + (_pulseCtrl.value * 0.1)),
+                        const Color(0xFFFF416C)
+                            .withValues(alpha: 0.3 + (_pulseCtrl.value * 0.1)),
                         const Color(0xFFFF4B2B).withValues(alpha: 0.1),
                         const Color(0xFF0C0914),
                       ];
                     case 4: // Ocean
                       return [
-                        const Color(0xFF4CB8C4).withValues(alpha: 0.3 + (_pulseCtrl.value * 0.1)),
+                        const Color(0xFF4CB8C4)
+                            .withValues(alpha: 0.3 + (_pulseCtrl.value * 0.1)),
                         const Color(0xFF3CD3AD).withValues(alpha: 0.1),
                         const Color(0xFF0C0914),
                       ];
                     case 0: // Default Neon
                     default:
                       return [
-                        hostColor.withValues(alpha: 0.15 + (_pulseCtrl.value * 0.05)),
+                        hostColor.withValues(
+                            alpha: 0.15 + (_pulseCtrl.value * 0.05)),
                         const Color(0xFF0C0914),
                       ];
                   }
@@ -3621,7 +3790,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                   decoration: BoxDecoration(
                     gradient: RadialGradient(
                       center: const Alignment(0, -0.6),
-                      radius: _bgThemeIndex == 0 ? (1.2 + (_pulseCtrl.value * 0.1)) : 1.5,
+                      radius: _bgThemeIndex == 0
+                          ? (1.2 + (_pulseCtrl.value * 0.1))
+                          : 1.5,
                       colors: getThemeColors(),
                     ),
                   ),
@@ -3647,7 +3818,11 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           ..._floatingReactions.map((r) => _buildFloatingEmoji(r)),
           _buildChatOverlay(),
           // ── Game Panel ──
-          if (_showGame && (_gameMode == 'truth_dare' || _gameMode == 'two_truths' || _gameMode == 'blind_date')) _buildGamePanel(),
+          if (_showGame &&
+              (_gameMode == 'truth_dare' ||
+                  _gameMode == 'two_truths' ||
+                  _gameMode == 'blind_date'))
+            _buildGamePanel(),
           if (_joinToastText != null)
             Positioned(
                 top: MediaQuery.of(context).padding.top + 8,
@@ -3705,22 +3880,30 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               left: 16,
               right: 16,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.redAccent.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: const [
-                    BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4)),
+                    BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 10,
+                        offset: Offset(0, 4)),
                   ],
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+                    const Icon(Icons.warning_amber_rounded,
+                        color: Colors.white, size: 20),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         "Host disconnected. Room will auto-close in $_hostDisconnectCountdown seconds.",
-                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
@@ -3886,204 +4069,278 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   // ==========================================
   Widget _buildTopBar() {
     return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
-          ),
-          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        GestureDetector(
-            onTap: () {
-              BolRoomManager.minimizeRoom(context);
-            },
-            child: const Icon(Icons.keyboard_arrow_down,
-                color: Colors.white70, size: 32)),
-        Expanded(
-            child: Column(children: [
-          Text(widget.roomName,
-              style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-          if (_isRecording)
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(
-                  width: 6,
-                  height: 6,
-                  decoration: const BoxDecoration(
-                      color: Colors.redAccent, shape: BoxShape.circle)),
-              const SizedBox(width: 6),
-              Text('Recording',
-                  style: GoogleFonts.inter(
-                      color: Colors.redAccent,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold)),
-            ]),
-        ])),
-        Row(children: [
-          // Theme Picker
-          GestureDetector(
-            onTap: _showThemePickerSheet,
+        child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(
-              width: 38,
-              height: 38,
-              margin: const EdgeInsets.only(right: 10),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.08),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                color: Colors.white.withValues(alpha: 0.05),
+                border: Border(
+                    bottom:
+                        BorderSide(color: Colors.white.withValues(alpha: 0.1))),
               ),
-              child: const Icon(Icons.palette_outlined, color: Colors.white60, size: 20),
-            ),
-          ),
-          // Game icon — only for game-mode rooms (or for host to start a game)
-          if (_isHost)
-            GestureDetector(
-              onTap: () => _showGamePickerSheet(),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                margin: const EdgeInsets.only(right: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3DCFA0).withValues(alpha: 0.15),
-                  border: Border.all(color: const Color(0xFF3DCFA0).withValues(alpha: 0.6)),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
+              child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Icon(Icons.sports_esports, color: Color(0xFF3DCFA0), size: 16),
-                    const SizedBox(width: 4),
-                    Text('Games', style: GoogleFonts.inter(color: const Color(0xFF3DCFA0), fontSize: 13, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            )
-          else if (_gameMode != null && _gameMode!.isNotEmpty)
-            GestureDetector(
-              onTap: () => setState(() => _showGame = !_showGame),
-              child: Container(
-                width: 38,
-                height: 38,
-                margin: const EdgeInsets.only(right: 10),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _showGame
-                      ? const Color(0xFF3DCFA0).withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.08),
-                  border: Border.all(
-                      color: _showGame
-                          ? const Color(0xFF3DCFA0).withValues(alpha: 0.6)
-                          : Colors.white.withValues(alpha: 0.1)),
-                ),
-                child: Icon(Icons.sports_esports,
-                    color: _showGame ? const Color(0xFF3DCFA0) : Colors.white60,
-                    size: 20),
-              ),
-            ),
-          // Leave button
-          GestureDetector(
-            onTap: () async {
-              if (_isHost) {
-                _showExitSheet();
-              } else {
-                await _exitRoomAsync();
-                if (mounted) BolRoomManager.completelyCloseRoom();
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text('Leave',
-                  style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold)),
-            ),
-          ),
-        ]),
-      ]),
-    ))).animate().fadeIn(duration: 400.ms);
+                    GestureDetector(
+                        onTap: () {
+                          BolRoomManager.minimizeRoom(context);
+                        },
+                        child: const Icon(Icons.keyboard_arrow_down,
+                            color: Colors.white70, size: 32)),
+                    Expanded(
+                        child: Column(children: [
+                      Text(widget.roomName,
+                          style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      if (_isRecording)
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                  color: Colors.redAccent,
+                                  shape: BoxShape.circle)),
+                          const SizedBox(width: 6),
+                          Text('Recording',
+                              style: GoogleFonts.inter(
+                                  color: Colors.redAccent,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold)),
+                        ]),
+                    ])),
+                    Row(children: [
+                      // Theme Picker
+                      GestureDetector(
+                        onTap: _showThemePickerSheet,
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          margin: const EdgeInsets.only(right: 10),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.08),
+                            border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.1)),
+                          ),
+                          child: const Icon(Icons.palette_outlined,
+                              color: Colors.white60, size: 20),
+                        ),
+                      ),
+                      // Game icon — only for game-mode rooms (or for host to start a game)
+                      if (_isHost)
+                        GestureDetector(
+                          onTap: () => _showGamePickerSheet(),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 8),
+                            margin: const EdgeInsets.only(right: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3DCFA0)
+                                  .withValues(alpha: 0.15),
+                              border: Border.all(
+                                  color: const Color(0xFF3DCFA0)
+                                      .withValues(alpha: 0.6)),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.sports_esports,
+                                    color: Color(0xFF3DCFA0), size: 16),
+                                const SizedBox(width: 4),
+                                Text('Games',
+                                    style: GoogleFonts.inter(
+                                        color: const Color(0xFF3DCFA0),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        )
+                      else if (_gameMode != null && _gameMode!.isNotEmpty)
+                        GestureDetector(
+                          onTap: () => setState(() => _showGame = !_showGame),
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            margin: const EdgeInsets.only(right: 10),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _showGame
+                                  ? const Color(0xFF3DCFA0)
+                                      .withValues(alpha: 0.15)
+                                  : Colors.white.withValues(alpha: 0.08),
+                              border: Border.all(
+                                  color: _showGame
+                                      ? const Color(0xFF3DCFA0)
+                                          .withValues(alpha: 0.6)
+                                      : Colors.white.withValues(alpha: 0.1)),
+                            ),
+                            child: Icon(Icons.sports_esports,
+                                color: _showGame
+                                    ? const Color(0xFF3DCFA0)
+                                    : Colors.white60,
+                                size: 20),
+                          ),
+                        ),
+                      // Leave button
+                      GestureDetector(
+                        onTap: () async {
+                          if (_isHost) {
+                            _showExitSheet();
+                          } else {
+                            await _exitRoomAsync();
+                            if (mounted) BolRoomManager.completelyCloseRoom();
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text('Leave',
+                              style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ]),
+                  ]),
+            ))).animate().fadeIn(duration: 400.ms);
   }
 
   void _showThemePickerSheet() {
     showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF13101E),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) {
-        final themes = [
-          {'name': 'Neon Pulse', 'colors': [const Color(0xFF7B2CBF), const Color(0xFFFF6B00)]},
-          {'name': 'Deep Space', 'colors': [const Color(0xFF2A0845), const Color(0xFF6441A5)]},
-          {'name': 'Aurora', 'colors': [const Color(0xFF00C9FF), const Color(0xFF92FE9D)]},
-          {'name': 'Fire', 'colors': [const Color(0xFFFF416C), const Color(0xFFFF4B2B)]},
-          {'name': 'Ocean', 'colors': [const Color(0xFF4CB8C4), const Color(0xFF3CD3AD)]},
-        ];
+        context: context,
+        backgroundColor: const Color(0xFF13101E),
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (ctx) {
+          final themes = [
+            {
+              'name': 'Neon Pulse',
+              'colors': [const Color(0xFF7B2CBF), const Color(0xFFFF6B00)]
+            },
+            {
+              'name': 'Deep Space',
+              'colors': [const Color(0xFF2A0845), const Color(0xFF6441A5)]
+            },
+            {
+              'name': 'Aurora',
+              'colors': [const Color(0xFF00C9FF), const Color(0xFF92FE9D)]
+            },
+            {
+              'name': 'Fire',
+              'colors': [const Color(0xFFFF416C), const Color(0xFFFF4B2B)]
+            },
+            {
+              'name': 'Ocean',
+              'colors': [const Color(0xFF4CB8C4), const Color(0xFF3CD3AD)]
+            },
+          ];
 
-        return SafeArea(
-          child: StatefulBuilder(
-            builder: (ctx, setSheetState) => Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(2))),
-                  const SizedBox(height: 20),
-                  const Text('Voiceroom Theme', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text('Change the background aesthetic', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13)),
-                  const SizedBox(height: 24),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3, mainAxisSpacing: 16, crossAxisSpacing: 16, childAspectRatio: 0.8,
-                    ),
-                    itemCount: themes.length,
-                    itemBuilder: (_, i) {
-                      final isActive = _bgThemeIndex == i;
-                      final t = themes[i];
-                      final gradientColors = t['colors'] as List<Color>;
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() => _bgThemeIndex = i);
-                          setSheetState(() {});
-                        },
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 60, height: 60,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradientColors),
-                                border: Border.all(color: isActive ? Colors.white : Colors.transparent, width: 3),
-                                boxShadow: [
-                                  if (isActive) BoxShadow(color: gradientColors.first.withValues(alpha: 0.5), blurRadius: 15, spreadRadius: 2)
-                                ],
+          return SafeArea(
+            child: StatefulBuilder(
+              builder: (ctx, setSheetState) => Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                            color: Colors.white12,
+                            borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(height: 20),
+                    const Text('Voiceroom Theme',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text('Change the background aesthetic',
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 13)),
+                    const SizedBox(height: 24),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: 16,
+                        crossAxisSpacing: 16,
+                        childAspectRatio: 0.8,
+                      ),
+                      itemCount: themes.length,
+                      itemBuilder: (_, i) {
+                        final isActive = _bgThemeIndex == i;
+                        final t = themes[i];
+                        final gradientColors = t['colors'] as List<Color>;
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() => _bgThemeIndex = i);
+                            setSheetState(() {});
+                          },
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: gradientColors),
+                                  border: Border.all(
+                                      color: isActive
+                                          ? Colors.white
+                                          : Colors.transparent,
+                                      width: 3),
+                                  boxShadow: [
+                                    if (isActive)
+                                      BoxShadow(
+                                          color: gradientColors.first
+                                              .withValues(alpha: 0.5),
+                                          blurRadius: 15,
+                                          spreadRadius: 2)
+                                  ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(t['name'] as String, style: TextStyle(color: isActive ? Colors.white : Colors.white70, fontSize: 13, fontWeight: isActive ? FontWeight.bold : FontWeight.normal), textAlign: TextAlign.center),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                ],
+                              const SizedBox(height: 12),
+                              Text(t['name'] as String,
+                                  style: TextStyle(
+                                      color: isActive
+                                          ? Colors.white
+                                          : Colors.white70,
+                                      fontSize: 13,
+                                      fontWeight: isActive
+                                          ? FontWeight.bold
+                                          : FontWeight.normal),
+                                  textAlign: TextAlign.center),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      }
-    );
+          );
+        });
   }
 
   void _showExitSheet({VoidCallback? onExitComplete}) {
@@ -4094,9 +4351,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         builder: (_) {
-          final eligible = _members
-              .where((m) => m['user_id'] != _myId)
-              .toList();
+          final eligible =
+              _members.where((m) => m['user_id'] != _myId).toList();
           return DraggableScrollableSheet(
             initialChildSize: eligible.isEmpty ? 0.35 : 0.6,
             maxChildSize: 0.9,
@@ -4197,7 +4453,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                               backgroundColor: _colorForUser(m['user_id'])
                                   .withValues(alpha: 0.2),
                               backgroundImage: m['avatar_url'] != null
-                                  ? NetworkImage(m['avatar_url'].toString())
+                                  ? CachedNetworkImageProvider(
+                                      m['avatar_url'].toString())
                                   : null,
                               child: m['avatar_url'] == null
                                   ? Text(
@@ -4222,14 +4479,15 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                               onPressed: () async {
                                 Navigator.pop(ctx);
                                 setState(() {
-                                  _isHost = false; // Prevent auto-promotion in _exitRoomAsync
+                                  _isHost =
+                                      false; // Prevent auto-promotion in _exitRoomAsync
                                 });
                                 await _sb.from('chatrooms').update({
                                   'host_id': m['user_id'],
                                   'host_name': m['user_name']
                                 }).eq('id', widget.roomId);
-                                await _sendSystemCommand(
-                                    'NEW_HOST', "${m['user_id']}|${m['user_name']}");
+                                await _sendSystemCommand('NEW_HOST',
+                                    "${m['user_id']}|${m['user_name']}");
                                 await _exitRoomAsync();
                                 onExitComplete?.call();
                                 if (mounted)
@@ -4247,9 +4505,12 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           );
         });
   }
+
   // ── HOST-ONLY GAME PICKER ──────────────────────────────────────────────────
   Future<void> _endCurrentGame() async {
-    await _sb.from('chatrooms').update({'game_mode': null}).eq('id', widget.roomId);
+    await _sb
+        .from('chatrooms')
+        .update({'game_mode': null}).eq('id', widget.roomId);
     await _sendSystemCommand('END_GAME', '');
     setState(() {
       _gameMode = null;
@@ -4269,23 +4530,32 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
-                  color: Colors.white12, borderRadius: BorderRadius.circular(2)),
+                  color: Colors.white12,
+                  borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 20),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.videogame_asset, color: Color(0xFF3DCFA0), size: 26),
+              const Icon(Icons.videogame_asset,
+                  color: Color(0xFF3DCFA0), size: 26),
               const SizedBox(width: 10),
-              Text('Active Game: ${_gameModeLabel(_gameMode ?? '')}', style: GoogleFonts.poppins(
-                  color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              Text('Active Game: ${_gameModeLabel(_gameMode ?? '')}',
+                  style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold)),
             ]),
             const SizedBox(height: 28),
             _gameOption(
               emoji: '▶️',
               title: 'Continue Playing',
               subtitle: 'Resume the current game',
-              gradientColors: [const Color(0xFF3DCFA0), const Color(0xFF2E8B6D)],
+              gradientColors: [
+                const Color(0xFF3DCFA0),
+                const Color(0xFF2E8B6D)
+              ],
               onTap: () {
                 Navigator.pop(context);
                 setState(() => _showGame = true);
@@ -4296,7 +4566,10 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               emoji: '🛑',
               title: 'End Game & Pick Another',
               subtitle: 'Stop this game and start a new one',
-              gradientColors: [const Color(0xFFFF4C6B), const Color(0xFFFF8C55)],
+              gradientColors: [
+                const Color(0xFFFF4C6B),
+                const Color(0xFFFF8C55)
+              ],
               onTap: () async {
                 Navigator.pop(context);
                 await _endCurrentGame();
@@ -4327,16 +4600,22 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             // Handle
             Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
-                  color: Colors.white12, borderRadius: BorderRadius.circular(2)),
+                  color: Colors.white12,
+                  borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 20),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.sports_esports, color: Color(0xFF3DCFA0), size: 26),
+              const Icon(Icons.sports_esports,
+                  color: Color(0xFF3DCFA0), size: 26),
               const SizedBox(width: 10),
-              Text('Start a Game', style: GoogleFonts.poppins(
-                  color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text('Start a Game',
+                  style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold)),
             ]),
             const SizedBox(height: 6),
             Text('Pick a game for everyone in this room',
@@ -4346,12 +4625,19 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               emoji: '🎭',
               title: 'Truth or Dare',
               subtitle: 'Answer honestly or take a dare',
-              gradientColors: [const Color(0xFF7856FF), const Color(0xFFFF56E0)],
+              gradientColors: [
+                const Color(0xFF7856FF),
+                const Color(0xFFFF56E0)
+              ],
               onTap: () async {
                 Navigator.pop(context);
-                await _sb.from('chatrooms').update({'game_mode': 'truth_dare'}).eq('id', widget.roomId);
+                await _sb.from('chatrooms').update(
+                    {'game_mode': 'truth_dare'}).eq('id', widget.roomId);
                 await _sendSystemCommand('GAME_MODE', 'truth_dare');
-                setState(() { _gameMode = 'truth_dare'; _showGame = true; });
+                setState(() {
+                  _gameMode = 'truth_dare';
+                  _showGame = true;
+                });
               },
             ),
             const SizedBox(height: 14),
@@ -4359,12 +4645,19 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               emoji: '🤥',
               title: 'Two Truths, One Lie',
               subtitle: 'Can they spot the lie?',
-              gradientColors: [const Color(0xFFFF6B00), const Color(0xFFFFD700)],
+              gradientColors: [
+                const Color(0xFFFF6B00),
+                const Color(0xFFFFD700)
+              ],
               onTap: () async {
                 Navigator.pop(context);
-                await _sb.from('chatrooms').update({'game_mode': 'two_truths'}).eq('id', widget.roomId);
+                await _sb.from('chatrooms').update(
+                    {'game_mode': 'two_truths'}).eq('id', widget.roomId);
                 await _sendSystemCommand('GAME_MODE', 'two_truths');
-                setState(() { _gameMode = 'two_truths'; _showGame = true; });
+                setState(() {
+                  _gameMode = 'two_truths';
+                  _showGame = true;
+                });
               },
             ),
             const SizedBox(height: 14),
@@ -4372,12 +4665,19 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               emoji: '💘',
               title: 'Blind Date',
               subtitle: 'Match voices, spark connections',
-              gradientColors: [const Color(0xFFFF4C6B), const Color(0xFFFF8C55)],
+              gradientColors: [
+                const Color(0xFFFF4C6B),
+                const Color(0xFFFF8C55)
+              ],
               onTap: () async {
                 Navigator.pop(context);
-                await _sb.from('chatrooms').update({'game_mode': 'blind_date'}).eq('id', widget.roomId);
+                await _sb.from('chatrooms').update(
+                    {'game_mode': 'blind_date'}).eq('id', widget.roomId);
                 await _sendSystemCommand('GAME_MODE', 'blind_date');
-                setState(() { _gameMode = 'blind_date'; _showGame = true; });
+                setState(() {
+                  _gameMode = 'blind_date';
+                  _showGame = true;
+                });
               },
             ),
           ]),
@@ -4400,18 +4700,29 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-              colors: gradientColors.map((c) => c.withValues(alpha: 0.12)).toList()),
+              colors: gradientColors
+                  .map((c) => c.withValues(alpha: 0.12))
+                  .toList()),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: gradientColors.first.withValues(alpha: 0.4)),
+          border:
+              Border.all(color: gradientColors.first.withValues(alpha: 0.4)),
         ),
         child: Row(children: [
           Text(emoji, style: const TextStyle(fontSize: 30)),
           const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: GoogleFonts.poppins(
-                color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
-            Text(subtitle, style: GoogleFonts.inter(color: Colors.white54, fontSize: 12)),
-          ])),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(title,
+                    style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold)),
+                Text(subtitle,
+                    style:
+                        GoogleFonts.inter(color: Colors.white54, fontSize: 12)),
+              ])),
           Icon(Icons.chevron_right, color: gradientColors.first, size: 22),
         ]),
       ),
@@ -4425,125 +4736,183 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
         shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         builder: (_) => BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF13101E).withValues(alpha: 0.85),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.15))),
-            ),
-            child: SafeArea(
-                child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-                      Text('Host Dashboard',
-                          style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 24),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _actionItem(
-                                  _isRecording ? 'Stop Recording' : 'Start Recording',
-                                  Icons.radio_button_checked,
-                                  _isRecording ? Colors.redAccent : const Color(0xFF7856FF),
-                                  () {
-                                Navigator.pop(context);
-                                _toggleRecording();
-                              }),
-                              _actionItem('Pin a Message', Icons.push_pin_outlined,
-                                  BolRoomColors.gold, () {
-                                Navigator.pop(context);
-                                showDialog(
-                                    context: context,
-                                    useRootNavigator: false,
-                                    builder: (ctx) {
-                                      return AlertDialog(
-                                        backgroundColor: BolRoomColors.card,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(20)),
-                                        title: Text('Pin a Message',
-                                            style: GoogleFonts.poppins(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold)),
-                                        content: TextField(
-                                            controller: _pinnedCtrl,
-                                            style: const TextStyle(color: Colors.white),
-                                            maxLines: 3,
-                                            decoration: InputDecoration(
-                                                hintText: 'Enter message to pin...',
-                                                hintStyle:
-                                                    const TextStyle(color: Colors.white38),
-                                                filled: true,
-                                                fillColor: BolRoomColors.bg,
-                                                border: OutlineInputBorder(
-                                                    borderRadius: BorderRadius.circular(12),
-                                                    borderSide: BorderSide.none))),
-                                        actions: [
-                                          TextButton(
-                                              onPressed: () => Navigator.pop(ctx),
-                                              child: Text('Cancel',
-                                                  style: GoogleFonts.inter(
-                                                      color: Colors.white38))),
-                                          ElevatedButton(
-                                              onPressed: () {
-                                                Navigator.pop(ctx);
-                                                _setPinnedPost(_pinnedCtrl.text);
-                                                _pinnedCtrl.clear();
-                                              },
-                                              style: ElevatedButton.styleFrom(
-                                                  backgroundColor: BolRoomColors.gold,
-                                                  foregroundColor: Colors.black,
-                                                  shape: RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(12))),
-                                              child: Text('Pin',
-                                                  style: GoogleFonts.inter(
-                                                      fontWeight: FontWeight.bold))),
-                                        ],
-                                      );
+              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF13101E).withValues(alpha: 0.85),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(24)),
+                  border: Border(
+                      top: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.15))),
+                ),
+                child: SafeArea(
+                    child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child:
+                            Column(mainAxisSize: MainAxisSize.min, children: [
+                          Container(
+                              width: 40,
+                              height: 4,
+                              margin: const EdgeInsets.only(bottom: 20),
+                              decoration: BoxDecoration(
+                                  color: Colors.white24,
+                                  borderRadius: BorderRadius.circular(2))),
+                          Text('Host Dashboard',
+                              style: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 24),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _actionItem(
+                                      _isRecording
+                                          ? 'Stop Recording'
+                                          : 'Start Recording',
+                                      Icons.radio_button_checked,
+                                      _isRecording
+                                          ? Colors.redAccent
+                                          : const Color(0xFF7856FF), () {
+                                    Navigator.pop(context);
+                                    _toggleRecording();
+                                  }),
+                                  _actionItem(
+                                      'Pin a Message',
+                                      Icons.push_pin_outlined,
+                                      BolRoomColors.gold, () {
+                                    Navigator.pop(context);
+                                    showDialog(
+                                        context: context,
+                                        useRootNavigator: false,
+                                        builder: (ctx) {
+                                          return AlertDialog(
+                                            backgroundColor: BolRoomColors.card,
+                                            shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(20)),
+                                            title: Text('Pin a Message',
+                                                style: GoogleFonts.poppins(
+                                                    color: Colors.white,
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                            content: TextField(
+                                                controller: _pinnedCtrl,
+                                                style: const TextStyle(
+                                                    color: Colors.white),
+                                                maxLines: 3,
+                                                decoration: InputDecoration(
+                                                    hintText:
+                                                        'Enter message to pin...',
+                                                    hintStyle: const TextStyle(
+                                                        color: Colors.white38),
+                                                    filled: true,
+                                                    fillColor: BolRoomColors.bg,
+                                                    border: OutlineInputBorder(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(12),
+                                                        borderSide:
+                                                            BorderSide.none))),
+                                            actions: [
+                                              TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(ctx),
+                                                  child: Text('Cancel',
+                                                      style: GoogleFonts.inter(
+                                                          color:
+                                                              Colors.white38))),
+                                              ElevatedButton(
+                                                  onPressed: () {
+                                                    Navigator.pop(ctx);
+                                                    _setPinnedPost(
+                                                        _pinnedCtrl.text);
+                                                    _pinnedCtrl.clear();
+                                                  },
+                                                  style: ElevatedButton.styleFrom(
+                                                      backgroundColor:
+                                                          BolRoomColors.gold,
+                                                      foregroundColor:
+                                                          Colors.black,
+                                                      shape:
+                                                          RoundedRectangleBorder(
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          12))),
+                                                  child: Text('Pin',
+                                                      style: GoogleFonts.inter(
+                                                          fontWeight: FontWeight
+                                                              .bold))),
+                                            ],
+                                          );
+                                        });
+                                  }),
+                                  _actionItem(
+                                      _speakPermission == 'everyone'
+                                          ? 'Lock Room (No new mics)'
+                                          : 'Unlock Room',
+                                      Icons.lock_outline,
+                                      Colors.orange, () {
+                                    Navigator.pop(context);
+                                    final newPerm =
+                                        _speakPermission == 'everyone'
+                                            ? 'locked'
+                                            : 'everyone';
+                                    _sb.from('chatrooms').update({
+                                      'speak_permission': newPerm
+                                    }).eq('id', widget.roomId);
+                                    setState(() {
+                                      _speakPermission = newPerm;
                                     });
-                              }),
-                              _actionItem(_speakPermission == 'everyone' ? 'Lock Room (No new mics)' : 'Unlock Room', Icons.lock_outline, Colors.orange, () {
-                                Navigator.pop(context);
-                                final newPerm = _speakPermission == 'everyone' ? 'locked' : 'everyone';
-                                _sb.from('chatrooms').update({'speak_permission': newPerm}).eq('id', widget.roomId);
-                                setState(() { _speakPermission = newPerm; });
-                                _showToast(newPerm == 'locked' ? 'Room Locked' : 'Room Unlocked');
-                              }),
-                              _actionItem('Mute All Speakers', Icons.mic_off_outlined, Colors.amber, () {
-                                Navigator.pop(context);
-                                _sendSystemCommand('MUTE_ALL', 'all');
-                                _showToast('All speakers muted');
-                              }),
-                              _actionItem('Clear Chat', Icons.cleaning_services_outlined, Colors.blueGrey, () {
-                                Navigator.pop(context);
-                                _sb.from('chatroom_messages').delete().eq('room_id', widget.roomId);
-                                setState(() { _messages.clear(); });
-                                _showToast('Chat cleared');
-                              }),
-                              _actionItem('Show Captions', Icons.closed_caption_outlined,
-                                  Colors.white70, () {
-                                Navigator.pop(context);
-                                _showToast('Captions enabled (Beta)');
-                              }),
-                              _actionItem('End Space for All', Icons.stop_circle_outlined,
-                                  Colors.redAccent, () {
-                                Navigator.pop(context);
-                                _showExitSheet();
-                              }),
-                            ],
+                                    _showToast(newPerm == 'locked'
+                                        ? 'Room Locked'
+                                        : 'Room Unlocked');
+                                  }),
+                                  _actionItem('Mute All Speakers',
+                                      Icons.mic_off_outlined, Colors.amber, () {
+                                    Navigator.pop(context);
+                                    _sendSystemCommand('MUTE_ALL', 'all');
+                                    _showToast('All speakers muted');
+                                  }),
+                                  _actionItem(
+                                      'Clear Chat',
+                                      Icons.cleaning_services_outlined,
+                                      Colors.blueGrey, () {
+                                    Navigator.pop(context);
+                                    _sb
+                                        .from('chatroom_messages')
+                                        .delete()
+                                        .eq('room_id', widget.roomId);
+                                    setState(() {
+                                      _messages.clear();
+                                    });
+                                    _showToast('Chat cleared');
+                                  }),
+                                  _actionItem(
+                                      'Show Captions',
+                                      Icons.closed_caption_outlined,
+                                      Colors.white70, () {
+                                    Navigator.pop(context);
+                                    _showToast('Captions enabled (Beta)');
+                                  }),
+                                  _actionItem(
+                                      'End Space for All',
+                                      Icons.stop_circle_outlined,
+                                      Colors.redAccent, () {
+                                    Navigator.pop(context);
+                                    _showExitSheet();
+                                  }),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ]))),
-          ),
-        ));
+                        ]))),
+              ),
+            ));
   }
 
   // ── X-STYLE GRID STAGE ──
@@ -4551,7 +4920,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     final host = _members.firstWhere((m) => m['user_id'] == _currentHostId,
         orElse: () => {});
     final hostName = host['user_name'] ?? _currentHostName;
-    final hostAura = _memberAuraColors[_currentHostId] ?? _colorForUser(_currentHostId);
+    final hostAura =
+        _memberAuraColors[_currentHostId] ?? _colorForUser(_currentHostId);
 
     final cohosts = _members
         .where((m) => m['is_cohost'] == true && m['user_id'] != _currentHostId)
@@ -4601,7 +4971,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                 final isMe = uid == _myId;
                 final dispName =
                     isMe ? "You" : _firstName(m['user_name'] ?? 'User');
-                return _buildSpaceNode(m, dispName, _memberAuraColors[uid] ?? _colorForUser(uid),
+                return _buildSpaceNode(m, dispName,
+                        _memberAuraColors[uid] ?? _colorForUser(uid),
                         isHost: false,
                         isSpeaking: _speakingIdentities.contains(uid),
                         isMuted: m['is_muted'] == true,
@@ -4615,7 +4986,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                 final isMe = uid == _myId;
                 final dispName =
                     isMe ? "You" : _firstName(m['user_name'] ?? 'User');
-                return _buildSpaceNode(m, dispName, _memberAuraColors[uid] ?? _colorForUser(uid),
+                return _buildSpaceNode(m, dispName,
+                        _memberAuraColors[uid] ?? _colorForUser(uid),
                         isHost: false,
                         isSpeaking: _speakingIdentities.contains(uid),
                         isMuted: m['is_muted'] == true,
@@ -4673,7 +5045,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                             clipBehavior: Clip.none,
                             children: [
                               _buildGlowingAvatar(
-                                  _memberAuraColors[uid] ?? Colors.grey.withValues(alpha: 0.2), 30,
+                                  _memberAuraColors[uid] ??
+                                      Colors.grey.withValues(alpha: 0.2),
+                                  30,
                                   isPulsing: false,
                                   avatarUrl: m['avatar_url']?.toString(),
                                   userName: m['user_name']?.toString(),
@@ -4739,7 +5113,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                                     width: 18,
                                     height: 18,
                                     decoration: BoxDecoration(
-                                        color: const Color(0xFFFF6B00).withValues(alpha: 0.9),
+                                        color: const Color(0xFFFF6B00)
+                                            .withValues(alpha: 0.9),
                                         shape: BoxShape.circle,
                                         border: Border.all(
                                             color: const Color(0xFF0C0914),
@@ -4863,8 +5238,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                         border: Border.all(
                             color: const Color(0xFF0C0914), width: 1.5)),
                     child: const Center(
-                        child: Icon(Icons.masks,
-                            color: Colors.white, size: 10)),
+                        child:
+                            Icon(Icons.masks, color: Colors.white, size: 10)),
                   ),
                 ),
             ],
@@ -4902,7 +5277,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
       String? userName,
       String? userId}) {
     final seed = userId ?? userName ?? '';
-    final avatarKey = (avatarUrl != null && !avatarUrl.startsWith('http')) ? avatarUrl : null;
+    final avatarKey =
+        (avatarUrl != null && !avatarUrl.startsWith('http')) ? avatarUrl : null;
     return AnimatedScale(
       scale: isPulsing ? 1.08 : 1.0,
       duration: const Duration(milliseconds: 150),
@@ -5066,9 +5442,10 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                         ])),
                     clipBehavior: Clip.antiAlias,
                     child: (avatar != null && avatar.startsWith('http'))
-                        ? Image.network(avatar,
+                        ? CachedNetworkImage(
+                            imageUrl: avatar,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Center(
+                            errorWidget: (_, __, ___) => Center(
                                 child: Text(
                                     name.isNotEmpty
                                         ? name[0].toUpperCase()
@@ -5324,7 +5701,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                     .select('name')
                     .eq('id', newHostId)
                     .maybeSingle();
-                if (profileData != null && profileData['name'] != null && profileData['name'].toString().isNotEmpty) {
+                if (profileData != null &&
+                    profileData['name'] != null &&
+                    profileData['name'].toString().isNotEmpty) {
                   finalHostName = profileData['name'].toString();
                 }
               } catch (e) {
@@ -5340,7 +5719,11 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               try {
                 await _sb
                     .from('chatroom_members')
-                    .update({'is_cohost': false, 'is_speaker': false, 'is_muted': true})
+                    .update({
+                      'is_cohost': false,
+                      'is_speaker': false,
+                      'is_muted': true
+                    })
                     .eq('room_id', widget.roomId)
                     .eq('user_id', _myId);
               } catch (e) {
@@ -5348,11 +5731,12 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               }
               // Update chatrooms table with new host
               try {
-                await _sb
-                    .from('chatrooms')
-                    .update({'host_id': newHostId, 'host_name': finalHostName})
-                    .eq('id', widget.roomId);
-                debugPrint('[HostTransfer] DB updated: room=${widget.roomId} newHost=$finalHostName ($newHostId)');
+                await _sb.from('chatrooms').update({
+                  'host_id': newHostId,
+                  'host_name': finalHostName
+                }).eq('id', widget.roomId);
+                debugPrint(
+                    '[HostTransfer] DB updated: room=${widget.roomId} newHost=$finalHostName ($newHostId)');
               } catch (e) {
                 debugPrint('[HostTransfer] chatrooms update FAILED: $e');
               }
@@ -5364,7 +5748,11 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
               try {
                 await _sb
                     .from('chatroom_members')
-                    .update({'is_speaker': true, 'is_muted': false, 'host_muted': false})
+                    .update({
+                      'is_speaker': true,
+                      'is_muted': false,
+                      'host_muted': false
+                    })
                     .eq('room_id', widget.roomId)
                     .eq('user_id', newHostId);
               } catch (e) {
@@ -5439,8 +5827,10 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                             _fireReaction(e);
                           },
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                            child: Text(e, style: const TextStyle(fontSize: 32)),
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 10.0),
+                            child:
+                                Text(e, style: const TextStyle(fontSize: 32)),
                           ),
                         )),
                     if (isListener) ...[
@@ -5454,7 +5844,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                         },
                         child: Padding(
                           padding: const EdgeInsets.only(right: 8.0),
-                          child: Text(_handRaised ? '✋' : '🤚', style: const TextStyle(fontSize: 32)),
+                          child: Text(_handRaised ? '✋' : '🤚',
+                              style: const TextStyle(fontSize: 32)),
                         ),
                       ),
                     ]
@@ -5521,16 +5912,17 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
   // ── GAME PANEL ──
   Widget _buildGamePanel() {
     final screenH = MediaQuery.of(context).size.height;
-    final participants = (_gameParticipants != null && _gameParticipants!.isNotEmpty)
-        ? List<TodParticipant>.from(_gameParticipants!)
-        : _members
-            .take(8)
-            .map((m) => TodParticipant(
-                  userId: m['user_id']?.toString() ?? '',
-                  name: m['user_name']?.toString() ?? 'User',
-                ))
-            .where((p) => p.userId.isNotEmpty)
-            .toList();
+    final participants =
+        (_gameParticipants != null && _gameParticipants!.isNotEmpty)
+            ? List<TodParticipant>.from(_gameParticipants!)
+            : _members
+                .take(8)
+                .map((m) => TodParticipant(
+                      userId: m['user_id']?.toString() ?? '',
+                      name: m['user_name']?.toString() ?? 'User',
+                    ))
+                .where((p) => p.userId.isNotEmpty)
+                .toList();
     participants.sort((a, b) => a.userId.compareTo(b.userId));
 
     return Positioned.fill(
@@ -5611,7 +6003,9 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                   // Game Widget
                   Expanded(
                     child: SingleChildScrollView(
-                      padding: EdgeInsets.only(bottom: 100 + MediaQuery.of(context).viewInsets.bottom),
+                      padding: EdgeInsets.only(
+                          bottom:
+                              100 + MediaQuery.of(context).viewInsets.bottom),
                       child: _gameMode == 'two_truths'
                           ? TwoTruthsGame(
                               key: _twoTruthsKey,
@@ -5622,18 +6016,22 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                               allRoomMembers: _members
                                   .map((m) => TodParticipant(
                                         userId: m['user_id']?.toString() ?? '',
-                                        name: m['user_name']?.toString() ?? 'User',
+                                        name: m['user_name']?.toString() ??
+                                            'User',
                                       ))
                                   .where((p) => p.userId.isNotEmpty)
                                   .toList(),
                               onBroadcast: (cmd, data) {
                                 if (data['event'] == 'update_participants') {
-                                  final list = data['list'] as List<dynamic>? ?? [];
+                                  final list =
+                                      data['list'] as List<dynamic>? ?? [];
                                   setState(() {
                                     _gameParticipants = list
                                         .map((e) => TodParticipant(
-                                              userId: e['userId']?.toString() ?? '',
-                                              name: e['name']?.toString() ?? 'User',
+                                              userId:
+                                                  e['userId']?.toString() ?? '',
+                                              name: e['name']?.toString() ??
+                                                  'User',
                                             ))
                                         .toList();
                                   });
@@ -5650,19 +6048,26 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                                   participants: participants,
                                   allRoomMembers: _members
                                       .map((m) => TodParticipant(
-                                            userId: m['user_id']?.toString() ?? '',
-                                            name: m['user_name']?.toString() ?? 'User',
+                                            userId:
+                                                m['user_id']?.toString() ?? '',
+                                            name: m['user_name']?.toString() ??
+                                                'User',
                                           ))
                                       .where((p) => p.userId.isNotEmpty)
                                       .toList(),
                                   onBroadcast: (cmd, data) {
-                                    if (data['event'] == 'update_participants') {
-                                      final list = data['list'] as List<dynamic>? ?? [];
+                                    if (data['event'] ==
+                                        'update_participants') {
+                                      final list =
+                                          data['list'] as List<dynamic>? ?? [];
                                       setState(() {
                                         _gameParticipants = list
                                             .map((e) => TodParticipant(
-                                                  userId: e['userId']?.toString() ?? '',
-                                                  name: e['name']?.toString() ?? 'User',
+                                                  userId:
+                                                      e['userId']?.toString() ??
+                                                          '',
+                                                  name: e['name']?.toString() ??
+                                                      'User',
                                                 ))
                                             .toList();
                                       });
@@ -5670,34 +6075,41 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                                     _sendGameEvent(data);
                                   },
                                 )
-                          : TruthOrDareGame(
-                              key: _gameKey,
-                              roomId: widget.roomId,
-                              myId: _myId,
-                              isHost: _isHost,
-                              participants: participants,
-                              allRoomMembers: _members
-                                  .map((m) => TodParticipant(
-                                        userId: m['user_id']?.toString() ?? '',
-                                        name: m['user_name']?.toString() ?? 'User',
-                                      ))
-                                  .where((p) => p.userId.isNotEmpty)
-                                  .toList(),
-                              onBroadcast: (cmd, data) {
-                                if (data['event'] == 'update_participants') {
-                                  final list = data['list'] as List<dynamic>? ?? [];
-                                  setState(() {
-                                    _gameParticipants = list
-                                        .map((e) => TodParticipant(
-                                              userId: e['userId']?.toString() ?? '',
-                                              name: e['name']?.toString() ?? 'User',
-                                            ))
-                                        .toList();
-                                  });
-                                }
-                                _sendGameEvent(data);
-                              },
-                            ),
+                              : TruthOrDareGame(
+                                  key: _gameKey,
+                                  roomId: widget.roomId,
+                                  myId: _myId,
+                                  isHost: _isHost,
+                                  participants: participants,
+                                  allRoomMembers: _members
+                                      .map((m) => TodParticipant(
+                                            userId:
+                                                m['user_id']?.toString() ?? '',
+                                            name: m['user_name']?.toString() ??
+                                                'User',
+                                          ))
+                                      .where((p) => p.userId.isNotEmpty)
+                                      .toList(),
+                                  onBroadcast: (cmd, data) {
+                                    if (data['event'] ==
+                                        'update_participants') {
+                                      final list =
+                                          data['list'] as List<dynamic>? ?? [];
+                                      setState(() {
+                                        _gameParticipants = list
+                                            .map((e) => TodParticipant(
+                                                  userId:
+                                                      e['userId']?.toString() ??
+                                                          '',
+                                                  name: e['name']?.toString() ??
+                                                      'User',
+                                                ))
+                                            .toList();
+                                      });
+                                    }
+                                    _sendGameEvent(data);
+                                  },
+                                ),
                     ),
                   ),
                 ],
@@ -6018,182 +6430,202 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                 ),
               // Main toolbar
               Container(
-                margin: const EdgeInsets.only(bottom: 24, left: 16, right: 16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(40),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 20,
-                        spreadRadius: 2)
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(40),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF13101E).withValues(alpha: 0.6),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-                      ),
-                      child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // 1. Mask (Voice Disguise)
-                    GestureDetector(
-                      onTap: () async {
-                        // Quick toggle on tap
-                        final newValue = !_isVoiceMasked;
-                        setState(() {
-                          _isVoiceMasked = newValue;
-                          if (newValue) _isEditingVoiceMask = false;
-                        });
-                        _updateNativeVoiceMasking();
-                        
-                        try {
-                          await _sb.from('bolroom_profiles').update({'voice_mask_enabled': newValue}).eq('id', _myId);
-                          if (newValue) {
-                            _showToast('Voice Masking ON');
-                            _broadcastVoiceMaskChange(true, _voiceMaskPreset);
-                          } else {
-                            _showToast('Voice Masking OFF (Original Voice)');
-                            _broadcastVoiceMaskChange(false, '');
-                          }
-                        } catch (e) {
-                          _showToast('Failed to update voice mask');
-                        }
-                      },
-                      onLongPress: () {
-                        _showVoiceMaskSheet();
-                      },
-                      child: Container(
-                        width: 42,
-                        height: 42,
-                        color: Colors.transparent,
-                        child: Center(
-                          child: Icon(Icons.masks,
-                              color: _isVoiceMasked
-                                  ? const Color(0xFFFF6B00)
-                                  : Colors.white54,
-                              size: 24),
-                        ),
-                      ),
-                    ),
-                    // 2. React
-                    GestureDetector(
-                      onTap: _showReactionPicker,
-                      child: Container(
-                        width: 42,
-                        height: 42,
-                        color: Colors.transparent,
-                        child: const Center(
-                            child: Icon(Icons.favorite_border,
-                                color: Colors.white54, size: 24)),
-                      ),
-                    ),
-                    // 3. Mic (Large center button)
-                    GestureDetector(
-                      onTap: () {
-                        if (_micsLockedByGame) {
-                          _showToast('Mics are locked during the Blind Date session.');
-                          return;
-                        }
-                        if (_hostMuted) {
-                          _showToast('Muted by host 🤫');
-                          return;
-                        }
-                        if (canSpeak) {
-                          _toggleMute();
-                        } else if (!_micRequestSent) {
-                          _requestMic();
-                        }
-                      },
-                      child: Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _hostMuted
-                              ? Colors.red.withValues(alpha: 0.3)
-                              : _micRequestSent
-                                  ? Colors.amber
-                                  : ((canSpeak && !_isMuted)
-                                      ? _colorForUser(_myId)
-                                      : const Color(0xFF231D38)),
-                          boxShadow: (canSpeak && !_isMuted && !_hostMuted)
-                              ? [
-                                  BoxShadow(
-                                      color: _colorForUser(_myId)
-                                          .withValues(alpha: 0.5),
-                                      blurRadius: 10)
-                                ]
-                              : [],
-                        ),
-                        child: _hostMuted
-                            ? const Icon(Icons.lock,
-                                color: Colors.red, size: 24)
-                            : _micRequestSent
-                                ? const Icon(Icons.access_time,
-                                    color: Colors.white, size: 26)
-                                : Icon(
-                                    (canSpeak && !_isMuted)
-                                        ? Icons.mic
-                                        : Icons.mic_off,
-                                    color: Colors.white,
-                                    size: 26),
-                      ),
-                    ),
-                    // 4. People
-                    GestureDetector(
-                      onTap: _showMemberList,
-                      child: Container(
-                        width: 42,
-                        height: 42,
-                        color: Colors.transparent,
-                        child: Stack(
-                            alignment: Alignment.center,
-                            clipBehavior: Clip.none,
-                            children: [
-                              const Icon(Icons.people_outline,
-                                  color: Colors.white54, size: 24),
-                              if (_members.length > 1)
-                                Positioned(
-                                    top: 2,
-                                    right: -2,
-                                    child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: const BoxDecoration(
-                                            color: Color(0xFF7B2CBF),
-                                            shape: BoxShape.circle),
-                                        child: Text('${_members.length}',
-                                            style: const TextStyle(
-                                                fontSize: 8,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.white)))),
-                            ]),
-                      ),
-                    ),
-                    // 5. Chat
-                    GestureDetector(
-                      onTap: () {
-                        setState(() => _showChat = true);
-                        _chatFocusNode.requestFocus();
-                      },
-                      child: Container(
-                        width: 42,
-                        height: 42,
-                        color: Colors.transparent,
-                        child: const Center(
-                            child: Icon(Icons.chat_bubble_outline,
-                                color: Colors.white54, size: 24)),
-                      ),
-                    ),
-                    // Game icon moved to top bar
-                  ],
-                ),
-              )))),
+                  margin:
+                      const EdgeInsets.only(bottom: 24, left: 16, right: 16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(40),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 20,
+                          spreadRadius: 2)
+                    ],
+                  ),
+                  child: ClipRRect(
+                      borderRadius: BorderRadius.circular(40),
+                      child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF13101E)
+                                  .withValues(alpha: 0.6),
+                              border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.15)),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                // 1. Mask (Voice Disguise)
+                                GestureDetector(
+                                  onTap: () async {
+                                    // Quick toggle on tap
+                                    final newValue = !_isVoiceMasked;
+                                    setState(() {
+                                      _isVoiceMasked = newValue;
+                                      if (newValue) _isEditingVoiceMask = false;
+                                    });
+                                    _updateNativeVoiceMasking();
+
+                                    try {
+                                      await _sb
+                                          .from('bolroom_profiles')
+                                          .update({
+                                        'voice_mask_enabled': newValue
+                                      }).eq('id', _myId);
+                                      if (newValue) {
+                                        _showToast('Voice Masking ON');
+                                        _broadcastVoiceMaskChange(
+                                            true, _voiceMaskPreset);
+                                      } else {
+                                        _showToast(
+                                            'Voice Masking OFF (Original Voice)');
+                                        _broadcastVoiceMaskChange(false, '');
+                                      }
+                                    } catch (e) {
+                                      _showToast('Failed to update voice mask');
+                                    }
+                                  },
+                                  onLongPress: () {
+                                    _showVoiceMaskSheet();
+                                  },
+                                  child: Container(
+                                    width: 42,
+                                    height: 42,
+                                    color: Colors.transparent,
+                                    child: Center(
+                                      child: Icon(Icons.masks,
+                                          color: _isVoiceMasked
+                                              ? const Color(0xFFFF6B00)
+                                              : Colors.white54,
+                                          size: 24),
+                                    ),
+                                  ),
+                                ),
+                                // 2. React
+                                GestureDetector(
+                                  onTap: _showReactionPicker,
+                                  child: Container(
+                                    width: 42,
+                                    height: 42,
+                                    color: Colors.transparent,
+                                    child: const Center(
+                                        child: Icon(Icons.favorite_border,
+                                            color: Colors.white54, size: 24)),
+                                  ),
+                                ),
+                                // 3. Mic (Large center button)
+                                GestureDetector(
+                                  onTap: () {
+                                    if (_micsLockedByGame) {
+                                      _showToast(
+                                          'Mics are locked during the Blind Date session.');
+                                      return;
+                                    }
+                                    if (_hostMuted) {
+                                      _showToast('Muted by host 🤫');
+                                      return;
+                                    }
+                                    if (canSpeak) {
+                                      _toggleMute();
+                                    } else if (!_micRequestSent) {
+                                      _requestMic();
+                                    }
+                                  },
+                                  child: Container(
+                                    width: 56,
+                                    height: 56,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: _hostMuted
+                                          ? Colors.red.withValues(alpha: 0.3)
+                                          : _micRequestSent
+                                              ? Colors.amber
+                                              : ((canSpeak && !_isMuted)
+                                                  ? _colorForUser(_myId)
+                                                  : const Color(0xFF231D38)),
+                                      boxShadow: (canSpeak &&
+                                              !_isMuted &&
+                                              !_hostMuted)
+                                          ? [
+                                              BoxShadow(
+                                                  color: _colorForUser(_myId)
+                                                      .withValues(alpha: 0.5),
+                                                  blurRadius: 10)
+                                            ]
+                                          : [],
+                                    ),
+                                    child: _hostMuted
+                                        ? const Icon(Icons.lock,
+                                            color: Colors.red, size: 24)
+                                        : _micRequestSent
+                                            ? const Icon(Icons.access_time,
+                                                color: Colors.white, size: 26)
+                                            : Icon(
+                                                (canSpeak && !_isMuted)
+                                                    ? Icons.mic
+                                                    : Icons.mic_off,
+                                                color: Colors.white,
+                                                size: 26),
+                                  ),
+                                ),
+                                // 4. People
+                                GestureDetector(
+                                  onTap: _showMemberList,
+                                  child: Container(
+                                    width: 42,
+                                    height: 42,
+                                    color: Colors.transparent,
+                                    child: Stack(
+                                        alignment: Alignment.center,
+                                        clipBehavior: Clip.none,
+                                        children: [
+                                          const Icon(Icons.people_outline,
+                                              color: Colors.white54, size: 24),
+                                          if (_members.length > 1)
+                                            Positioned(
+                                                top: 2,
+                                                right: -2,
+                                                child: Container(
+                                                    padding:
+                                                        const EdgeInsets.all(4),
+                                                    decoration:
+                                                        const BoxDecoration(
+                                                            color: Color(
+                                                                0xFF7B2CBF),
+                                                            shape: BoxShape
+                                                                .circle),
+                                                    child: Text(
+                                                        '${_members.length}',
+                                                        style: const TextStyle(
+                                                            fontSize: 8,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors
+                                                                .white)))),
+                                        ]),
+                                  ),
+                                ),
+                                // 5. Chat
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() => _showChat = true);
+                                    _chatFocusNode.requestFocus();
+                                  },
+                                  child: Container(
+                                    width: 42,
+                                    height: 42,
+                                    color: Colors.transparent,
+                                    child: const Center(
+                                        child: Icon(Icons.chat_bubble_outline,
+                                            color: Colors.white54, size: 24)),
+                                  ),
+                                ),
+                                // Game icon moved to top bar
+                              ],
+                            ),
+                          )))),
             ],
           ),
         ),
@@ -6379,7 +6811,8 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                                     leading: CircleAvatar(
                                       backgroundColor: const Color(0xFF13101E),
                                       backgroundImage: avatarUrl != null
-                                          ? NetworkImage(avatarUrl)
+                                          ? CachedNetworkImageProvider(
+                                              avatarUrl)
                                           : null,
                                       child: avatarUrl == null
                                           ? const Icon(Icons.person,
@@ -7329,7 +7762,9 @@ class _ChatAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final avatarKey = (avatarUrl != null && !avatarUrl!.startsWith('http')) ? avatarUrl : null;
+    final avatarKey = (avatarUrl != null && !avatarUrl!.startsWith('http'))
+        ? avatarUrl
+        : null;
     return BolroomAvatars.buildAvatar(
       size: size,
       avatarUrl: null,
@@ -7486,7 +7921,7 @@ class _LiveChatMessageState extends State<_LiveChatMessage>
                                 ? MemoryImage(base64Decode(
                                         _imageUrl!.split(',').last))
                                     as ImageProvider
-                                : NetworkImage(_imageUrl!),
+                                : CachedNetworkImageProvider(_imageUrl!),
                             fit: BoxFit.cover,
                           ),
                         ),
@@ -7531,7 +7966,8 @@ class BolRoomPostSummaryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF0C0914),
+      backgroundColor:
+          isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF0C0914),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
@@ -7679,15 +8115,13 @@ class _GridPainter extends CustomPainter {
       ..strokeWidth = 1;
     canvas.drawLine(
         Offset(size.width / 2, 0), Offset(size.width / 2, size.height), center);
-    canvas.drawLine(
-        Offset(0, size.height / 2), Offset(size.width, size.height / 2), center);
+    canvas.drawLine(Offset(0, size.height / 2),
+        Offset(size.width, size.height / 2), center);
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
-
-
 
 class _VoicePadPainter extends CustomPainter {
   final double dotX;
@@ -7704,7 +8138,10 @@ class _VoicePadPainter extends CustomPainter {
     final Rect bgRect = Rect.fromLTWH(0, 0, w, h);
     final Paint bgPaint = Paint()
       ..shader = LinearGradient(
-        colors: [Colors.transparent, const Color(0xFFFF6B00).withValues(alpha: 0.15)],
+        colors: [
+          Colors.transparent,
+          const Color(0xFFFF6B00).withValues(alpha: 0.15)
+        ],
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
       ).createShader(bgRect);
@@ -7743,5 +8180,6 @@ class _VoicePadPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_VoicePadPainter old) => old.dotX != dotX || old.dotY != dotY;
+  bool shouldRepaint(_VoicePadPainter old) =>
+      old.dotX != dotX || old.dotY != dotY;
 }

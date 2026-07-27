@@ -210,77 +210,141 @@ class _MeetraAppState extends State<MeetraApp> {
                       },
                     )
                   : StreamBuilder<AuthState>(
-                      stream: Supabase.instance.client.auth.onAuthStateChange,
-                builder: (context, snapshot) {
-                  final session = snapshot.hasData ? snapshot.data!.session : null;
-                  if (session != null) {
-                    // User is logged in - check onboarding
-                    return FutureBuilder<Map<String, dynamic>?>(
-                      future: Supabase.instance.client
-                          .from('profiles')
-                          .select('onboarding_complete')
-                          .eq('id', session.user.id)
-                          .maybeSingle(),
-                      builder: (context, profileSnap) {
-                        if (profileSnap.connectionState == ConnectionState.waiting) {
+                      stream: Supabase.instance.client.auth.onAuthStateChange
+                          // Only react to session-level events, NOT to mid-session
+                          // updates like userUpdated/tokenRefreshed that fire during
+                          // onboarding password/email updates, which cause a race
+                          // condition that sends the user back to step 1.
+                          .where((e) =>
+                              e.event == AuthChangeEvent.signedIn ||
+                              e.event == AuthChangeEvent.signedOut ||
+                              e.event == AuthChangeEvent.initialSession),
+                      initialData:
+                          Supabase.instance.client.auth.currentSession != null
+                              ? AuthState(AuthChangeEvent.initialSession,
+                                  Supabase.instance.client.auth.currentSession)
+                              : null,
+                      builder: (context, snapshot) {
+                        final session = snapshot.data?.session ??
+                            Supabase.instance.client.auth.currentSession;
+                        if (session != null) {
+                          // User is logged in - check onboarding
+                          return _OnboardingGate(userId: session.user.id);
+                        }
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
                           return const Scaffold(
-                            backgroundColor: Color(0xFF030303),
-                            body: Center(
-                              child: SlothAnimatedLoader(size: 180),
-                            ),
-                          );
-                        }
-
-                        final profile = profileSnap.data;
-                        final onboardingDone = profile != null && profile['onboarding_complete'] == true;
-
-                        if (!onboardingDone) {
-                          return Scaffold(
                             backgroundColor: Colors.black,
-                            body: Center(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 500),
-                                child: const OnboardingScreen(),
-                              ),
-                            ),
+                            body: Center(child: SlothAnimatedLoader(size: 180)),
                           );
                         }
-
-                        return ValueListenableBuilder<bool>(
-                            valueListenable: locationService.isLocationGrantedNotifier,
-                            builder: (context, isGranted, _) {
-                              if (!isGranted) {
-                                return LocationPermissionScreen(
-                                  onPermissionGranted: () {
-                                    // Trigger rebuild; fetchLiveLocation sets notifier to true.
-                                  },
-                                );
-                              }
-
-                              return Scaffold(
-                                backgroundColor: Colors.black,
-                                body: Center(
-                                  child: ConstrainedBox(
-                                    constraints: const BoxConstraints(maxWidth: 500),
-                                    child: const MainDashboard(),
-                                  ),
-                                ),
-                              );
-                            });
+                        return Scaffold(
+                          backgroundColor: Colors.black,
+                          body: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 500),
+                              child: const AuthScreen(),
+                            ),
+                          ),
+                        );
                       },
-                    );
-                  }
-                  return Scaffold(
-                    backgroundColor: Colors.black,
-                    body: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 500),
-                        child: const AuthScreen(),
-                      ),
                     ),
-                  );
-                },
+        );
+      },
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// _OnboardingGate — checks onboarding exactly once per login,
+// memoized so mid-session auth events (userUpdated, tokenRefreshed)
+// don't re-run the query and kick the user back to OnboardingScreen.
+// ──────────────────────────────────────────────────────────────
+class _OnboardingGate extends StatefulWidget {
+  final String userId;
+  const _OnboardingGate({required this.userId});
+
+  @override
+  State<_OnboardingGate> createState() => _OnboardingGateState();
+}
+
+class _OnboardingGateState extends State<_OnboardingGate> {
+  late Future<bool> _checkFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkFuture = _checkOnboarding(widget.userId);
+  }
+
+  @override
+  void didUpdateWidget(_OnboardingGate old) {
+    super.didUpdateWidget(old);
+    // Only re-check when the actual user ID changes (i.e. a different account signs in)
+    if (old.userId != widget.userId) {
+      _checkFuture = _checkOnboarding(widget.userId);
+    }
+  }
+
+  Future<bool> _checkOnboarding(String userId) async {
+    try {
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('onboarding_complete')
+          .eq('id', userId)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 6));
+      return profile != null && profile['onboarding_complete'] == true;
+    } catch (_) {
+      // On timeout or error, default to done so user reaches dashboard
+      return true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _checkFuture,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: Color(0xFF030303),
+            body: Center(child: SlothAnimatedLoader(size: 180)),
+          );
+        }
+
+        final onboardingDone = snap.data ?? true;
+
+        if (!onboardingDone) {
+          return Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 500),
+                child: const OnboardingScreen(),
               ),
+            ),
+          );
+        }
+
+        return ValueListenableBuilder<bool>(
+          valueListenable: locationService.isLocationGrantedNotifier,
+          builder: (context, isGranted, _) {
+            if (!isGranted) {
+              return LocationPermissionScreen(
+                onPermissionGranted: () {},
+              );
+            }
+            return Scaffold(
+              backgroundColor: Colors.black,
+              body: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 500),
+                  child: const MainDashboard(),
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -325,13 +389,15 @@ class _AuthGateState extends State<_AuthGate> {
       if (event.event == AuthChangeEvent.signedOut) {
         _navigating = false;
         navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => Scaffold(
-            backgroundColor: Colors.black,
-            body: Center(child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 500),
-              child: const AuthScreen(),
-            )),
-          )),
+          MaterialPageRoute(
+              builder: (_) => Scaffold(
+                    backgroundColor: Colors.black,
+                    body: Center(
+                        child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 500),
+                      child: const AuthScreen(),
+                    )),
+                  )),
           (route) => false,
         );
       }
@@ -353,13 +419,15 @@ class _AuthGateState extends State<_AuthGate> {
 
     if (!onboardingDone) {
       navigatorKey.currentState?.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => Scaffold(
-          backgroundColor: Colors.black,
-          body: Center(child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 500),
-            child: const OnboardingScreen(),
-          )),
-        )),
+        MaterialPageRoute(
+            builder: (_) => Scaffold(
+                  backgroundColor: Colors.black,
+                  body: Center(
+                      child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 500),
+                    child: const OnboardingScreen(),
+                  )),
+                )),
         (route) => false,
       );
       return;
@@ -367,13 +435,15 @@ class _AuthGateState extends State<_AuthGate> {
 
     // Onboarding complete → go to dashboard (location gate is handled inside app)
     navigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 500),
-          child: const MainDashboard(),
-        )),
-      )),
+      MaterialPageRoute(
+          builder: (_) => Scaffold(
+                backgroundColor: Colors.black,
+                body: Center(
+                    child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 500),
+                  child: const MainDashboard(),
+                )),
+              )),
       (route) => false,
     );
   }

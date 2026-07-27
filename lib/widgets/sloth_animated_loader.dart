@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
 class SlothAnimatedLoader extends StatefulWidget {
   final double size;
@@ -14,12 +15,14 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
   late final AnimationController _gazeCtrl;
   late final AnimationController _blinkCtrl;
   late final AnimationController _breathCtrl;
+  late final AnimationController _rotateCtrl;
 
   late final Animation<double> _gazeX;
   late final Animation<double> _gazeY;
   late final Animation<double> _blinkL;
   late final Animation<double> _blinkR;
   late final Animation<double> _breathScale;
+  late final Animation<double> _rotate;
 
   @override
   void initState() {
@@ -28,14 +31,27 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
     // ── Breathing Controller (Continuous subtle scale in/out) ──
     _breathCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3000),
+      duration: const Duration(
+          milliseconds: 4000), // slower breathing for cinematic feel
     )..repeat(reverse: true);
 
-    _breathScale = Tween<double>(begin: 1.0, end: 1.02).animate(
+    _breathScale = Tween<double>(begin: 1.0, end: 1.025).animate(
       CurvedAnimation(parent: _breathCtrl, curve: Curves.easeInOutSine),
     );
 
-    // ── Gaze Controller – 6s Cinematic Look Cycle ──
+    // ── Gaze Controller – Cinematic Look Cycle ──
+
+    // ── Rotation Controller for subtle head turn ──
+    _rotateCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 12000),
+    )..repeat();
+
+    _rotate = Tween<double>(begin: 0.0, end: 2 * math.pi).animate(
+      CurvedAnimation(parent: _rotateCtrl, curve: Curves.easeInOutSine),
+    );
+
+    // ── Gaze X/Y sequences (adjusted weights for smoother motion) ──
     _gazeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 6000),
@@ -43,45 +59,75 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
 
     _gazeX = TweenSequence<double>([
       // Centre to Left
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: -1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 15),
+      TweenSequenceItem(
+          tween: Tween(begin: 0.0, end: -1.0)
+              .chain(CurveTween(curve: Curves.easeInOutSine)),
+          weight: 15),
       TweenSequenceItem(tween: ConstantTween(-1.0), weight: 15),
       // Left to Right
-      TweenSequenceItem(tween: Tween(begin: -1.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 25),
+      TweenSequenceItem(
+          tween: Tween(begin: -1.0, end: 1.0)
+              .chain(CurveTween(curve: Curves.easeInOutSine)),
+          weight: 25),
       TweenSequenceItem(tween: ConstantTween(1.0), weight: 15),
       // Right to Centre
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 15),
+      TweenSequenceItem(
+          tween: Tween(begin: 1.0, end: 0.0)
+              .chain(CurveTween(curve: Curves.easeInOutSine)),
+          weight: 15),
       TweenSequenceItem(tween: ConstantTween(0.0), weight: 15),
     ]).animate(_gazeCtrl);
 
     _gazeY = TweenSequence<double>([
       // Look slightly down when traversing
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 6.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 15),
+      TweenSequenceItem(
+          tween: Tween(begin: 0.0, end: 6.0)
+              .chain(CurveTween(curve: Curves.easeInOutSine)),
+          weight: 15),
       TweenSequenceItem(tween: ConstantTween(6.0), weight: 15),
-      TweenSequenceItem(tween: Tween(begin: 6.0, end: 6.0).chain(CurveTween(curve: Curves.linear)), weight: 25),
+      TweenSequenceItem(
+          tween: Tween(begin: 6.0, end: 6.0)
+              .chain(CurveTween(curve: Curves.linear)),
+          weight: 25),
       TweenSequenceItem(tween: ConstantTween(6.0), weight: 15),
-      TweenSequenceItem(tween: Tween(begin: 6.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 15),
+      TweenSequenceItem(
+          tween: Tween(begin: 6.0, end: 0.0)
+              .chain(CurveTween(curve: Curves.easeInOutSine)),
+          weight: 15),
       TweenSequenceItem(tween: ConstantTween(0.0), weight: 15),
     ]).animate(_gazeCtrl);
 
     // ── Blink Controller (Triggered occasionally) ──
-    // A cinematic sloth blink is slow and deliberate.
+    // A cinematic sloth blink is slower and more deliberate.
     _blinkCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 800), // slower blink
     );
 
     _blinkL = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 45),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 45),
+      TweenSequenceItem(
+          tween: Tween(begin: 0.0, end: 1.0)
+              .chain(CurveTween(curve: Curves.easeInOutSine)),
+          weight: 40),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 15),
+      TweenSequenceItem(
+          tween: Tween(begin: 1.0, end: 0.0)
+              .chain(CurveTween(curve: Curves.easeInOutSine)),
+          weight: 40),
     ]).animate(_blinkCtrl);
 
     // Right eyelid has a tiny delay for realism
     _blinkR = TweenSequence<double>([
       TweenSequenceItem(tween: ConstantTween(0.0), weight: 5),
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 45),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutSine)), weight: 35),
+      TweenSequenceItem(
+          tween: Tween(begin: 0.0, end: 1.0)
+              .chain(CurveTween(curve: Curves.easeInOutSine)),
+          weight: 45),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 15),
+      TweenSequenceItem(
+          tween: Tween(begin: 1.0, end: 0.0)
+              .chain(CurveTween(curve: Curves.easeInOutSine)),
+          weight: 30),
       TweenSequenceItem(tween: ConstantTween(0.0), weight: 5),
     ]).animate(_blinkCtrl);
 
@@ -102,6 +148,7 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
     _gazeCtrl.dispose();
     _blinkCtrl.dispose();
     _breathCtrl.dispose();
+    _rotateCtrl.dispose();
     super.dispose();
   }
 
@@ -120,50 +167,76 @@ class _SlothAnimatedLoaderState extends State<SlothAnimatedLoader>
           width: canvasW,
           height: canvasH,
           child: AnimatedBuilder(
-            animation: Listenable.merge([_gazeCtrl, _blinkCtrl, _breathCtrl]),
+            animation: Listenable.merge(
+                [_gazeCtrl, _blinkCtrl, _breathCtrl, _rotateCtrl]),
             builder: (context, _) {
-              const double maxDx = 25.0; 
+              // Apply subtle rotation for cinematic effect
+              final double rotation = _rotate.value;
+              const double maxDx = 25.0;
               final double dx = _gazeX.value * maxDx;
               final double dy = _gazeY.value;
 
-              return Transform.scale(
-                scale: _breathScale.value,
-                alignment: Alignment.center,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned.fill(
-                      child: Image.asset('assets/images/Relaya_Base_Head_EmptyEyes.png', fit: BoxFit.fill),
-                    ),
-                    Positioned(
-                      left: 159 + dx,
-                      top: 200 + dy,
-                      child: Image.asset('assets/images/Relaya_Iris_Left.png'),
-                    ),
-                    Positioned(
-                      left: 319 + dx,
-                      top: 195 + dy,
-                      child: Image.asset('assets/images/Relaya_Iris_Right.png'),
-                    ),
-                    Positioned(
-                      left: 129,
-                      top: 120,
-                      child: Transform(
-                        alignment: Alignment.topCenter,
-                        transform: Matrix4.identity()..scale(1.0, _blinkL.value == 0.0 ? 0.001 : _blinkL.value),
-                        child: Image.asset('assets/images/Relaya_Eyelid_Left.png'),
+              return Transform.rotate(
+                angle: rotation,
+                child: Transform.scale(
+                  scale: _breathScale.value,
+                  alignment: Alignment.center,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: Image.asset(
+                            'assets/images/Relaya_Base_Head_EmptyEyes.png',
+                            fit: BoxFit.fill),
                       ),
-                    ),
-                    Positioned(
-                      left: 287,
-                      top: 110,
-                      child: Transform(
-                        alignment: Alignment.topCenter,
-                        transform: Matrix4.identity()..scale(1.0, _blinkR.value == 0.0 ? 0.001 : _blinkR.value),
-                        child: Image.asset('assets/images/Relaya_Eyelid_Right.png'),
+                      Positioned(
+                        left: 159 + dx,
+                        top: 200 + dy,
+                        child:
+                            Image.asset('assets/images/Relaya_Iris_Left.png'),
                       ),
-                    ),
-                  ],
+                      Positioned(
+                        left: 319 + dx,
+                        top: 195 + dy,
+                        child:
+                            Image.asset('assets/images/Relaya_Iris_Right.png'),
+                      ),
+                      Positioned(
+                        left: 129,
+                        top: 120,
+                        child: Transform(
+                          alignment: Alignment.topCenter,
+                          transform: Matrix4.identity()
+                            ..scale(1.0,
+                                _blinkL.value == 0.0 ? 0.001 : _blinkL.value),
+                          child: Image.asset(
+                              'assets/images/Relaya_Eyelid_Left.png'),
+                        ),
+                      ),
+                      Positioned(
+                        left: 287,
+                        top: 110,
+                        child: Transform(
+                          alignment: Alignment.topCenter,
+                          transform: Matrix4.identity()
+                            ..scale(1.0,
+                                _blinkR.value == 0.0 ? 0.001 : _blinkR.value),
+                          child: Image.asset(
+                              'assets/images/Relaya_Eyelid_Right.png'),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: Image.asset('assets/images/Sloth_Left_Paw.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (c, e, s) => const SizedBox()),
+                      ),
+                      Positioned.fill(
+                        child: Image.asset('assets/images/Sloth_Right_Paw.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (c, e, s) => const SizedBox()),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },

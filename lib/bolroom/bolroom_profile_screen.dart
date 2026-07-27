@@ -674,6 +674,7 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
                 avatarKey: _avatarKey,
                 userId: _targetId,
                 showRing: !doodle,
+                auraOverride: _auraColorHex.isNotEmpty ? Color(int.parse(_auraColorHex.replaceAll('#', '0xFF'))) : null,
               ),
           // Edit badge
           if (_isMe)
@@ -2309,6 +2310,28 @@ class _BolroomProfileScreenState extends State<BolroomProfileScreen> with Widget
             style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.6), fontSize: 13) : const TextStyle(color: textMuted, fontSize: 12),
           ),
           trailing: Icon(Icons.chevron_right, color: doodle ? DoodleColors.brown : textMuted, size: 20),
+          onTap: _showQuickPrivacySheet,
+        ),
+      ),
+    );
+  }
+
+  void _showQuickPrivacySheet() {
+    final doodle = isDoodleMode(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: doodle ? DoodleColors.paper : cardColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : Colors.white24, borderRadius: BorderRadius.circular(2))),
+            _menuTile(Icons.visibility_off, 'Ghost Protocol', const Color(0xFFFF4655), () { Navigator.pop(context); _showGhostProtocolSheet(); }),
+            _menuTile(Icons.radar, 'Encrypted Radar', const Color(0xFF00FF00), () { Navigator.pop(context); _showEncryptedRadarSheet(); }),
+            _menuTile(Icons.auto_awesome, 'Change Aura Color', const Color(0xFF8A2BE2), () { Navigator.pop(context); _showAuraChangerSheet(); }),
+            const SizedBox(height: 16),
+          ],
         ),
       ),
     );

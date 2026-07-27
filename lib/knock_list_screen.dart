@@ -3,6 +3,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:ui';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class KnockListScreen extends StatefulWidget {
   final int initialTabIndex; // 0 = Received, 1 = Sent
@@ -99,11 +101,134 @@ class _KnockListScreenState extends State<KnockListScreen>
           _sent = sentList;
           _isLoading = false;
         });
+
+        SharedPreferences.getInstance().then((prefs) {
+          final currentSeen = prefs.getInt('seen_received_knocks_count') ?? 0;
+          if (_received.length > currentSeen) {
+            prefs.setInt('seen_received_knocks_count', _received.length);
+          }
+        });
       }
     } catch (e) {
       debugPrint('Error fetching knock lists: $e');
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _updateStatus(String reqId, String newStatus) async {
+    try {
+      await Supabase.instance.client
+          .from('requests')
+          .update({'status': newStatus}).eq('id', reqId);
+
+      if (mounted) {
+        setState(() {
+          for (var item in _received) {
+            if (item['request']['id'].toString() == reqId) {
+              item['request']['status'] = newStatus;
+            }
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error updating request status: $e');
+    }
+  }
+
+  void _showAnswers(Map<String, dynamic> item) {
+    final req = item['request'];
+    final p = item['profile'];
+    final name =
+        (p['name'] ?? p['full_name'] ?? 'User').toString().split(' ')[0];
+    dynamic answers = req['answers'];
+
+    if (answers is String) {
+      try {
+        answers = jsonDecode(answers);
+      } catch (_) {}
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _deep,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          builder: (ctx, scrollCtrl) {
+            return Container(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Answers from $name",
+                      style: GoogleFonts.outfit(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView(
+                      controller: scrollCtrl,
+                      children: [
+                        if (answers == null ||
+                            (answers is List && answers.isEmpty) ||
+                            (answers is Map && answers.isEmpty))
+                          Text("No answers provided.",
+                              style: GoogleFonts.outfit(
+                                  color: Colors.white54, fontSize: 16))
+                        else if (answers is List)
+                          ...answers.map((a) {
+                            final q = (a as Map)['question'] ?? '';
+                            final ans = a['answer'] ?? '';
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(q.toString(),
+                                      style: GoogleFonts.outfit(
+                                          color: Colors.white54, fontSize: 14)),
+                                  const SizedBox(height: 4),
+                                  Text(ans.toString(),
+                                      style: GoogleFonts.outfit(
+                                          color: Colors.white, fontSize: 16)),
+                                ],
+                              ),
+                            );
+                          })
+                        else if (answers is Map)
+                          ...answers.entries.map((e) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(e.key.toString(),
+                                      style: GoogleFonts.outfit(
+                                          color: Colors.white54, fontSize: 14)),
+                                  const SizedBox(height: 4),
+                                  Text(e.value.toString(),
+                                      style: GoogleFonts.outfit(
+                                          color: Colors.white, fontSize: 16)),
+                                ],
+                              ),
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   String _sanitizeAvatarUrl(dynamic raw) {
@@ -219,6 +344,87 @@ class _KnockListScreenState extends State<KnockListScreen>
                         letterSpacing: 1),
                   ),
                 ),
+                if (isReceived && status == 'pending') ...[
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    onTap: () => _showAnswers(item),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.visibility_rounded,
+                              size: 14, color: Colors.white),
+                          const SizedBox(width: 8),
+                          Text('View Answers',
+                              style: GoogleFonts.outfit(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () =>
+                              _updateStatus(req['id'].toString(), 'declined'),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF3060)
+                                  .withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: const Color(0xFFFF3060)
+                                      .withValues(alpha: 0.5)),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text('Decline',
+                                style: GoogleFonts.outfit(
+                                    color: const Color(0xFFFF3060),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () =>
+                              _updateStatus(req['id'].toString(), 'approved'),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00E676)
+                                  .withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: const Color(0xFF00E676)
+                                      .withValues(alpha: 0.5)),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text('Accept',
+                                style: GoogleFonts.outfit(
+                                    color: const Color(0xFF00E676),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

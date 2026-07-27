@@ -4,17 +4,20 @@ import 'package:flutter/material.dart';
 
 class SlothAnimatedLogo extends StatefulWidget {
   final bool isSignUpMode;
+  final double grabValue;
 
   const SlothAnimatedLogo({
     super.key,
     required this.isSignUpMode,
+    this.grabValue = 0.0,
   });
 
   @override
   State<SlothAnimatedLogo> createState() => _SlothAnimatedLogoState();
 }
 
-class _SlothAnimatedLogoState extends State<SlothAnimatedLogo> with TickerProviderStateMixin {
+class _SlothAnimatedLogoState extends State<SlothAnimatedLogo>
+    with TickerProviderStateMixin {
   late AnimationController _blinkController;
   late Animation<double> _blinkAnim;
   Timer? _blinkTimer;
@@ -79,19 +82,27 @@ class _SlothAnimatedLogoState extends State<SlothAnimatedLogo> with TickerProvid
 
               // Layer 2: Left Paw (static, pre-aligned on canvas)
               Positioned.fill(
-                child: Image.asset(
-                  'assets/images/Sloth_Left_Paw.png',
-                  fit: BoxFit.contain,
-                  errorBuilder: (c, e, s) => const SizedBox(),
+                child: Transform.translate(
+                  offset:
+                      Offset(-8.0 * widget.grabValue, 18.0 * widget.grabValue),
+                  child: Image.asset(
+                    'assets/images/Sloth_Left_Paw.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (c, e, s) => const SizedBox(),
+                  ),
                 ),
               ),
 
               // Layer 3: Right Paw (static, pre-aligned on canvas)
               Positioned.fill(
-                child: Image.asset(
-                  'assets/images/Sloth_Right_Paw.png',
-                  fit: BoxFit.contain,
-                  errorBuilder: (c, e, s) => const SizedBox(),
+                child: Transform.translate(
+                  offset:
+                      Offset(8.0 * widget.grabValue, 18.0 * widget.grabValue),
+                  child: Image.asset(
+                    'assets/images/Sloth_Right_Paw.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (c, e, s) => const SizedBox(),
+                  ),
                 ),
               ),
 

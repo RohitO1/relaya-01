@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'services/location_service.dart';
@@ -18,6 +19,7 @@ import 'widgets/skeleton_loaders.dart';
 import 'utils/constants.dart';
 import 'services/doodle_theme.dart';
 import 'knock_list_screen.dart';
+import 'edit_profile_screen.dart';
 
 List<String> _parseListExplore(dynamic data) {
   if (data == null) return [];
@@ -39,7 +41,7 @@ ImageProvider _getSafeImageProvider(String url) {
     final b64 = url.split(',').last;
     return MemoryImage(base64Decode(b64));
   }
-  return NetworkImage(url);
+  return CachedNetworkImageProvider(url);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1295,16 +1297,21 @@ class _ExploreScreenState extends State<ExploreScreen>
   }
 
   void _goSplit(Map<String, dynamic> profile) {
+    if (!_checkAndPromptCompleteness()) return;
+
     HapticFeedback.mediumImpact();
     setState(() {
       _selected = profile;
       _view = _XView.split;
       _isSpinning = false;
+      _seenProfileIds.add(profile['id']?.toString() ?? '');
     });
     _splitCtrl.forward(from: 0);
   }
 
   void _goRandom() {
+    if (!_checkAndPromptCompleteness()) return;
+
     final all = [..._activeUsers, ..._inactiveUsers];
     if (all.isEmpty) return;
     HapticFeedback.heavyImpact();
@@ -1338,11 +1345,15 @@ class _ExploreScreenState extends State<ExploreScreen>
     _splitCtrl.forward(from: 0);
     _spinCtrl.forward(from: 0).then((_) {
       if (!mounted) return;
-      final index = (all.length > 1) ? (all.indexOf(unseen.first)) : 0;
+      final unseenElement = unseen[math.Random().nextInt(unseen.length)];
+      final index = (all.length > 1) ? (all.indexOf(unseenElement)) : 0;
       setState(() {
         _selected = all[index];
         _view = _XView.split;
         _isSpinning = false;
+        if (_selected != null) {
+          _seenProfileIds.add(_selected!['id']?.toString() ?? '');
+        }
       });
       _splitCtrl.forward(from: 0);
     });
@@ -1359,10 +1370,13 @@ class _ExploreScreenState extends State<ExploreScreen>
     });
   }
 
-  bool get _isProfileComplete {
+  bool _checkAndPromptCompleteness() {
     if (_quickSetupDone) return true;
     if (_myProfile == null) return false;
+
+    // We want at least 80% completeness across these 12 core fields
     final requiredFields = [
+      'bio',
       'looking_for',
       'smoking',
       'drinking',
@@ -1375,13 +1389,116 @@ class _ExploreScreenState extends State<ExploreScreen>
       'interests',
       'personality_traits'
     ];
+
+    int filled = 0;
     for (final f in requiredFields) {
       final val = _myProfile![f];
-      if (val == null) return false;
-      if (val is String && val.isEmpty) return false;
-      if (val is List && val.isEmpty) return false;
+      if (val != null &&
+          (val is String
+              ? val.isNotEmpty
+              : (val is List ? val.isNotEmpty : true))) {
+        filled++;
+      }
     }
-    return true;
+
+    final score = filled / requiredFields.length;
+    if (score >= 0.8) return true;
+
+    // Not complete enough -> show sheet
+    _showProfileIncompleteSheet(score);
+    return false;
+  }
+
+  void _showProfileIncompleteSheet(double score) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF111111),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x40FF6B00),
+                blurRadius: 100,
+                spreadRadius: 20,
+              )
+            ],
+          ),
+          padding:
+              const EdgeInsets.only(top: 12, left: 24, right: 24, bottom: 40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 30),
+              const Icon(Icons.psychology_alt_rounded,
+                  color: Color(0xFFFF6B00), size: 64),
+              const SizedBox(height: 20),
+              Text(
+                'Unlock the Real Magic',
+                style: GoogleFonts.outfit(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Your profile is only ${(score * 100).toInt()}% complete! Relaya uses deep compatibility algorithms to match you correctly. Complete at least 80% of your profile to access Random Luck and Explore.',
+                style: GoogleFonts.outfit(
+                    color: Colors.white70, fontSize: 16, height: 1.5),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF6B00),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => EditProfileScreen(
+                              initialProfile: _myProfile ?? {})),
+                    ).then((_) {
+                      _loadMyProfile(); // Refresh after edit
+                    });
+                  },
+                  child: Text('Complete My Profile',
+                      style: GoogleFonts.outfit(
+                          fontSize: 18, fontWeight: FontWeight.w600)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Maybe Later',
+                    style: GoogleFonts.outfit(
+                        color: Colors.white54, fontSize: 16)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -2103,6 +2220,7 @@ class _ExploreScreenState extends State<ExploreScreen>
     int totalKnocksReceived = 0;
     int knocksSent = 0;
     int acceptedReceived = 0;
+    bool hasUnseenKnocks = false;
 
     try {
       final r = await Supabase.instance.client
@@ -2141,6 +2259,12 @@ class _ExploreScreenState extends State<ExploreScreen>
       acceptedReceived =
           receivedRes.where((k) => k['status'] == 'approved').length;
       knocksSent = sentRes.length;
+
+      final prefs = await SharedPreferences.getInstance();
+      final seenCount = prefs.getInt('seen_received_knocks_count') ?? 0;
+      if (totalKnocksReceived > seenCount) {
+        hasUnseenKnocks = true;
+      }
     } catch (e) {
       print("Error in loadMyProfile: $e");
     }
@@ -2313,7 +2437,8 @@ class _ExploreScreenState extends State<ExploreScreen>
                                 child: _KnockStatsBar(
                                     totalReceived: totalKnocksReceived,
                                     totalSent: knocksSent,
-                                    acceptedReceived: acceptedReceived),
+                                    acceptedReceived: acceptedReceived,
+                                    hasUnseenKnocks: hasUnseenKnocks),
                               ),
                               const SizedBox(height: 32),
 
@@ -4554,13 +4679,6 @@ class _InterestsCmp extends StatelessWidget {
   Widget build(BuildContext context) {
     final doodle = isDoodleMode(context);
     final shared = myI.where(thI.contains).toSet();
-    if (shared.length < 2) {
-      final combined = {...myI, ...thI}.toList()..shuffle();
-      for (final item in combined) {
-        shared.add(item);
-        if (shared.length >= 2) break;
-      }
-    }
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: doodle
@@ -5175,9 +5293,10 @@ class _GridCard extends StatelessWidget {
         if (url.isNotEmpty)
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: Image.network(url,
+            child: CachedNetworkImage(
+                imageUrl: url,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
+                errorWidget: (_, __, ___) => Container(
                     color: const Color(0xFF151515),
                     child: const Center(
                         child: Icon(Icons.person,
@@ -6399,10 +6518,12 @@ class _KnockStatsBar extends StatelessWidget {
   final int totalReceived;
   final int totalSent;
   final int acceptedReceived;
+  final bool hasUnseenKnocks;
   const _KnockStatsBar(
       {required this.totalReceived,
       required this.totalSent,
-      required this.acceptedReceived});
+      required this.acceptedReceived,
+      this.hasUnseenKnocks = false});
 
   @override
   Widget build(BuildContext context) {
@@ -6438,7 +6559,7 @@ class _KnockStatsBar extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                     builder: (_) => const KnockListScreen(initialTabIndex: 0)));
-          }),
+          }, showBubble: hasUnseenKnocks),
           Container(
               width: 1,
               height: 40,
@@ -6483,7 +6604,8 @@ class _KnockStatsBar extends StatelessWidget {
   }
 
   Widget _statItem(bool doodle, IconData icon, String val, String label,
-      Color color, BuildContext context, VoidCallback onTap) {
+      Color color, BuildContext context, VoidCallback onTap,
+      {bool showBubble = false}) {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -6492,7 +6614,27 @@ class _KnockStatsBar extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: color, size: 16),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(icon, color: color, size: 16),
+                  if (showBubble)
+                    Positioned(
+                      top: -2,
+                      right: -2,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: const Color(0xFF060608), width: 1.5),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
               const SizedBox(width: 6),
               Text(val,
                   style: doodle

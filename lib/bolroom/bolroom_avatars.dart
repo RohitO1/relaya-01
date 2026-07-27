@@ -2,6 +2,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -151,8 +152,9 @@ class BolroomAvatars {
   ];
 
   /// Look up by id (returns null if not found)
-  static BolroomAvatar? byId(String? id) =>
-      id == null ? null : all.firstWhere((a) => a.id == id, orElse: () => all.first);
+  static BolroomAvatar? byId(String? id) => id == null
+      ? null
+      : all.firstWhere((a) => a.id == id, orElse: () => all.first);
 
   /// Pick a random avatar deterministically based on userId
   static BolroomAvatar forUser(String userId) {
@@ -186,10 +188,8 @@ class BolroomAvatars {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKey, avatarKey);
     try {
-      await Supabase.instance.client
-          .from('bolroom_profiles')
-          .update({'avatar_key': avatarKey, 'avatar_url': null})
-          .eq('id', userId);
+      await Supabase.instance.client.from('bolroom_profiles').update(
+          {'avatar_key': avatarKey, 'avatar_url': null}).eq('id', userId);
     } catch (e) {
       debugPrint('saveAvatarKey: $e');
     }
@@ -206,12 +206,12 @@ class BolroomAvatars {
     // If has a real network photo, show that
     if (avatarUrl != null && avatarUrl.startsWith('http')) {
       return ClipOval(
-        child: Image.network(
-          avatarUrl,
+        child: CachedNetworkImage(
+          imageUrl: avatarUrl,
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) =>
+          errorWidget: (_, __, ___) =>
               _buildCustomAvatarCircle(size, avatarKey, userId, auraOverride),
         ),
       );
@@ -244,6 +244,7 @@ class BolroomAvatarWidget extends StatelessWidget {
   final String userId;
   final bool showRing;
   final bool isOnline;
+  final Color? auraOverride;
 
   const BolroomAvatarWidget({
     super.key,
@@ -253,14 +254,17 @@ class BolroomAvatarWidget extends StatelessWidget {
     required this.userId,
     this.showRing = true,
     this.isOnline = false,
+    this.auraOverride,
   });
 
   @override
   Widget build(BuildContext context) {
-    final avatar = BolroomAvatars.byId(avatarKey) ?? BolroomAvatars.forUser(userId);
-    final ringColor = avatarUrl != null && avatarUrl!.startsWith('http')
-        ? const Color(0xFF7B2CBF)
-        : avatar.primaryColor;
+    final avatar =
+        BolroomAvatars.byId(avatarKey) ?? BolroomAvatars.forUser(userId);
+    final ringColor = auraOverride ??
+        (avatarUrl != null && avatarUrl!.startsWith('http')
+            ? const Color(0xFF7B2CBF)
+            : avatar.primaryColor);
 
     return Stack(
       children: [
@@ -289,6 +293,7 @@ class BolroomAvatarWidget extends StatelessWidget {
               avatarUrl: avatarUrl,
               avatarKey: avatarKey,
               userId: userId,
+              auraOverride: auraOverride,
             ),
           ),
         ),
@@ -341,8 +346,8 @@ class _BolroomAvatarPickerSheetState extends State<BolroomAvatarPickerSheet> {
   @override
   void initState() {
     super.initState();
-    _selected = widget.currentAvatarKey ??
-        BolroomAvatars.forUser(widget.userId).id;
+    _selected =
+        widget.currentAvatarKey ?? BolroomAvatars.forUser(widget.userId).id;
   }
 
   @override
@@ -411,8 +416,7 @@ class _BolroomAvatarPickerSheetState extends State<BolroomAvatarPickerSheet> {
                                     av.primaryColor
                                   ])
                                 : null,
-                            color:
-                                isSelected ? null : const Color(0xFF231D38),
+                            color: isSelected ? null : const Color(0xFF231D38),
                             boxShadow: isSelected
                                 ? [
                                     BoxShadow(
@@ -514,7 +518,8 @@ class _AvatarPainterWidget extends StatelessWidget {
 class _ShadowPhantomPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width; final h = size.height;
+    final w = size.width;
+    final h = size.height;
     final p = Paint()..isAntiAlias = true;
 
     // Background
@@ -532,7 +537,12 @@ class _ShadowPhantomPainter extends CustomPainter {
 
     // Face shadow
     p.color = const Color(0xFF160626);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.42), width: w * 0.42, height: h * 0.3), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.42),
+            width: w * 0.42,
+            height: h * 0.3),
+        p);
 
     // Glowing eyes
     final eyeGlow = Paint()
@@ -563,7 +573,8 @@ class _ShadowPhantomPainter extends CustomPainter {
 class _NeonFoxPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width; final h = size.height;
+    final w = size.width;
+    final h = size.height;
     final p = Paint()..isAntiAlias = true;
 
     p.color = const Color(0xFF1C0A00);
@@ -571,7 +582,10 @@ class _NeonFoxPainter extends CustomPainter {
 
     // Fox body/face (circle)
     p.color = const Color(0xFFE85000);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.55), width: w * 0.6, height: h * 0.5), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.55), width: w * 0.6, height: h * 0.5),
+        p);
 
     // Ears
     final earL = Path()
@@ -602,11 +616,14 @@ class _NeonFoxPainter extends CustomPainter {
     // Mask
     p.color = const Color(0xFFF0F0F0);
     final mask = Path()
-      ..addOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.55), width: w * 0.36, height: h * 0.3));
+      ..addOval(Rect.fromCenter(
+          center: Offset(w * 0.5, h * 0.55), width: w * 0.36, height: h * 0.3));
     canvas.drawPath(mask, p);
 
     // Eyes (neon)
-    final eyeGlow = Paint()..color = const Color(0xFFFF6B00)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    final eyeGlow = Paint()
+      ..color = const Color(0xFFFF6B00)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
     canvas.drawCircle(Offset(w * 0.38, h * 0.5), w * 0.055, eyeGlow);
     canvas.drawCircle(Offset(w * 0.62, h * 0.5), w * 0.055, eyeGlow);
     p.color = Colors.black;
@@ -615,7 +632,12 @@ class _NeonFoxPainter extends CustomPainter {
 
     // Nose
     p.color = const Color(0xFF1C0A00);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.6), width: w * 0.08, height: h * 0.04), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.6),
+            width: w * 0.08,
+            height: h * 0.04),
+        p);
   }
 
   @override
@@ -626,19 +648,26 @@ class _NeonFoxPainter extends CustomPainter {
 class _GlitchGhostPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width; final h = size.height;
+    final w = size.width;
+    final h = size.height;
     final p = Paint()..isAntiAlias = true;
 
     p.color = const Color(0xFF001F2E);
     canvas.drawRect(Rect.fromLTWH(0, 0, w, h), p);
 
     // Ghost shape
-    final glow = Paint()..color = const Color(0xFF00FFFF).withValues(alpha: 0.15)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.45), width: w * 0.7, height: h * 0.7), glow);
+    final glow = Paint()
+      ..color = const Color(0xFF00FFFF).withValues(alpha: 0.15)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.45), width: w * 0.7, height: h * 0.7),
+        glow);
 
     p.color = const Color(0xFF00DDDD).withValues(alpha: 0.8);
     final ghost = Path()
-      ..addOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.38), width: w * 0.54, height: h * 0.48))
+      ..addOval(Rect.fromCenter(
+          center: Offset(w * 0.5, h * 0.38), width: w * 0.54, height: h * 0.48))
       ..moveTo(w * 0.23, h * 0.6)
       ..lineTo(w * 0.23, h * 0.88)
       ..quadraticBezierTo(w * 0.32, h * 0.78, w * 0.38, h * 0.88)
@@ -676,49 +705,125 @@ class _GlitchGhostPainter extends CustomPainter {
 class _CosmicCatPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width; final h = size.height;
+    final w = size.width;
+    final h = size.height;
     final p = Paint()..isAntiAlias = true;
 
-    p.shader = const LinearGradient(colors: [Color(0xFF1A0030), Color(0xFF2D006E)],
-        begin: Alignment.topLeft, end: Alignment.bottomRight)
+    p.shader = const LinearGradient(
+            colors: [Color(0xFF1A0030), Color(0xFF2D006E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight)
         .createShader(Rect.fromLTWH(0, 0, w, h));
     canvas.drawRect(Rect.fromLTWH(0, 0, w, h), p);
     p.shader = null;
 
     // Body
     p.color = const Color(0xFF9900CC);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.57), width: w * 0.65, height: h * 0.55), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.57),
+            width: w * 0.65,
+            height: h * 0.55),
+        p);
 
     // Ears
-    final earL = Path()..moveTo(w * 0.23, h * 0.38)..lineTo(w * 0.16, h * 0.14)..lineTo(w * 0.38, h * 0.3)..close();
-    final earR = Path()..moveTo(w * 0.77, h * 0.38)..lineTo(w * 0.84, h * 0.14)..lineTo(w * 0.62, h * 0.3)..close();
+    final earL = Path()
+      ..moveTo(w * 0.23, h * 0.38)
+      ..lineTo(w * 0.16, h * 0.14)
+      ..lineTo(w * 0.38, h * 0.3)
+      ..close();
+    final earR = Path()
+      ..moveTo(w * 0.77, h * 0.38)
+      ..lineTo(w * 0.84, h * 0.14)
+      ..lineTo(w * 0.62, h * 0.3)
+      ..close();
     p.color = const Color(0xFFBB00FF);
-    canvas.drawPath(earL, p); canvas.drawPath(earR, p);
+    canvas.drawPath(earL, p);
+    canvas.drawPath(earR, p);
     p.color = const Color(0xFFFF2D7E);
-    final il = Path()..moveTo(w * 0.26, h * 0.36)..lineTo(w * 0.21, h * 0.20)..lineTo(w * 0.36, h * 0.3)..close();
-    final ir = Path()..moveTo(w * 0.74, h * 0.36)..lineTo(w * 0.79, h * 0.20)..lineTo(w * 0.64, h * 0.3)..close();
-    canvas.drawPath(il, p); canvas.drawPath(ir, p);
+    final il = Path()
+      ..moveTo(w * 0.26, h * 0.36)
+      ..lineTo(w * 0.21, h * 0.20)
+      ..lineTo(w * 0.36, h * 0.3)
+      ..close();
+    final ir = Path()
+      ..moveTo(w * 0.74, h * 0.36)
+      ..lineTo(w * 0.79, h * 0.20)
+      ..lineTo(w * 0.64, h * 0.3)
+      ..close();
+    canvas.drawPath(il, p);
+    canvas.drawPath(ir, p);
 
     // Eyes
-    final eyeG = Paint()..color = const Color(0xFFFF2D7E)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.37, h * 0.5), width: w * 0.1, height: h * 0.12), eyeG);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.63, h * 0.5), width: w * 0.1, height: h * 0.12), eyeG);
+    final eyeG = Paint()
+      ..color = const Color(0xFFFF2D7E)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.37, h * 0.5),
+            width: w * 0.1,
+            height: h * 0.12),
+        eyeG);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.63, h * 0.5),
+            width: w * 0.1,
+            height: h * 0.12),
+        eyeG);
     p.color = Colors.white;
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.37, h * 0.5), width: w * 0.07, height: h * 0.09), p);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.63, h * 0.5), width: w * 0.07, height: h * 0.09), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.37, h * 0.5),
+            width: w * 0.07,
+            height: h * 0.09),
+        p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.63, h * 0.5),
+            width: w * 0.07,
+            height: h * 0.09),
+        p);
     p.color = Colors.black;
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.37, h * 0.5), width: w * 0.03, height: h * 0.07), p);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.63, h * 0.5), width: w * 0.03, height: h * 0.07), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.37, h * 0.5),
+            width: w * 0.03,
+            height: h * 0.07),
+        p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.63, h * 0.5),
+            width: w * 0.03,
+            height: h * 0.07),
+        p);
 
     // Nose + mouth
     p.color = const Color(0xFFFF2D7E);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.62), width: w * 0.08, height: h * 0.05), p);
-    p..color = const Color(0xFFFF2D7E)..strokeWidth = w * 0.02..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
-    canvas.drawArc(Rect.fromCenter(center: Offset(w * 0.5, h * 0.64), width: w * 0.2, height: h * 0.1), 0.2, 2.7, false, p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.62),
+            width: w * 0.08,
+            height: h * 0.05),
+        p);
+    p
+      ..color = const Color(0xFFFF2D7E)
+      ..strokeWidth = w * 0.02
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.64), width: w * 0.2, height: h * 0.1),
+        0.2,
+        2.7,
+        false,
+        p);
     p.style = PaintingStyle.fill;
 
     // Whiskers
-    p..color = Colors.white.withValues(alpha: 0.4)..strokeWidth = 1..style = PaintingStyle.stroke;
+    p
+      ..color = Colors.white.withValues(alpha: 0.4)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
     canvas.drawLine(Offset(w * 0.18, h * 0.6), Offset(w * 0.42, h * 0.63), p);
     canvas.drawLine(Offset(w * 0.18, h * 0.65), Offset(w * 0.42, h * 0.65), p);
     canvas.drawLine(Offset(w * 0.82, h * 0.6), Offset(w * 0.58, h * 0.63), p);
@@ -734,7 +839,8 @@ class _CosmicCatPainter extends CustomPainter {
 class _DigitalOniPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width; final h = size.height;
+    final w = size.width;
+    final h = size.height;
     final p = Paint()..isAntiAlias = true;
 
     p.color = const Color(0xFF1A0000);
@@ -742,30 +848,74 @@ class _DigitalOniPainter extends CustomPainter {
 
     // Head
     p.color = const Color(0xFFCC2200);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(w * 0.5, h * 0.5), width: w * 0.7, height: h * 0.65), const Radius.circular(20)), p);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromCenter(
+                center: Offset(w * 0.5, h * 0.5),
+                width: w * 0.7,
+                height: h * 0.65),
+            const Radius.circular(20)),
+        p);
 
     // Horns
-    final hornL = Path()..moveTo(w * 0.28, h * 0.22)..lineTo(w * 0.22, h * 0.04)..lineTo(w * 0.36, h * 0.2)..close();
-    final hornR = Path()..moveTo(w * 0.72, h * 0.22)..lineTo(w * 0.78, h * 0.04)..lineTo(w * 0.64, h * 0.2)..close();
+    final hornL = Path()
+      ..moveTo(w * 0.28, h * 0.22)
+      ..lineTo(w * 0.22, h * 0.04)
+      ..lineTo(w * 0.36, h * 0.2)
+      ..close();
+    final hornR = Path()
+      ..moveTo(w * 0.72, h * 0.22)
+      ..lineTo(w * 0.78, h * 0.04)
+      ..lineTo(w * 0.64, h * 0.2)
+      ..close();
     p.color = const Color(0xFFAA0000);
-    canvas.drawPath(hornL, p); canvas.drawPath(hornR, p);
+    canvas.drawPath(hornL, p);
+    canvas.drawPath(hornR, p);
 
     // Eyes (circuit-style)
     p.color = const Color(0xFFFFFF00);
-    canvas.drawRect(Rect.fromCenter(center: Offset(w * 0.36, h * 0.44), width: w * 0.12, height: h * 0.07), p);
-    canvas.drawRect(Rect.fromCenter(center: Offset(w * 0.64, h * 0.44), width: w * 0.12, height: h * 0.07), p);
+    canvas.drawRect(
+        Rect.fromCenter(
+            center: Offset(w * 0.36, h * 0.44),
+            width: w * 0.12,
+            height: h * 0.07),
+        p);
+    canvas.drawRect(
+        Rect.fromCenter(
+            center: Offset(w * 0.64, h * 0.44),
+            width: w * 0.12,
+            height: h * 0.07),
+        p);
     p.color = Colors.black;
-    canvas.drawRect(Rect.fromCenter(center: Offset(w * 0.36, h * 0.44), width: w * 0.06, height: h * 0.03), p);
-    canvas.drawRect(Rect.fromCenter(center: Offset(w * 0.64, h * 0.44), width: w * 0.06, height: h * 0.03), p);
+    canvas.drawRect(
+        Rect.fromCenter(
+            center: Offset(w * 0.36, h * 0.44),
+            width: w * 0.06,
+            height: h * 0.03),
+        p);
+    canvas.drawRect(
+        Rect.fromCenter(
+            center: Offset(w * 0.64, h * 0.44),
+            width: w * 0.06,
+            height: h * 0.03),
+        p);
 
     // Mouth (sharp teeth)
     p.color = Colors.black;
-    canvas.drawRect(Rect.fromCenter(center: Offset(w * 0.5, h * 0.62), width: w * 0.38, height: h * 0.1), p);
+    canvas.drawRect(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.62),
+            width: w * 0.38,
+            height: h * 0.1),
+        p);
     p.color = Colors.white;
     for (int i = 0; i < 5; i++) {
       final tx = w * (0.33 + i * 0.085);
       final tooth = Path()
-        ..moveTo(tx, h * 0.57)..lineTo(tx + w * 0.04, h * 0.57)..lineTo(tx + w * 0.02, h * 0.64)..close();
+        ..moveTo(tx, h * 0.57)
+        ..lineTo(tx + w * 0.04, h * 0.57)
+        ..lineTo(tx + w * 0.02, h * 0.64)
+        ..close();
       canvas.drawPath(tooth, p);
     }
   }
@@ -778,7 +928,8 @@ class _DigitalOniPainter extends CustomPainter {
 class _LunarPandaPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width; final h = size.height;
+    final w = size.width;
+    final h = size.height;
     final p = Paint()..isAntiAlias = true;
 
     p.color = const Color(0xFF222244);
@@ -786,18 +937,39 @@ class _LunarPandaPainter extends CustomPainter {
 
     // Stars
     p.color = Colors.white.withValues(alpha: 0.3);
-    for (final star in [(0.1, 0.15), (0.8, 0.1), (0.9, 0.4), (0.05, 0.6), (0.85, 0.7)]) {
+    for (final star in [
+      (0.1, 0.15),
+      (0.8, 0.1),
+      (0.9, 0.4),
+      (0.05, 0.6),
+      (0.85, 0.7)
+    ]) {
       canvas.drawCircle(Offset(w * star.$1, h * star.$2), w * 0.012, p);
     }
 
     // Head
     p.color = const Color(0xFFF0F0F0);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.5), width: w * 0.66, height: h * 0.56), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.5),
+            width: w * 0.66,
+            height: h * 0.56),
+        p);
 
     // Black eye patches
     p.color = const Color(0xFF222222);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.35, h * 0.46), width: w * 0.2, height: h * 0.18), p);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.65, h * 0.46), width: w * 0.2, height: h * 0.18), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.35, h * 0.46),
+            width: w * 0.2,
+            height: h * 0.18),
+        p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.65, h * 0.46),
+            width: w * 0.2,
+            height: h * 0.18),
+        p);
 
     // Ears
     p.color = const Color(0xFF222222);
@@ -817,7 +989,12 @@ class _LunarPandaPainter extends CustomPainter {
 
     // Nose
     p.color = const Color(0xFF555577);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.59), width: w * 0.1, height: h * 0.06), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.59),
+            width: w * 0.1,
+            height: h * 0.06),
+        p);
   }
 
   @override
@@ -828,14 +1005,19 @@ class _LunarPandaPainter extends CustomPainter {
 class _VoidSerpentPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width; final h = size.height;
+    final w = size.width;
+    final h = size.height;
     final p = Paint()..isAntiAlias = true;
 
     p.color = const Color(0xFF001A0A);
     canvas.drawRect(Rect.fromLTWH(0, 0, w, h), p);
 
     // Serpent coil body
-    p..color = const Color(0xFF006633)..style = PaintingStyle.stroke..strokeWidth = w * 0.12..strokeCap = StrokeCap.round;
+    p
+      ..color = const Color(0xFF006633)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.12
+      ..strokeCap = StrokeCap.round;
     final coil = Path()
       ..moveTo(w * 0.5, h * 0.85)
       ..quadraticBezierTo(w * 0.1, h * 0.7, w * 0.3, h * 0.5)
@@ -846,10 +1028,17 @@ class _VoidSerpentPainter extends CustomPainter {
 
     // Head
     p.color = const Color(0xFF008844);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.32), width: w * 0.3, height: h * 0.22), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.32),
+            width: w * 0.3,
+            height: h * 0.22),
+        p);
 
     // Eyes
-    final eyeG = Paint()..color = const Color(0xFF00FF88)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    final eyeG = Paint()
+      ..color = const Color(0xFF00FF88)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
     canvas.drawCircle(Offset(w * 0.42, h * 0.3), w * 0.045, eyeG);
     canvas.drawCircle(Offset(w * 0.58, h * 0.3), w * 0.045, eyeG);
     p.color = Colors.black;
@@ -857,7 +1046,11 @@ class _VoidSerpentPainter extends CustomPainter {
     canvas.drawCircle(Offset(w * 0.58, h * 0.3), w * 0.022, p);
 
     // Tongue
-    p..color = const Color(0xFFFF2200)..style = PaintingStyle.stroke..strokeWidth = w * 0.03..strokeCap = StrokeCap.round;
+    p
+      ..color = const Color(0xFFFF2200)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.03
+      ..strokeCap = StrokeCap.round;
     canvas.drawLine(Offset(w * 0.5, h * 0.4), Offset(w * 0.5, h * 0.48), p);
     canvas.drawLine(Offset(w * 0.5, h * 0.48), Offset(w * 0.44, h * 0.53), p);
     canvas.drawLine(Offset(w * 0.5, h * 0.48), Offset(w * 0.56, h * 0.53), p);
@@ -872,11 +1065,14 @@ class _VoidSerpentPainter extends CustomPainter {
 class _StormRavenPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width; final h = size.height;
+    final w = size.width;
+    final h = size.height;
     final p = Paint()..isAntiAlias = true;
 
-    p.shader = const LinearGradient(colors: [Color(0xFF0A0E2A), Color(0xFF060D20)],
-        begin: Alignment.topCenter, end: Alignment.bottomCenter)
+    p.shader = const LinearGradient(
+            colors: [Color(0xFF0A0E2A), Color(0xFF060D20)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter)
         .createShader(Rect.fromLTWH(0, 0, w, h));
     canvas.drawRect(Rect.fromLTWH(0, 0, w, h), p);
     p.shader = null;
@@ -884,14 +1080,24 @@ class _StormRavenPainter extends CustomPainter {
     // Wings
     p.color = const Color(0xFF1A2050);
     final wingL = Path()
-      ..moveTo(w * 0.3, h * 0.5)..lineTo(w * 0.0, h * 0.3)..lineTo(w * 0.05, h * 0.65)..close();
+      ..moveTo(w * 0.3, h * 0.5)
+      ..lineTo(w * 0.0, h * 0.3)
+      ..lineTo(w * 0.05, h * 0.65)
+      ..close();
     final wingR = Path()
-      ..moveTo(w * 0.7, h * 0.5)..lineTo(w * 1.0, h * 0.3)..lineTo(w * 0.95, h * 0.65)..close();
-    canvas.drawPath(wingL, p); canvas.drawPath(wingR, p);
+      ..moveTo(w * 0.7, h * 0.5)
+      ..lineTo(w * 1.0, h * 0.3)
+      ..lineTo(w * 0.95, h * 0.65)
+      ..close();
+    canvas.drawPath(wingL, p);
+    canvas.drawPath(wingR, p);
 
     // Body
     p.color = const Color(0xFF1A1A2E);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.55), width: w * 0.5, height: h * 0.5), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.55), width: w * 0.5, height: h * 0.5),
+        p);
 
     // Head
     p.color = const Color(0xFF1A1A2E);
@@ -900,11 +1106,16 @@ class _StormRavenPainter extends CustomPainter {
     // Beak
     p.color = const Color(0xFF4FC3F7);
     final beak = Path()
-      ..moveTo(w * 0.5, h * 0.38)..lineTo(w * 0.58, h * 0.43)..lineTo(w * 0.5, h * 0.46)..close();
+      ..moveTo(w * 0.5, h * 0.38)
+      ..lineTo(w * 0.58, h * 0.43)
+      ..lineTo(w * 0.5, h * 0.46)
+      ..close();
     canvas.drawPath(beak, p);
 
     // Eyes (lightning blue)
-    final eyeG = Paint()..color = const Color(0xFF4FC3F7)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    final eyeG = Paint()
+      ..color = const Color(0xFF4FC3F7)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     canvas.drawCircle(Offset(w * 0.4, h * 0.31), w * 0.055, eyeG);
     canvas.drawCircle(Offset(w * 0.6, h * 0.31), w * 0.055, eyeG);
     p.color = const Color(0xFF0088FF);
@@ -920,11 +1131,14 @@ class _StormRavenPainter extends CustomPainter {
 class _SolarKitsunePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width; final h = size.height;
+    final w = size.width;
+    final h = size.height;
     final p = Paint()..isAntiAlias = true;
 
-    p.shader = const LinearGradient(colors: [Color(0xFF1A0E00), Color(0xFF0A0600)],
-        begin: Alignment.topCenter, end: Alignment.bottomCenter)
+    p.shader = const LinearGradient(
+            colors: [Color(0xFF1A0E00), Color(0xFF0A0600)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter)
         .createShader(Rect.fromLTWH(0, 0, w, h));
     canvas.drawRect(Rect.fromLTWH(0, 0, w, h), p);
     p.shader = null;
@@ -935,8 +1149,10 @@ class _SolarKitsunePainter extends CustomPainter {
       final tailPath = Path()
         ..moveTo(w * 0.5, h * 0.75)
         ..quadraticBezierTo(
-          w * (0.5 + sin(angle) * 0.5), h * 0.5,
-          w * (0.5 + sin(angle) * 0.6), h * 0.25,
+          w * (0.5 + sin(angle) * 0.5),
+          h * 0.5,
+          w * (0.5 + sin(angle) * 0.6),
+          h * 0.25,
         );
       final tailPaint = Paint()
         ..color = const Color(0xFFFF8C00).withValues(alpha: 0.7)
@@ -948,29 +1164,65 @@ class _SolarKitsunePainter extends CustomPainter {
 
     // Head
     p.color = const Color(0xFFCC7700);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.4), width: w * 0.56, height: h * 0.46), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.4),
+            width: w * 0.56,
+            height: h * 0.46),
+        p);
 
     // Ears
-    final earL = Path()..moveTo(w * 0.24, h * 0.3)..lineTo(w * 0.18, h * 0.08)..lineTo(w * 0.38, h * 0.24)..close();
-    final earR = Path()..moveTo(w * 0.76, h * 0.3)..lineTo(w * 0.82, h * 0.08)..lineTo(w * 0.62, h * 0.24)..close();
+    final earL = Path()
+      ..moveTo(w * 0.24, h * 0.3)
+      ..lineTo(w * 0.18, h * 0.08)
+      ..lineTo(w * 0.38, h * 0.24)
+      ..close();
+    final earR = Path()
+      ..moveTo(w * 0.76, h * 0.3)
+      ..lineTo(w * 0.82, h * 0.08)
+      ..lineTo(w * 0.62, h * 0.24)
+      ..close();
     p.color = const Color(0xFFAA5500);
-    canvas.drawPath(earL, p); canvas.drawPath(earR, p);
+    canvas.drawPath(earL, p);
+    canvas.drawPath(earR, p);
 
     // Mask
     p.color = const Color(0xFFFFEECC);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.42), width: w * 0.34, height: h * 0.28), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.42),
+            width: w * 0.34,
+            height: h * 0.28),
+        p);
 
     // Eyes (gold)
-    final eyeG = Paint()..color = const Color(0xFFFFD700)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    final eyeG = Paint()
+      ..color = const Color(0xFFFFD700)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
     canvas.drawCircle(Offset(w * 0.38, h * 0.38), w * 0.055, eyeG);
     canvas.drawCircle(Offset(w * 0.62, h * 0.38), w * 0.055, eyeG);
     p.color = const Color(0xFF4A2800);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.38, h * 0.38), width: w * 0.025, height: h * 0.055), p);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.62, h * 0.38), width: w * 0.025, height: h * 0.055), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.38, h * 0.38),
+            width: w * 0.025,
+            height: h * 0.055),
+        p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.62, h * 0.38),
+            width: w * 0.025,
+            height: h * 0.055),
+        p);
 
     // Nose
     p.color = const Color(0xFF7A3300);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.5), width: w * 0.08, height: h * 0.045), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.5),
+            width: w * 0.08,
+            height: h * 0.045),
+        p);
   }
 
   @override
@@ -981,14 +1233,18 @@ class _SolarKitsunePainter extends CustomPainter {
 class _PhantomMonkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width; final h = size.height;
+    final w = size.width;
+    final h = size.height;
     final p = Paint()..isAntiAlias = true;
 
     p.color = const Color(0xFF0D0800);
     canvas.drawRect(Rect.fromLTWH(0, 0, w, h), p);
 
     // Halo
-    p..color = const Color(0xFFD4A017).withValues(alpha: 0.3)..style = PaintingStyle.stroke..strokeWidth = w * 0.06;
+    p
+      ..color = const Color(0xFFD4A017).withValues(alpha: 0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.06;
     canvas.drawCircle(Offset(w * 0.5, h * 0.22), w * 0.22, p);
     p.style = PaintingStyle.fill;
 
@@ -1003,23 +1259,60 @@ class _PhantomMonkPainter extends CustomPainter {
 
     // Head
     p.color = const Color(0xFF8B6914);
-    canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.42), width: w * 0.5, height: h * 0.42), p);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.42),
+            width: w * 0.5,
+            height: h * 0.42),
+        p);
 
     // Eyes (closed — meditating)
-    p..color = const Color(0xFF3A2000)..style = PaintingStyle.stroke..strokeWidth = w * 0.03..strokeCap = StrokeCap.round;
-    canvas.drawArc(Rect.fromCenter(center: Offset(w * 0.38, h * 0.42), width: w * 0.12, height: h * 0.06), 3.14, 3.14, false, p);
-    canvas.drawArc(Rect.fromCenter(center: Offset(w * 0.62, h * 0.42), width: w * 0.12, height: h * 0.06), 3.14, 3.14, false, p);
+    p
+      ..color = const Color(0xFF3A2000)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.03
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+        Rect.fromCenter(
+            center: Offset(w * 0.38, h * 0.42),
+            width: w * 0.12,
+            height: h * 0.06),
+        3.14,
+        3.14,
+        false,
+        p);
+    canvas.drawArc(
+        Rect.fromCenter(
+            center: Offset(w * 0.62, h * 0.42),
+            width: w * 0.12,
+            height: h * 0.06),
+        3.14,
+        3.14,
+        false,
+        p);
     p.style = PaintingStyle.fill;
 
     // Mark on forehead
-    final markGlow = Paint()..color = const Color(0xFFD4A017)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    final markGlow = Paint()
+      ..color = const Color(0xFFD4A017)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     canvas.drawCircle(Offset(w * 0.5, h * 0.28), w * 0.05, markGlow);
     p.color = const Color(0xFFFFD700);
     canvas.drawCircle(Offset(w * 0.5, h * 0.28), w * 0.03, p);
 
     // Smile
-    p..color = const Color(0xFF3A2000)..style = PaintingStyle.stroke..strokeWidth = w * 0.025..strokeCap = StrokeCap.round;
-    canvas.drawArc(Rect.fromCenter(center: Offset(w * 0.5, h * 0.5), width: w * 0.2, height: h * 0.1), 0.2, 2.7, false, p);
+    p
+      ..color = const Color(0xFF3A2000)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.025
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+        Rect.fromCenter(
+            center: Offset(w * 0.5, h * 0.5), width: w * 0.2, height: h * 0.1),
+        0.2,
+        2.7,
+        false,
+        p);
     p.style = PaintingStyle.fill;
   }
 

@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'profile_screen.dart';
@@ -1073,9 +1074,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   color: Colors.white)));
     }
     if (avatarUrl.startsWith('http')) {
-      return Image.network(avatarUrl,
+      return CachedNetworkImage(
+          imageUrl: avatarUrl,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Center(
+          errorWidget: (_, __, ___) => Center(
               child: Text(initial,
                   style: GoogleFonts.inter(
                       fontSize: 16,
@@ -1203,12 +1205,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         Center(child: Icon(Icons.image, color: HomeColors.muted, size: 30));
 
     if (url.startsWith('http')) {
-      imageWidget = Image.network(
-        url,
+      imageWidget = CachedNetworkImage(
+        imageUrl: url,
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
-        errorBuilder: (_, __, ___) => Center(
+        errorWidget: (_, __, ___) => Center(
             child: Icon(Icons.broken_image_outlined,
                 color: HomeColors.muted, size: 36)),
       );
@@ -1285,10 +1287,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               if (isMyPost) ...[
-                _buildMoreOption(Icons.delete_outline, 'Delete Post', () {
+                _buildMoreOption(Icons.edit_note, 'Edit Caption', () {
                   Navigator.pop(ctx);
-                  _deletePost(postId);
-                }, isRed: true),
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Edit caption feature coming soon')));
+                }),
+                _buildMoreOption(Icons.push_pin, 'Pin to Profile', () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Post pinned to profile')));
+                }),
+                _buildMoreOption(Icons.visibility_off, 'Hide Post', () {
+                  Navigator.pop(ctx);
+                  _hidePost(postId);
+                }),
+                _buildMoreOption(Icons.archive, 'Archive Post', () {
+                  Navigator.pop(ctx);
+                  _hidePost(postId);
+                }),
                 _buildMoreOption(Icons.link, 'Copy Link', () {
                   Navigator.pop(ctx);
                   Clipboard.setData(
@@ -1296,6 +1312,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Link copied')));
                 }),
+                _buildMoreOption(Icons.delete_outline, 'Delete Post', () {
+                  Navigator.pop(ctx);
+                  _deletePost(postId);
+                }, isRed: true),
               ] else ...[
                 _buildMoreOption(Icons.volume_off, 'Mute User', () {
                   Navigator.pop(ctx);
@@ -1469,7 +1489,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     doodle
                                         ? DoodleAvatar(
                                             size: 28,
-                                            url: '',
+                                            url: c['avatar_url']?.toString() ??
+                                                '',
                                             borderColor: DoodleColors.orange,
                                             fallback: Center(
                                                 child: Text(
@@ -1480,11 +1501,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                         : CircleAvatar(
                                             radius: 14,
                                             backgroundColor: HomeColors.card,
-                                            child: Text(
-                                                (c['user_name'] ?? 'U')[0],
-                                                style: GoogleFonts.inter(
-                                                    fontSize: 10,
-                                                    color: HomeColors.txt))),
+                                            backgroundImage:
+                                                (c['avatar_url'] != null &&
+                                                        c['avatar_url']
+                                                            .toString()
+                                                            .isNotEmpty)
+                                                    ? (c['avatar_url'].toString().startsWith('data:image') ? MemoryImage(base64Decode(c['avatar_url'].toString().split(',').last)) : CachedNetworkImageProvider(c['avatar_url']))
+                                                        as ImageProvider
+                                                    : null,
+                                            child: (c['avatar_url'] == null ||
+                                                    c['avatar_url']
+                                                        .toString()
+                                                        .isEmpty)
+                                                ? Text((c['user_name'] ?? 'U')[0], style: GoogleFonts.inter(fontSize: 10, color: HomeColors.txt))
+                                                : null),
                                     const SizedBox(width: 8),
                                     Expanded(
                                         child: Column(
@@ -1756,6 +1786,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       hintStyle: doodle
                                           ? DoodleFonts.body(
                                               color: DoodleColors.brown
+                                                  .withValues(alpha: 0.5)
                                                   .withValues(alpha: 0.5),
                                               fontSize: 16)
                                           : GoogleFonts.inter(
@@ -1774,11 +1805,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                         borderRadius: BorderRadius.circular(14),
                                         child: AspectRatio(
                                             aspectRatio: 1.0,
-                                            child: Image.network(
-                                              uploadedImageUrl!,
+                                            child: CachedNetworkImage(
+                                              imageUrl: uploadedImageUrl!,
                                               width: double.infinity,
                                               fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) =>
+                                              errorWidget: (_, __, ___) =>
                                                   Container(
                                                       color: HomeColors.card,
                                                       child: const Center(
@@ -1786,7 +1817,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                                               Icons
                                                                   .broken_image,
                                                               color: Colors
-                                                                  .white24))),
+                                                                  .white54,
+                                                              size: 24))),
                                             )),
                                       ),
                                       Positioned(
@@ -3584,23 +3616,18 @@ class _ImageGalleryViewerState extends State<_ImageGalleryViewer>
 
   Widget _buildImageWidget(String url) {
     if (url.startsWith('http')) {
-      return Image.network(
-        url,
+      return CachedNetworkImage(
+        imageUrl: url,
         fit: BoxFit.contain,
-        loadingBuilder: (_, child, progress) {
-          if (progress == null) return child;
+        progressIndicatorBuilder: (_, child, progress) {
+          if (progress.progress == null) return const SizedBox();
           return Center(
             child: CircularProgressIndicator(
-              value: progress.expectedTotalBytes != null
-                  ? progress.cumulativeBytesLoaded /
-                      progress.expectedTotalBytes!
-                  : null,
-              color: Colors.white54,
-              strokeWidth: 2,
+              value: progress.progress,
             ),
           );
         },
-        errorBuilder: (_, __, ___) => const Center(
+        errorWidget: (_, __, ___) => const Center(
           child: Icon(Icons.broken_image_outlined,
               color: Colors.white38, size: 56),
         ),
