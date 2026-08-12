@@ -5917,12 +5917,44 @@ class ActivityHubScreen extends StatefulWidget {
   State<ActivityHubScreen> createState() => _ActivityHubScreenState();
 }
 
+  // Google Maps dark mode style JSON
+  static const String _darkMapStyle = '''
+[
+  {"elementType":"geometry","stylers":[{"color":"#1d2c4d"}]},
+  {"elementType":"labels.text.fill","stylers":[{"color":"#8ec3b9"}]},
+  {"elementType":"labels.text.stroke","stylers":[{"color":"#1a3646"}]},
+  {"featureType":"administrative.country","elementType":"geometry.stroke","stylers":[{"color":"#4b6878"}]},
+  {"featureType":"administrative.land_parcel","elementType":"labels.text.fill","stylers":[{"color":"#64779e"}]},
+  {"featureType":"administrative.province","elementType":"geometry.stroke","stylers":[{"color":"#4b6878"}]},
+  {"featureType":"landscape.man_made","elementType":"geometry.stroke","stylers":[{"color":"#334e87"}]},
+  {"featureType":"landscape.natural","elementType":"geometry","stylers":[{"color":"#023e58"}]},
+  {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#283d6a"}]},
+  {"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#6f9ba5"}]},
+  {"featureType":"poi","elementType":"labels.text.stroke","stylers":[{"color":"#1d2c4d"}]},
+  {"featureType":"poi.park","elementType":"geometry.fill","stylers":[{"color":"#023e58"}]},
+  {"featureType":"poi.park","elementType":"labels.text.fill","stylers":[{"color":"#3C7680"}]},
+  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#304a7d"}]},
+  {"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#98a5be"}]},
+  {"featureType":"road","elementType":"labels.text.stroke","stylers":[{"color":"#1d2c4d"}]},
+  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#2c6675"}]},
+  {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#255763"}]},
+  {"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#b0d5ce"}]},
+  {"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#023e58"}]},
+  {"featureType":"transit","elementType":"labels.text.fill","stylers":[{"color":"#98a5be"}]},
+  {"featureType":"transit","elementType":"labels.text.stroke","stylers":[{"color":"#1d2c4d"}]},
+  {"featureType":"transit.line","elementType":"geometry.fill","stylers":[{"color":"#283d6a"}]},
+  {"featureType":"transit.station","elementType":"geometry","stylers":[{"color":"#3a4762"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#0e1626"}]},
+  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#4e6d70"}]}
+]
+''';
+
 class _ActivityHubScreenState extends State<ActivityHubScreen> {
   bool _isMapView = false;
   bool _isMapDarkMode = true;
   bool _isFetchingLocation = false;
   bool _showLayerPicker = false;
-  Map<String, dynamic>? _selectedMapActivity; // ? controls the layer popup
+  Map<String, dynamic>? _selectedMapActivity;
   _MapLayer _mapLayer = _MapLayer.street;
   LatLng? _myLocation;
   double? _myHeading;
@@ -5933,6 +5965,10 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
   Timer? _debounce;
 
   final List<Map<String, dynamic>> _searchResults = [];
+
+  void _applyMapStyle() {
+    _mapController?.setMapStyle(_isMapDarkMode ? _darkMapStyle : null);
+  }
   late final Stream<List<Map<String, dynamic>>> _activityStream;
   List<dynamic> _hiddenRushIns = [];
   List<dynamic> _requestedRushInIds = [];
@@ -6418,7 +6454,10 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           top: 16,
           right: 16,
           child: GestureDetector(
-            onTap: () => setState(() => _isMapDarkMode = !_isMapDarkMode),
+            onTap: () {
+              setState(() => _isMapDarkMode = !_isMapDarkMode);
+              _applyMapStyle();
+            },
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: const BoxDecoration(
@@ -6512,7 +6551,10 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         : <Marker>[];
 
     return GoogleMap(
-      onMapCreated: (c) => _mapController = c,
+      onMapCreated: (c) {
+        _mapController = c;
+        _applyMapStyle();
+      },
       initialCameraPosition: CameraPosition(
         target: _myLocation ?? const LatLng(40.7128, -74.0060),
         zoom: 14.0,
