@@ -5965,10 +5965,6 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
   Timer? _debounce;
 
   final List<Map<String, dynamic>> _searchResults = [];
-
-  void _applyMapStyle() {
-    _mapController?.setMapStyle(_isMapDarkMode ? _darkMapStyle : null);
-  }
   late final Stream<List<Map<String, dynamic>>> _activityStream;
   List<dynamic> _hiddenRushIns = [];
   List<dynamic> _requestedRushInIds = [];
@@ -6456,7 +6452,6 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           child: GestureDetector(
             onTap: () {
               setState(() => _isMapDarkMode = !_isMapDarkMode);
-              _applyMapStyle();
             },
             child: Container(
               padding: const EdgeInsets.all(8),
@@ -6553,8 +6548,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     return GoogleMap(
       onMapCreated: (c) {
         _mapController = c;
-        _applyMapStyle();
       },
+      style: _isMapDarkMode ? _darkMapStyle : null,
       initialCameraPosition: CameraPosition(
         target: _myLocation ?? const LatLng(40.7128, -74.0060),
         zoom: 14.0,
