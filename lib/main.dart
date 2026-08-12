@@ -6673,6 +6673,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         : <Marker>[];
 
     return GoogleMap(
+      key: ValueKey('map-$_isMapDarkMode-$_mapLayer'),
       onMapCreated: (c) {
         _mapController = c;
       },
