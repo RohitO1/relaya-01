@@ -1269,7 +1269,7 @@ class _ExploreScreenState extends State<ExploreScreen>
             .toList()
             .cast<Map<String, dynamic>>();
 
-        if (qs.length >= 3) {
+        if (qs.isNotEmpty) {
           qs.shuffle();
           return qs.take(5).toList();
         }
