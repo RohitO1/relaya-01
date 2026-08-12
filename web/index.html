@@ -40,6 +40,17 @@
   <link rel="manifest" href="manifest.json">
   <!-- Google Maps JavaScript API - MUST load before Flutter bootstrap -->
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCwc5-1mCmuuRJIaaCtlHpPWdDWlvEahV4&libraries=places"></script>
+  
+  <style>
+    /* CSS workaround for Google Maps Dark Mode on Flutter Web without Map ID */
+    body.map-dark-mode .gm-style-pbc, 
+    body.map-dark-mode canvas.gm-style-webgl {
+      filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+    }
+    body.map-dark-mode .gm-style {
+      background-color: #242f3e !important;
+    }
+  </style>
 </head>
 <body>
 

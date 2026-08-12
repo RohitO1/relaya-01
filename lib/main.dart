@@ -19,6 +19,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'web_map_style.dart';
 
 import 'home_screen.dart';
 import 'profile_screen.dart';
@@ -1313,6 +1314,7 @@ class _MainDashboardState extends State<MainDashboard> {
                                                   0.0,
                                                   0.0,
                                                   1.0,
+                                                  0.0,
                                                   0.0,
                                                   0.0,
                                                   0.0,
@@ -6105,6 +6107,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         .from('activities')
         .stream(primaryKey: ['id']).order('created_at', ascending: false);
 
+    setWebMapDarkMode(_isMapDarkMode);
     _refreshDiscoveryState();
     _loadInitialLocation();
   }
@@ -6578,7 +6581,10 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           right: 16,
           child: GestureDetector(
             onTap: () {
-              setState(() => _isMapDarkMode = !_isMapDarkMode);
+              setState(() {
+                _isMapDarkMode = !_isMapDarkMode;
+                setWebMapDarkMode(_isMapDarkMode);
+              });
             },
             child: Container(
               padding: const EdgeInsets.all(8),
