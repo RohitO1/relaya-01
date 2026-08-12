@@ -14,8 +14,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart' hide Path;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -1090,7 +1088,7 @@ class _MainDashboardState extends State<MainDashboard> {
         builder: (context) {
           // Stable state for the bottom sheet
           bool isSheetMapDark = true;
-          final mapSheetCtrl = MapController();
+          GoogleMapController? mapSheetCtrl;
           final sheetSearchCtrl = TextEditingController();
           List<dynamic> sheetSearchResults = [];
 
@@ -1322,24 +1320,17 @@ class _MainDashboardState extends State<MainDashboard> {
                                                   1.0,
                                                   0.0,
                                                 ]),
-                                      child: FlutterMap(
-                                        mapController: mapSheetCtrl,
-                                        options: const MapOptions(
-                                          initialCenter:
-                                              LatLng(28.6139, 77.2090),
-                                          initialZoom: 14.0,
-                                          interactionOptions:
-                                              InteractionOptions(
-                                                  flags: InteractiveFlag.all),
+                                      child: GoogleMap(
+                                        onMapCreated: (c) => mapSheetCtrl = c,
+                                        initialCameraPosition:
+                                            const CameraPosition(
+                                          target: LatLng(28.6139, 77.2090),
+                                          zoom: 14.0,
                                         ),
-                                        children: [
-                                          TileLayer(
-                                            userAgentPackageName:
-                                                'com.meetra.app',
-                                            urlTemplate:
-                                                'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-                                          )
-                                        ],
+                                        mapType: MapType.normal,
+                                        myLocationEnabled: true,
+                                        zoomControlsEnabled: false,
+                                        myLocationButtonEnabled: false,
                                       ),
                                     ),
 
@@ -1510,10 +1501,11 @@ class _MainDashboardState extends State<MainDashboard> {
                                                                     .high,
                                                             timeLimit: Duration(
                                                                 seconds: 15)));
-                                            mapSheetCtrl.move(
-                                                LatLng(pos.latitude,
-                                                    pos.longitude),
-                                                15);
+                                            mapSheetCtrl?.animateCamera(
+                                                CameraUpdate.newLatLngZoom(
+                                                    LatLng(pos.latitude,
+                                                        pos.longitude),
+                                                    15));
                                             if (context.mounted) {
                                               ScaffoldMessenger.of(context)
                                                   .showSnackBar(SnackBar(
@@ -1645,10 +1637,12 @@ class _MainDashboardState extends State<MainDashboard> {
                                                         color: Colors.white,
                                                         fontSize: 12)),
                                                 onTap: () {
-                                                  mapSheetCtrl.move(
-                                                      LatLng(
-                                                          r['lat'], r['lon']),
-                                                      15);
+                                                  mapSheetCtrl?.animateCamera(
+                                                      CameraUpdate
+                                                          .newLatLngZoom(
+                                                              LatLng(r['lat'],
+                                                                  r['lon']),
+                                                              15));
                                                   setSheetState(() {
                                                     sheetSearchResults = [];
                                                     sheetSearchCtrl.text =
@@ -5932,7 +5926,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
   LatLng? _myLocation;
   double? _myHeading;
   StreamSubscription<Position>? _locationSubscription;
-  final MapController _mapController = MapController();
+  GoogleMapController? _mapController;
   final TextEditingController _searchController = TextEditingController();
   bool _showDropdown = false;
   Timer? _debounce;
@@ -5974,7 +5968,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           });
           // Move map after a short delay so the widget has been built
           try {
-            _mapController.move(LatLng(lat, lng), 14.0);
+            _mapController?.animateCamera(
+                CameraUpdate.newLatLngZoom(LatLng(lat, lng), 14.0));
           } catch (_) {}
         }
       }
@@ -6107,7 +6102,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
   void _startLocationTracking() async {
     // Already tracking - just re-center the map
     if (_myLocation != null && _locationSubscription != null) {
-      _mapController.move(_myLocation!, 15.0);
+      _mapController
+          ?.animateCamera(CameraUpdate.newLatLngZoom(_myLocation!, 15.0));
       return;
     }
 
@@ -6156,7 +6152,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         // Only fly to location on first fix
         if (firstFix) {
           firstFix = false;
-          _mapController.move(LatLng(lat, lng), 15.0);
+          _mapController?.animateCamera(
+              CameraUpdate.newLatLngZoom(LatLng(lat, lng), 15.0));
         }
       }
     }, onError: (error) {
@@ -6548,20 +6545,40 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           ]
         : <Marker>[];
 
-    return FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-          initialCenter: _myLocation ?? const LatLng(40.7128, -74.0060),
-          initialZoom: 14.0,
-          interactionOptions:
-              const InteractionOptions(flags: InteractiveFlag.all)),
-      children: [
-        TileLayer(
-            userAgentPackageName: 'com.meetra.app',
-            urlTemplate: _mapLayer.tileUrl),
-        MarkerLayer(
-            markers: [...activityMarkers, ...locationMarkers, ...popupMarkers]),
-      ],
+    return GoogleMap(
+      onMapCreated: (c) => _mapController = c,
+      initialCameraPosition: CameraPosition(
+        target: _myLocation ?? const LatLng(40.7128, -74.0060),
+        zoom: 14.0,
+      ),
+      mapType: MapType.normal,
+      myLocationEnabled: true,
+      zoomControlsEnabled: false,
+      myLocationButtonEnabled: false,
+      markers: {
+        ...activityMarkers,
+        if (_myLocation != null)
+          Marker(
+            markerId: const MarkerId('my_location'),
+            position: _myLocation!,
+            icon:
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          ),
+        if (_selectedMapActivity != null)
+          Marker(
+            markerId: const MarkerId('popup'),
+            position: LatLng(
+              _selectedMapActivity!['lat'] as double? ??
+                  _selectedMapActivity!['latitude'] as double? ??
+                  40.7128,
+              _selectedMapActivity!['lng'] as double? ??
+                  _selectedMapActivity!['longitude'] as double? ??
+                  -74.0060,
+            ),
+            icon:
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          ),
+      },
     );
   }
 
@@ -6762,7 +6779,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                 _searchResults.clear();
                 _showDropdown = false;
               });
-              _mapController.move(LatLng(loc['lat'], loc['lng']), 14.0);
+              _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
+                  LatLng(loc['lat'], loc['lng']), 14.0));
             },
           );
         },
@@ -6775,26 +6793,20 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     final lat = act['lat'] as double? ?? act['latitude'] as double? ?? 40.7128;
     final lng =
         act['lng'] as double? ?? act['longitude'] as double? ?? -74.0060;
-    // final accent = isRushIn ? const Color(0xFFFF6B00) : const Color(0xFFB388FF);
 
     return Marker(
-      point: LatLng(lat, lng),
-      width: 80,
-      height: 80,
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _selectedMapActivity = act;
-          });
-          _mapController.move(LatLng(lat, lng), 15.0);
-        },
-        child: isRushIn
-            ? _SparkingRushInMarker(userId: act['user_id']?.toString())
-            : _StandardActivityMarker(
-                color: const Color(0xFFFF6B00),
-                icon: Icons.event,
-                userId: act['user_id']?.toString()),
+      markerId: MarkerId(act['id']?.toString() ?? '${lat}_$lng'),
+      position: LatLng(lat, lng),
+      icon: BitmapDescriptor.defaultMarkerWithHue(
+        isRushIn ? BitmapDescriptor.hueOrange : BitmapDescriptor.hueViolet,
       ),
+      onTap: () {
+        setState(() {
+          _selectedMapActivity = act;
+        });
+        _mapController
+            ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lng), 15.0));
+      },
     );
   }
 
@@ -7332,52 +7344,24 @@ class _SinglePinMapScreen extends StatelessWidget {
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.pop(context)),
       ),
-      body: FlutterMap(
-        options: MapOptions(
-          initialCenter: LatLng(lat, lng),
-          initialZoom: 16.0,
-          interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.all,
+      body: GoogleMap(
+          initialCameraPosition: CameraPosition(
+            target: LatLng(lat, lng),
+            zoom: 16.0,
           ),
-        ),
-        children: [
-          TileLayer(
-            urlTemplate:
-                'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-            subdomains: const ['a', 'b', 'c', 'd'],
-          ),
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: LatLng(lat, lng),
-                width: 50,
-                height: 50,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF6B00),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(label,
-                          style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold),
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                    const Icon(Icons.location_on,
-                        color: Color(0xFFFF6B00), size: 30),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+          mapType: MapType.normal,
+          myLocationEnabled: false,
+          zoomControlsEnabled: false,
+          myLocationButtonEnabled: false,
+          markers: {
+            Marker(
+              markerId: const MarkerId('explore_pin'),
+              position: LatLng(lat, lng),
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueAzure),
+              infoWindow: InfoWindow(title: label),
+            ),
+          }),
     );
   }
 }

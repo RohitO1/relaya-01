@@ -9,8 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'image_upload_service.dart';
@@ -18,22 +17,21 @@ import 'feature_guide_screen.dart';
 import 'main.dart';
 import 'services/location_service.dart';
 
-
 // ─────────────────────────────────────────────────────────────────
 // PREMIUM ONBOARDING SCREEN — 6-step cinematic profile setup
 // Inspired by Hinge / Bumble / Tinder best practices
 // ─────────────────────────────────────────────────────────────────
 
-const _bg    = Color(0xFF000000);
-const _card  = Color(0xFF131318);
+const _bg = Color(0xFF000000);
+const _card = Color(0xFF131318);
 const _card2 = Color(0xFF1A1A22);
 const _orange = Color(0xFFFF6B00);
-const _amber  = Color(0xFFFF9F0A);
-const _green  = Color(0xFF22C55E);
-const _txt   = Color(0xFFF1F5F9);
-const _txt2  = Color(0xFF94A3B8);
+const _amber = Color(0xFFFF9F0A);
+const _green = Color(0xFF22C55E);
+const _txt = Color(0xFFF1F5F9);
+const _txt2 = Color(0xFF94A3B8);
 const _muted = Color(0xFF64748B);
-const _gb    = Color(0x14FFFFFF);
+const _gb = Color(0x14FFFFFF);
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -52,7 +50,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   // ── Step 1: Identity ──
   String? _photoUrl;
-  final _nameCtrl     = TextEditingController();
+  final _nameCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
   bool _usernameAvailable = false;
   bool _checkingUsername = false;
@@ -65,7 +63,20 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   int _dobDay = 1, _dobMonth = 1, _dobYear = 2000;
   bool _dobSet = false;
   final _bioCtrl = TextEditingController();
-  static const _monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  static const _monthNames = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
+  ];
 
   // ── Step 3: Gender ──
   String _gender = '';
@@ -75,16 +86,94 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   static const int _maxInterests = 7;
 
   static const _interestGroups = {
-    '🎵 Music':    ['Pop','Hip-Hop','Rock','Jazz','EDM','Classical','Indie','R&B','Bollywood','K-Pop'],
-    '🎮 Gaming':   ['Mobile Games','PC Gaming','Console','Esports','RPGs','FPS','Casual Games'],
-    '✈️ Travel':   ['Backpacking','Beach','Mountains','City Trips','Solo Travel','Luxury Travel'],
-    '🍕 Food':     ['Street Food','Cooking','Baking','Cafes','Fine Dining','Veganism','Sushi','Desserts'],
-    '📸 Creative': ['Photography','Drawing','Writing','Design','Music Production','Film Making'],
-    '🏋️ Fitness':  ['Gym','Yoga','Running','Cycling','Cricket','Football','Basketball','Dance'],
-    '💻 Tech':     ['Coding','AI & ML','Gadgets','Startups','Blockchain','Gaming Tech'],
-    '📚 Learning': ['Books','Podcasts','Online Courses','Philosophy','History','Science'],
-    '🎬 Culture':  ['Movies','Series','Anime','Theatre','Stand-Up Comedy','Art Galleries'],
-    '🌿 Outdoors': ['Hiking','Camping','Nature Walks','Bird Watching','Adventure Sports'],
+    '🎵 Music': [
+      'Pop',
+      'Hip-Hop',
+      'Rock',
+      'Jazz',
+      'EDM',
+      'Classical',
+      'Indie',
+      'R&B',
+      'Bollywood',
+      'K-Pop'
+    ],
+    '🎮 Gaming': [
+      'Mobile Games',
+      'PC Gaming',
+      'Console',
+      'Esports',
+      'RPGs',
+      'FPS',
+      'Casual Games'
+    ],
+    '✈️ Travel': [
+      'Backpacking',
+      'Beach',
+      'Mountains',
+      'City Trips',
+      'Solo Travel',
+      'Luxury Travel'
+    ],
+    '🍕 Food': [
+      'Street Food',
+      'Cooking',
+      'Baking',
+      'Cafes',
+      'Fine Dining',
+      'Veganism',
+      'Sushi',
+      'Desserts'
+    ],
+    '📸 Creative': [
+      'Photography',
+      'Drawing',
+      'Writing',
+      'Design',
+      'Music Production',
+      'Film Making'
+    ],
+    '🏋️ Fitness': [
+      'Gym',
+      'Yoga',
+      'Running',
+      'Cycling',
+      'Cricket',
+      'Football',
+      'Basketball',
+      'Dance'
+    ],
+    '💻 Tech': [
+      'Coding',
+      'AI & ML',
+      'Gadgets',
+      'Startups',
+      'Blockchain',
+      'Gaming Tech'
+    ],
+    '📚 Learning': [
+      'Books',
+      'Podcasts',
+      'Online Courses',
+      'Philosophy',
+      'History',
+      'Science'
+    ],
+    '🎬 Culture': [
+      'Movies',
+      'Series',
+      'Anime',
+      'Theatre',
+      'Stand-Up Comedy',
+      'Art Galleries'
+    ],
+    '🌿 Outdoors': [
+      'Hiking',
+      'Camping',
+      'Nature Walks',
+      'Bird Watching',
+      'Adventure Sports'
+    ],
   };
 
   // ── Step 5: Personality Vibes ──
@@ -92,29 +181,29 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   static const int _maxVibes = 4;
 
   static const _vibes = [
-    ('🌙 Night Owl',     'nightowl'),
-    ('☀️ Early Bird',    'earlybird'),
-    ('⚡ Spontaneous',   'spontaneous'),
+    ('🌙 Night Owl', 'nightowl'),
+    ('☀️ Early Bird', 'earlybird'),
+    ('⚡ Spontaneous', 'spontaneous'),
     ('🎯 Goal-Oriented', 'goaldirected'),
     ('🎭 Creative Soul', 'creative'),
-    ('🤝 Social Butterfly','social'),
-    ('🧘 Calm & Chill',  'calm'),
-    ('🔥 Ambitious',     'ambitious'),
+    ('🤝 Social Butterfly', 'social'),
+    ('🧘 Calm & Chill', 'calm'),
+    ('🔥 Ambitious', 'ambitious'),
     ('😂 Funny & Witty', 'funny'),
-    ('💡 Deep Thinker',  'deepthink'),
-    ('🎉 Party Person',  'partyperson'),
-    ('📖 Homebody',      'homebody'),
-    ('🌍 Adventurous',   'adventurous'),
-    ('💪 Fitness Buff',  'fitness'),
-    ('🎨 Artsy',         'artsy'),
-    ('🤓 Intellectual',  'intellectual'),
+    ('💡 Deep Thinker', 'deepthink'),
+    ('🎉 Party Person', 'partyperson'),
+    ('📖 Homebody', 'homebody'),
+    ('🌍 Adventurous', 'adventurous'),
+    ('💪 Fitness Buff', 'fitness'),
+    ('🎨 Artsy', 'artsy'),
+    ('🤓 Intellectual', 'intellectual'),
   ];
 
   // ── Step 6: Location ──
   double? _lat, _lng;
-  final _cityCtrl    = TextEditingController();
-  final _stateCtrl   = TextEditingController();
-  final MapController _mapCtrl = MapController();
+  final _cityCtrl = TextEditingController();
+  final _stateCtrl = TextEditingController();
+  GoogleMapController? _googleMapCtrl;
   final _locSearchCtrl = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _searchDebounce;
@@ -128,14 +217,21 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   @override
   void initState() {
     super.initState();
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true);
-    _orbCtrl   = AnimationController(vsync: this, duration: const Duration(seconds: 10))..repeat(reverse: true);
+    _pulseCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1500))
+      ..repeat(reverse: true);
+    _orbCtrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 10))
+          ..repeat(reverse: true);
     final now = DateTime.now();
-    _dobDay = 1; _dobMonth = 1; _dobYear = now.year - 20;
+    _dobDay = 1;
+    _dobMonth = 1;
+    _dobYear = now.year - 20;
     final yearList = _yearList;
-    _dayCtrl   = FixedExtentScrollController(initialItem: 0);
+    _dayCtrl = FixedExtentScrollController(initialItem: 0);
     _monthCtrl = FixedExtentScrollController(initialItem: 0);
-    _yearCtrl  = FixedExtentScrollController(initialItem: yearList.indexOf(_dobYear).clamp(0, yearList.length - 1));
+    _yearCtrl = FixedExtentScrollController(
+        initialItem: yearList.indexOf(_dobYear).clamp(0, yearList.length - 1));
   }
 
   List<int> get _yearList {
@@ -147,7 +243,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   String get _dobString {
     if (!_dobSet) return '';
-    return '$_dobYear-${_dobMonth.toString().padLeft(2,'0')}-${_dobDay.toString().padLeft(2,'0')}';
+    return '$_dobYear-${_dobMonth.toString().padLeft(2, '0')}-${_dobDay.toString().padLeft(2, '0')}';
   }
 
   String get _dobDisplay {
@@ -181,14 +277,20 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     switch (_step) {
       case 0:
         final bool isNameValid = _nameCtrl.text.trim().length >= 2;
-        final bool isUsernameValid = _usernameCtrl.text.trim().length >= 3 && _usernameAvailable;
-        final bool isPasswordValid = _passwordCtrl.text.length >= 6 && _passwordCtrl.text == _confirmPasswordCtrl.text;
+        final bool isUsernameValid =
+            _usernameCtrl.text.trim().length >= 3 && _usernameAvailable;
+        final bool isPasswordValid = _passwordCtrl.text.length >= 6 &&
+            _passwordCtrl.text == _confirmPasswordCtrl.text;
         return isNameValid && isUsernameValid && isPasswordValid;
-      case 1: return _dobSet;
-      case 2: return _gender.isNotEmpty;
+      case 1:
+        return _dobSet;
+      case 2:
+        return _gender.isNotEmpty;
       // Step 3 is now Location (was step 5)
-      case 3: return _lat != null && _lng != null;
-      default: return true;
+      case 3:
+        return _lat != null && _lng != null;
+      default:
+        return true;
     }
   }
 
@@ -200,7 +302,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     if (_step < _totalSteps - 1) {
       HapticFeedback.selectionClick();
       setState(() => _step++);
-      _pageCtrl.nextPage(duration: const Duration(milliseconds: 450), curve: Curves.easeInOutCubic);
+      _pageCtrl.nextPage(
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeInOutCubic);
     } else {
       _completeOnboarding();
     }
@@ -210,7 +314,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     if (_step > 0) {
       HapticFeedback.selectionClick();
       setState(() => _step--);
-      _pageCtrl.previousPage(duration: const Duration(milliseconds: 450), curve: Curves.easeInOutCubic);
+      _pageCtrl.previousPage(
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeInOutCubic);
     }
   }
 
@@ -236,15 +342,25 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     _usernameDebounce?.cancel();
     final clean = val.toLowerCase().trim();
     if (clean.length < 3) {
-      setState(() { _usernameAvailable = false; _checkingUsername = false; });
+      setState(() {
+        _usernameAvailable = false;
+        _checkingUsername = false;
+      });
       return;
     }
     setState(() => _checkingUsername = true);
     _usernameDebounce = Timer(const Duration(milliseconds: 600), () async {
       try {
         final res = await Supabase.instance.client
-            .from('profiles').select('id').eq('username', clean).maybeSingle();
-        if (mounted) setState(() { _usernameAvailable = res == null; _checkingUsername = false; });
+            .from('profiles')
+            .select('id')
+            .eq('username', clean)
+            .maybeSingle();
+        if (mounted)
+          setState(() {
+            _usernameAvailable = res == null;
+            _checkingUsername = false;
+          });
       } catch (_) {
         if (mounted) setState(() => _checkingUsername = false);
       }
@@ -253,14 +369,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   // ── Photo upload ─────────────────────────────────────────────────
   Future<void> _handlePhotoUpload() async {
-    final url = await ImageUploadService.pickAndUpload(context: context, folder: 'avatars');
+    final url = await ImageUploadService.pickAndUpload(
+        context: context, folder: 'avatars');
     if (url != null && mounted) setState(() => _photoUrl = url);
   }
 
   // ── Location search ──────────────────────────────────────────────
   void _onSearchChanged(String q) {
     _searchDebounce?.cancel();
-    if (q.trim().length < 2) { if (mounted) setState(() => _searchResults = []); return; }
+    if (q.trim().length < 2) {
+      if (mounted) setState(() => _searchResults = []);
+      return;
+    }
     _searchDebounce = Timer(const Duration(milliseconds: 400), () async {
       final results = await locationService.searchLocations(q);
       if (mounted) setState(() => _searchResults = results);
@@ -273,25 +393,38 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     final name = r['name']?.toString() ?? '';
     final full = r['full_name']?.toString() ?? '';
     setState(() {
-      _lat = lat; _lng = lng;
+      _lat = lat;
+      _lng = lng;
       _cityCtrl.text = name;
-      _stateCtrl.text = full.split(',').length > 1 ? full.split(',')[1].trim() : '';
+      _stateCtrl.text =
+          full.split(',').length > 1 ? full.split(',')[1].trim() : '';
       _locSearchCtrl.text = name;
       _searchResults = [];
     });
-    _mapCtrl.move(LatLng(lat, lng), 14.0);
+    _googleMapCtrl
+        ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lng), 14.0));
   }
 
   Future<void> _reverseGeocode(double lat, double lng) async {
     try {
-      final url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&addressdetails=1';
-      final resp = await http.get(Uri.parse(url), headers: {'User-Agent': 'RelayaApp/1.0'});
+      final url =
+          'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&addressdetails=1';
+      final resp = await http
+          .get(Uri.parse(url), headers: {'User-Agent': 'RelayaApp/1.0'});
       if (resp.statusCode == 200 && mounted) {
         final data = jsonDecode(resp.body);
         final addr = data['address'] ?? {};
-        final city = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['county'] ?? '';
+        final city = addr['city'] ??
+            addr['town'] ??
+            addr['village'] ??
+            addr['county'] ??
+            '';
         final state = addr['state'] ?? '';
-        setState(() { _cityCtrl.text = city; _stateCtrl.text = state; _locSearchCtrl.text = city; });
+        setState(() {
+          _cityCtrl.text = city;
+          _stateCtrl.text = state;
+          _locSearchCtrl.text = city;
+        });
       }
     } catch (_) {}
   }
@@ -302,14 +435,24 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       bool svcEnabled = await Geolocator.isLocationServiceEnabled();
       if (!svcEnabled) throw Exception('Location services disabled');
       var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
-      if (perm == LocationPermission.deniedForever) throw Exception('Permission denied forever');
-      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium);
-      setState(() { _lat = pos.latitude; _lng = pos.longitude; });
-      _mapCtrl.move(LatLng(pos.latitude, pos.longitude), 14.0);
+      if (perm == LocationPermission.denied)
+        perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.deniedForever)
+        throw Exception('Permission denied forever');
+      final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium);
+      setState(() {
+        _lat = pos.latitude;
+        _lng = pos.longitude;
+      });
+      _googleMapCtrl?.animateCamera(CameraUpdate.newLatLngZoom(
+          LatLng(pos.latitude, pos.longitude), 14.0));
       await _reverseGeocode(pos.latitude, pos.longitude);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not detect: $e'), backgroundColor: Colors.red));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Could not detect: $e'),
+            backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _detectingLocation = false);
     }
@@ -320,13 +463,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     setState(() => _saving = true);
     try {
       final uid = Supabase.instance.client.auth.currentUser!.id;
-      final locationName = [_cityCtrl.text.trim(), _stateCtrl.text.trim()].where((s) => s.isNotEmpty).join(', ');
+      final locationName = [_cityCtrl.text.trim(), _stateCtrl.text.trim()]
+          .where((s) => s.isNotEmpty)
+          .join(', ');
       final cleanUsername = _usernameCtrl.text.trim().toLowerCase();
       final finalUsername = cleanUsername.isNotEmpty && _usernameAvailable
           ? cleanUsername
           : 'user_${uid.substring(0, 8)}';
 
-      if (_passwordCtrl.text.trim().isNotEmpty && _passwordCtrl.text == _confirmPasswordCtrl.text) {
+      if (_passwordCtrl.text.trim().isNotEmpty &&
+          _passwordCtrl.text == _confirmPasswordCtrl.text) {
         // Step 1: Update PASSWORD first — this is always immediate in Supabase (no confirmation needed)
         try {
           await Supabase.instance.client.auth.updateUser(
@@ -345,7 +491,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           );
           debugPrint('[Onboarding] Email updated to $finalUsername@relaya.app');
         } catch (e) {
-          debugPrint('[Onboarding] Email update failed (user can still login via phone fallback): $e');
+          debugPrint(
+              '[Onboarding] Email update failed (user can still login via phone fallback): $e');
         }
       }
 
@@ -364,23 +511,29 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         'lng': _lng ?? 0,
         'avatar_url': _photoUrl ?? '',
         'is_public': true,
-        'onboarding_complete': true,  // ← Critical: this must always be saved
+        'onboarding_complete': true, // ← Critical: this must always be saved
       }, onConflict: 'id');
 
       // ── Try to save optional fields (bio, dob) — non-fatal if they fail ──
       try {
         final optionals = <String, dynamic>{'id': uid};
-        if (_bioCtrl.text.trim().isNotEmpty) optionals['bio'] = _bioCtrl.text.trim();
+        if (_bioCtrl.text.trim().isNotEmpty)
+          optionals['bio'] = _bioCtrl.text.trim();
         if (_dobSet) optionals['dob'] = _dobString;
         if (optionals.length > 1) {
-          await Supabase.instance.client.from('profiles').upsert(optionals, onConflict: 'id');
+          await Supabase.instance.client
+              .from('profiles')
+              .upsert(optionals, onConflict: 'id');
         }
       } catch (e) {
         debugPrint('Optional fields upsert failed (non-fatal): $e');
       }
 
       if (_lat != null && _lng != null) {
-        locationService.setLocation(locationName.isNotEmpty ? locationName : _cityCtrl.text, lat: _lat, lng: _lng);
+        locationService.setLocation(
+            locationName.isNotEmpty ? locationName : _cityCtrl.text,
+            lat: _lat,
+            lng: _lng);
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble('matchRadius', 25.0);
@@ -396,14 +549,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 );
               },
             ),
-            transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
+            transitionsBuilder: (_, a, __, c) =>
+                FadeTransition(opacity: a, child: c),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving profile: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Error saving profile: $e'),
+              backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -470,9 +626,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         GestureDetector(
                           onTap: _prevStep,
                           child: Container(
-                            width: 40, height: 40,
-                            decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(12), border: Border.all(color: _gb)),
-                            child: const Icon(Icons.arrow_back_ios_new, color: _txt2, size: 16),
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                                color: _card2,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: _gb)),
+                            child: const Icon(Icons.arrow_back_ios_new,
+                                color: _txt2, size: 16),
                           ),
                         )
                       else
@@ -480,7 +641,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       const Spacer(),
                       Text(
                         '${_step + 1} / $_totalSteps',
-                        style: GoogleFonts.inter(color: _muted, fontSize: 13, fontWeight: FontWeight.w600),
+                        style: GoogleFonts.inter(
+                            color: _muted,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
@@ -501,12 +665,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       duration: const Duration(milliseconds: 400),
                       curve: Curves.easeOutQuint,
                       height: 6,
-                      width: MediaQuery.of(context).size.width * ((_step + 1) / _totalSteps),
+                      width: MediaQuery.of(context).size.width *
+                          ((_step + 1) / _totalSteps),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [_orange, _amber]),
+                        gradient:
+                            const LinearGradient(colors: [_orange, _amber]),
                         borderRadius: BorderRadius.circular(6),
                         boxShadow: [
-                          BoxShadow(color: _orange.withValues(alpha: 0.5), blurRadius: 8, offset: const Offset(0, 2))
+                          BoxShadow(
+                              color: _orange.withValues(alpha: 0.5),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2))
                         ],
                       ),
                     ),
@@ -522,9 +691,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(stepTitles[_step], style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: _txt, height: 1.1)),
+                        Text(stepTitles[_step],
+                            style: GoogleFonts.inter(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                                color: _txt,
+                                height: 1.1)),
                         const SizedBox(height: 6),
-                        Text(stepSubtitles[_step], style: GoogleFonts.inter(fontSize: 13, color: _muted)),
+                        Text(stepSubtitles[_step],
+                            style:
+                                GoogleFonts.inter(fontSize: 13, color: _muted)),
                       ],
                     ),
                   ),
@@ -555,13 +731,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Widget _orb(double size, Color color) => Container(
-    width: size, height: size,
-    decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [color, Colors.transparent])),
-  );
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(colors: [color, Colors.transparent])),
+      );
 
   Widget _buildBottomCta() {
     final isLast = _step == _totalSteps - 1;
-    final canGo  = _canProceed;
+    final canGo = _canProceed;
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
       child: GestureDetector(
@@ -574,20 +753,39 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             gradient: canGo && !_saving
                 ? const LinearGradient(colors: [_orange, _amber])
                 : null,
-            color: !canGo || _saving ? Colors.white.withValues(alpha: 0.07) : null,
+            color:
+                !canGo || _saving ? Colors.white.withValues(alpha: 0.07) : null,
             borderRadius: BorderRadius.circular(18),
-            boxShadow: canGo && !_saving ? [BoxShadow(color: _orange.withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 8))] : null,
+            boxShadow: canGo && !_saving
+                ? [
+                    BoxShadow(
+                        color: _orange.withValues(alpha: 0.4),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8))
+                  ]
+                : null,
           ),
           child: Center(
             child: _saving
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2.5))
                 : Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(isLast ? Icons.rocket_launch_rounded : Icons.arrow_forward_rounded,
-                        color: canGo ? Colors.black : _muted, size: 18),
+                    Icon(
+                        isLast
+                            ? Icons.rocket_launch_rounded
+                            : Icons.arrow_forward_rounded,
+                        color: canGo ? Colors.black : _muted,
+                        size: 18),
                     const SizedBox(width: 10),
                     Text(
                       isLast ? "Let's Go!" : 'Continue',
-                      style: GoogleFonts.inter(color: canGo ? Colors.black : _muted, fontWeight: FontWeight.w800, fontSize: 16),
+                      style: GoogleFonts.inter(
+                          color: canGo ? Colors.black : _muted,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16),
                     ),
                   ]),
           ),
@@ -610,35 +808,65 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             child: AnimatedBuilder(
               animation: _pulseCtrl,
               builder: (_, child) {
-                final glow = _photoUrl == null ? _pulseCtrl.value * 0.08 + 0.02 : 0.0;
+                final glow =
+                    _photoUrl == null ? _pulseCtrl.value * 0.08 + 0.02 : 0.0;
                 return Container(
-                  width: 110, height: 110,
+                  width: 110,
+                  height: 110,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: _card2,
-                    border: Border.all(color: _photoUrl != null ? _orange : Colors.white.withValues(alpha: 0.15), width: 2.5),
-                    boxShadow: _photoUrl == null ? [BoxShadow(color: _orange.withValues(alpha: glow), blurRadius: 24, spreadRadius: 4)] : null,
+                    border: Border.all(
+                        color: _photoUrl != null
+                            ? _orange
+                            : Colors.white.withValues(alpha: 0.15),
+                        width: 2.5),
+                    boxShadow: _photoUrl == null
+                        ? [
+                            BoxShadow(
+                                color: _orange.withValues(alpha: glow),
+                                blurRadius: 24,
+                                spreadRadius: 4)
+                          ]
+                        : null,
                   ),
                   child: _photoUrl != null
-                      ? ClipOval(child: Image(image: _buildSafeImage(_photoUrl), fit: BoxFit.cover, width: 110, height: 110))
-                      : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          const Icon(Icons.add_a_photo_rounded, color: _orange, size: 28),
-                          const SizedBox(height: 6),
-                          Text('Add Photo', style: GoogleFonts.inter(color: _orange, fontSize: 11, fontWeight: FontWeight.w600)),
-                        ]),
+                      ? ClipOval(
+                          child: Image(
+                              image: _buildSafeImage(_photoUrl),
+                              fit: BoxFit.cover,
+                              width: 110,
+                              height: 110))
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                              const Icon(Icons.add_a_photo_rounded,
+                                  color: _orange, size: 28),
+                              const SizedBox(height: 6),
+                              Text('Add Photo',
+                                  style: GoogleFonts.inter(
+                                      color: _orange,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600)),
+                            ]),
                 );
               },
             ),
           ),
           const SizedBox(height: 8),
-          Text('Profile photo', style: GoogleFonts.inter(color: _muted, fontSize: 11)),
+          Text('Profile photo',
+              style: GoogleFonts.inter(color: _muted, fontSize: 11)),
           const SizedBox(height: 28),
-          _inputField('Your first name *', _nameCtrl, Icons.person_outline, onChanged: (_) => setState(() {})),
+          _inputField('Your first name *', _nameCtrl, Icons.person_outline,
+              onChanged: (_) => setState(() {})),
           const SizedBox(height: 14),
           _usernameField(),
           const SizedBox(height: 14),
           _passwordFields(),
-        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
+        ]
+            .animate(interval: 50.ms)
+            .fade(duration: 500.ms, curve: Curves.easeOut)
+            .slideY(begin: 0.1, end: 0),
       ),
     );
   }
@@ -665,8 +893,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               hintText: 'Create a Password (min. 6 chars)',
               hintStyle: GoogleFonts.inter(color: _txt2),
               suffixIcon: IconButton(
-                icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: _muted),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                icon: Icon(
+                    _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                    color: _muted),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
             ),
           ),
@@ -681,7 +912,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               border: Border.all(
                 color: _confirmPasswordCtrl.text.isEmpty
                     ? _gb
-                    : (_passwordCtrl.text == _confirmPasswordCtrl.text ? _green : Colors.red),
+                    : (_passwordCtrl.text == _confirmPasswordCtrl.text
+                        ? _green
+                        : Colors.red),
               ),
             ),
             child: TextField(
@@ -697,10 +930,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ),
           ),
-          if (_passwordCtrl.text.isNotEmpty && _confirmPasswordCtrl.text.isNotEmpty && _passwordCtrl.text != _confirmPasswordCtrl.text)
+          if (_passwordCtrl.text.isNotEmpty &&
+              _confirmPasswordCtrl.text.isNotEmpty &&
+              _passwordCtrl.text != _confirmPasswordCtrl.text)
             Padding(
               padding: const EdgeInsets.only(top: 8, left: 16),
-              child: Text('Passwords do not match', style: GoogleFonts.inter(color: Colors.red, fontSize: 12)),
+              child: Text('Passwords do not match',
+                  style: GoogleFonts.inter(color: Colors.red, fontSize: 12)),
             )
         ],
       ],
@@ -732,29 +968,45 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           decoration: BoxDecoration(
             color: _card,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: borderColor, width: borderColor == _gb ? 1 : 1.5),
+            border: Border.all(
+                color: borderColor, width: borderColor == _gb ? 1 : 1.5),
           ),
           child: TextField(
             controller: _usernameCtrl,
             style: GoogleFonts.inter(color: _txt, fontSize: 15),
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_\.]'))],
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_\.]'))
+            ],
             decoration: InputDecoration(
               hintText: '@username',
               hintStyle: GoogleFonts.inter(color: _muted, fontSize: 14),
-              prefixIcon: const Icon(Icons.alternate_email, color: _orange, size: 20),
+              prefixIcon:
+                  const Icon(Icons.alternate_email, color: _orange, size: 20),
               suffixIcon: _checkingUsername
-                  ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(strokeWidth: 2, color: _orange)))
-                  : trailingIcon != null ? Icon(trailingIcon, color: trailingColor, size: 20) : null,
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Padding(
+                          padding: EdgeInsets.all(14),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: _orange)))
+                  : trailingIcon != null
+                      ? Icon(trailingIcon, color: trailingColor, size: 20)
+                      : null,
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(vertical: 16),
             ),
-            onChanged: (v) { setState(() {}); _checkUsername(v); },
+            onChanged: (v) {
+              setState(() {});
+              _checkUsername(v);
+            },
           ),
         ),
         if (val.length >= 3 && !_checkingUsername && !_usernameAvailable)
           Padding(
             padding: const EdgeInsets.only(left: 4, top: 4),
-            child: Text('Username taken. Try another.', style: GoogleFonts.inter(color: Colors.red, fontSize: 11)),
+            child: Text('Username taken. Try another.',
+                style: GoogleFonts.inter(color: Colors.red, fontSize: 11)),
           ),
       ],
     );
@@ -765,7 +1017,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   // ════════════════════════════════════════════════════════════════
   Widget _step1BioAndDob() {
     final yearList = _yearList;
-    final days     = List.generate(_daysInMonth(_dobMonth, _dobYear), (i) => i + 1);
+    final days = List.generate(_daysInMonth(_dobMonth, _dobYear), (i) => i + 1);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
@@ -776,20 +1028,32 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Row(children: [
             const Icon(Icons.cake_outlined, color: _orange, size: 18),
             const SizedBox(width: 8),
-            Text('Date of Birth', style: GoogleFonts.inter(color: _txt, fontWeight: FontWeight.w700, fontSize: 15)),
+            Text('Date of Birth',
+                style: GoogleFonts.inter(
+                    color: _txt, fontWeight: FontWeight.w700, fontSize: 15)),
             const Spacer(),
             if (_dobSet)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: _orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                child: Text(_dobDisplay, style: GoogleFonts.inter(color: _orange, fontWeight: FontWeight.w600, fontSize: 12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                    color: _orange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10)),
+                child: Text(_dobDisplay,
+                    style: GoogleFonts.inter(
+                        color: _orange,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12)),
               ),
           ]),
           const SizedBox(height: 12),
           // Drum-roll date picker
           Container(
             height: 180,
-            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(18), border: Border.all(color: _orange.withValues(alpha: 0.2))),
+            decoration: BoxDecoration(
+                color: _card,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: _orange.withValues(alpha: 0.2))),
             child: Stack(
               children: [
                 // selection indicator
@@ -799,7 +1063,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     margin: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _orange.withValues(alpha: 0.4), width: 1.5),
+                      border: Border.all(
+                          color: _orange.withValues(alpha: 0.4), width: 1.5),
                       color: _orange.withValues(alpha: 0.06),
                     ),
                   ),
@@ -809,34 +1074,71 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   child: Row(
                     children: [
                       // Day
-                      Expanded(child: _drumWheel(
+                      Expanded(
+                          child: _drumWheel(
                         controller: _dayCtrl,
                         items: days,
-                        label: (v) => v.toString().padLeft(2,'0'),
-                        onChanged: (i) { _dobDay = days[i]; _dobSet = true; setState((){}); },
+                        label: (v) => v.toString().padLeft(2, '0'),
+                        onChanged: (i) {
+                          _dobDay = days[i];
+                          _dobSet = true;
+                          setState(() {});
+                        },
                       )),
                       // Month
-                      Expanded(child: _drumWheel(
+                      Expanded(
+                          child: _drumWheel(
                         controller: _monthCtrl,
                         items: List.generate(12, (i) => i + 1),
                         label: (v) => _monthNames[v - 1],
-                        onChanged: (i) { _dobMonth = i + 1; _dobSet = true; setState((){}); },
+                        onChanged: (i) {
+                          _dobMonth = i + 1;
+                          _dobSet = true;
+                          setState(() {});
+                        },
                       )),
                       // Year
-                      Expanded(child: _drumWheel(
+                      Expanded(
+                          child: _drumWheel(
                         controller: _yearCtrl,
                         items: yearList,
                         label: (v) => v.toString(),
-                        onChanged: (i) { _dobYear = yearList[i]; _dobSet = true; setState((){}); },
+                        onChanged: (i) {
+                          _dobYear = yearList[i];
+                          _dobSet = true;
+                          setState(() {});
+                        },
                       )),
                     ],
                   ),
                 ),
                 // top/bottom fades
-                Positioned(top: 0, left: 0, right: 0, height: 60,
-                  child: Container(decoration: BoxDecoration(borderRadius: const BorderRadius.vertical(top: Radius.circular(18)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_card, _card.withValues(alpha: 0)])))),
-                Positioned(bottom: 0, left: 0, right: 0, height: 60,
-                  child: Container(decoration: BoxDecoration(borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)), gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [_card, _card.withValues(alpha: 0)])))),
+                Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 60,
+                    child: Container(
+                        decoration: BoxDecoration(
+                            borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(18)),
+                            gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [_card, _card.withValues(alpha: 0)])))),
+                Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: 60,
+                    child: Container(
+                        decoration: BoxDecoration(
+                            borderRadius: const BorderRadius.vertical(
+                                bottom: Radius.circular(18)),
+                            gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [_card, _card.withValues(alpha: 0)])))),
               ],
             ),
           ),
@@ -845,20 +1147,27 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Row(children: [
             const Icon(Icons.edit_outlined, color: _orange, size: 18),
             const SizedBox(width: 8),
-            Text('Short Bio', style: GoogleFonts.inter(color: _txt, fontWeight: FontWeight.w700, fontSize: 15)),
+            Text('Short Bio',
+                style: GoogleFonts.inter(
+                    color: _txt, fontWeight: FontWeight.w700, fontSize: 15)),
             const SizedBox(width: 6),
-            Text('(optional)', style: GoogleFonts.inter(color: _muted, fontSize: 12)),
+            Text('(optional)',
+                style: GoogleFonts.inter(color: _muted, fontSize: 12)),
           ]),
           const SizedBox(height: 10),
           Container(
-            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _gb)),
+            decoration: BoxDecoration(
+                color: _card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _gb)),
             child: TextField(
               controller: _bioCtrl,
               maxLines: 3,
               maxLength: 120,
               style: GoogleFonts.inter(color: _txt, fontSize: 14),
               decoration: InputDecoration(
-                hintText: 'e.g. "Music lover, explorer, always up for an adventure ✨"',
+                hintText:
+                    'e.g. "Music lover, explorer, always up for an adventure ✨"',
                 hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.all(16),
@@ -866,7 +1175,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ),
           ),
-        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
+        ]
+            .animate(interval: 50.ms)
+            .fade(duration: 500.ms, curve: Curves.easeOut)
+            .slideY(begin: 0.1, end: 0),
       ),
     );
   }
@@ -910,9 +1222,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   // ════════════════════════════════════════════════════════════════
   Widget _step2Gender() {
     final options = [
-      ('Man',       Icons.face_rounded,       const Color(0xFF3B82F6)),
-      ('Woman',     Icons.face_3_rounded,      const Color(0xFFEC4899)),
-      ('Non-Binary',Icons.person_2_rounded,    const Color(0xFF8B5CF6)),
+      ('Man', Icons.face_rounded, const Color(0xFF3B82F6)),
+      ('Woman', Icons.face_3_rounded, const Color(0xFFEC4899)),
+      ('Non-Binary', Icons.person_2_rounded, const Color(0xFF8B5CF6)),
       ('Prefer not to say', Icons.remove_circle_outline, _muted),
     ];
     return SingleChildScrollView(
@@ -928,7 +1240,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           _genderTile(options[2]),
           const SizedBox(height: 10),
           _genderTile(options[3]),
-        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
+        ]
+            .animate(interval: 50.ms)
+            .fade(duration: 500.ms, curve: Curves.easeOut)
+            .slideY(begin: 0.1, end: 0),
       ),
     );
   }
@@ -936,7 +1251,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   Widget _genderCard((String, IconData, Color) opt) {
     final sel = _gender == opt.$1;
     return GestureDetector(
-      onTap: () { HapticFeedback.selectionClick(); setState(() => _gender = opt.$1); },
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() => _gender = opt.$1);
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 32),
@@ -944,13 +1262,27 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           color: sel ? opt.$3.withValues(alpha: 0.12) : _card,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: sel ? opt.$3 : _gb, width: sel ? 2 : 1),
-          boxShadow: sel ? [BoxShadow(color: opt.$3.withValues(alpha: 0.2), blurRadius: 14, offset: const Offset(0,4))] : null,
+          boxShadow: sel
+              ? [
+                  BoxShadow(
+                      color: opt.$3.withValues(alpha: 0.2),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4))
+                ]
+              : null,
         ),
         child: Column(children: [
           Icon(opt.$2, size: 52, color: sel ? opt.$3 : _muted),
           const SizedBox(height: 12),
-          Text(opt.$1, style: GoogleFonts.inter(color: sel ? opt.$3 : _txt, fontSize: 16, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
-          if (sel) ...[const SizedBox(height: 6), Icon(Icons.check_circle, color: opt.$3, size: 18)],
+          Text(opt.$1,
+              style: GoogleFonts.inter(
+                  color: sel ? opt.$3 : _txt,
+                  fontSize: 16,
+                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
+          if (sel) ...[
+            const SizedBox(height: 6),
+            Icon(Icons.check_circle, color: opt.$3, size: 18)
+          ],
         ]),
       ),
     );
@@ -959,7 +1291,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   Widget _genderTile((String, IconData, Color) opt) {
     final sel = _gender == opt.$1;
     return GestureDetector(
-      onTap: () { HapticFeedback.selectionClick(); setState(() => _gender = opt.$1); },
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() => _gender = opt.$1);
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: double.infinity,
@@ -973,7 +1308,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         child: Row(children: [
           Icon(opt.$2, color: sel ? opt.$3 : _muted, size: 22),
           const SizedBox(width: 16),
-          Text(opt.$1, style: GoogleFonts.inter(color: sel ? opt.$3 : _txt, fontSize: 15, fontWeight: sel ? FontWeight.w600 : FontWeight.w500)),
+          Text(opt.$1,
+              style: GoogleFonts.inter(
+                  color: sel ? opt.$3 : _txt,
+                  fontSize: 15,
+                  fontWeight: sel ? FontWeight.w600 : FontWeight.w500)),
           const Spacer(),
           if (sel) Icon(Icons.check_circle_rounded, color: opt.$3, size: 20),
         ]),
@@ -993,43 +1332,86 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           // counter
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(10), border: Border.all(color: _gb)),
+            decoration: BoxDecoration(
+                color: _card2,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _gb)),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.interests_outlined, color: _orange, size: 16),
               const SizedBox(width: 6),
               Text('${_selectedInterests.length} / $_maxInterests selected',
-                  style: GoogleFonts.inter(color: _selectedInterests.length >= 3 ? _orange : _muted, fontSize: 13, fontWeight: FontWeight.w600)),
+                  style: GoogleFonts.inter(
+                      color: _selectedInterests.length >= 3 ? _orange : _muted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600)),
             ]),
           ),
           const SizedBox(height: 18),
           ..._interestGroups.entries.map((entry) {
-            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(entry.key, style: GoogleFonts.inter(color: _txt2, fontSize: 13, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: entry.value.map((tag) {
-                final sel = _selectedInterests.contains(tag);
-                final maxed = _selectedInterests.length >= _maxInterests && !sel;
-                return GestureDetector(
-                  onTap: maxed ? null : () {
-                    HapticFeedback.selectionClick();
-                    setState(() { if (sel) _selectedInterests.remove(tag); else _selectedInterests.add(tag); });
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: sel ? _orange.withValues(alpha: 0.15) : _card,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: sel ? _orange : Colors.white.withValues(alpha: maxed ? 0.03 : 0.1), width: sel ? 1.5 : 1),
-                    ),
-                    child: Text(tag, style: GoogleFonts.inter(color: sel ? _orange : maxed ? _muted : _txt2, fontSize: 13, fontWeight: sel ? FontWeight.w600 : FontWeight.w400)),
-                  ),
-                );
-              }).toList()),
-              const SizedBox(height: 20),
-            ]);
+            return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(entry.key,
+                      style: GoogleFonts.inter(
+                          color: _txt2,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: entry.value.map((tag) {
+                        final sel = _selectedInterests.contains(tag);
+                        final maxed =
+                            _selectedInterests.length >= _maxInterests && !sel;
+                        return GestureDetector(
+                          onTap: maxed
+                              ? null
+                              : () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() {
+                                    if (sel)
+                                      _selectedInterests.remove(tag);
+                                    else
+                                      _selectedInterests.add(tag);
+                                  });
+                                },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color:
+                                  sel ? _orange.withValues(alpha: 0.15) : _card,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                  color: sel
+                                      ? _orange
+                                      : Colors.white.withValues(
+                                          alpha: maxed ? 0.03 : 0.1),
+                                  width: sel ? 1.5 : 1),
+                            ),
+                            child: Text(tag,
+                                style: GoogleFonts.inter(
+                                    color: sel
+                                        ? _orange
+                                        : maxed
+                                            ? _muted
+                                            : _txt2,
+                                    fontSize: 13,
+                                    fontWeight: sel
+                                        ? FontWeight.w600
+                                        : FontWeight.w400)),
+                          ),
+                        );
+                      }).toList()),
+                  const SizedBox(height: 20),
+                ]);
           }),
-        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
+        ]
+            .animate(interval: 50.ms)
+            .fade(duration: 500.ms, curve: Curves.easeOut)
+            .slideY(begin: 0.1, end: 0),
       ),
     );
   }
@@ -1045,12 +1427,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         children: <Widget>[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(10), border: Border.all(color: _gb)),
+            decoration: BoxDecoration(
+                color: _card2,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _gb)),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               const Text('✨', style: TextStyle(fontSize: 16)),
               const SizedBox(width: 6),
               Text('${_selectedVibes.length} / $_maxVibes selected',
-                  style: GoogleFonts.inter(color: _selectedVibes.isNotEmpty ? _orange : _muted, fontSize: 13, fontWeight: FontWeight.w600)),
+                  style: GoogleFonts.inter(
+                      color: _selectedVibes.isNotEmpty ? _orange : _muted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600)),
             ]),
           ),
           const SizedBox(height: 20),
@@ -1062,28 +1450,56 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               final sel = _selectedVibes.contains(key);
               final maxed = _selectedVibes.length >= _maxVibes && !sel;
               return GestureDetector(
-                onTap: maxed ? null : () {
-                  HapticFeedback.selectionClick();
-                  setState(() { if (sel) _selectedVibes.remove(key); else _selectedVibes.add(key); });
-                },
+                onTap: maxed
+                    ? null
+                    : () {
+                        HapticFeedback.selectionClick();
+                        setState(() {
+                          if (sel)
+                            _selectedVibes.remove(key);
+                          else
+                            _selectedVibes.add(key);
+                        });
+                      },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                   decoration: BoxDecoration(
                     color: sel ? _amber.withValues(alpha: 0.15) : _card,
                     borderRadius: BorderRadius.circular(28),
                     border: Border.all(
-                      color: sel ? _amber : Colors.white.withValues(alpha: maxed ? 0.04 : 0.12),
+                      color: sel
+                          ? _amber
+                          : Colors.white.withValues(alpha: maxed ? 0.04 : 0.12),
                       width: sel ? 2 : 1,
                     ),
-                    boxShadow: sel ? [BoxShadow(color: _amber.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0,3))] : null,
+                    boxShadow: sel
+                        ? [
+                            BoxShadow(
+                                color: _amber.withValues(alpha: 0.2),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3))
+                          ]
+                        : null,
                   ),
-                  child: Text(label, style: GoogleFonts.inter(color: sel ? _amber : maxed ? _muted : _txt, fontSize: 14, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
+                  child: Text(label,
+                      style: GoogleFonts.inter(
+                          color: sel
+                              ? _amber
+                              : maxed
+                                  ? _muted
+                                  : _txt,
+                          fontSize: 14,
+                          fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
                 ),
               );
             }).toList(),
           ),
-        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
+        ]
+            .animate(interval: 50.ms)
+            .fade(duration: 500.ms, curve: Curves.easeOut)
+            .slideY(begin: 0.1, end: 0),
       ),
     );
   }
@@ -1111,13 +1527,25 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: _orange.withValues(alpha: 0.3)),
               ),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              child:
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 _detectingLocation
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: _orange, strokeWidth: 2))
-                    : const Icon(Icons.my_location_rounded, color: _orange, size: 18),
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            color: _orange, strokeWidth: 2))
+                    : const Icon(Icons.my_location_rounded,
+                        color: _orange, size: 18),
                 const SizedBox(width: 10),
-                Text(_detectingLocation ? 'Detecting...' : 'Use my current location',
-                    style: GoogleFonts.inter(color: _orange, fontWeight: FontWeight.w600, fontSize: 14)),
+                Text(
+                    _detectingLocation
+                        ? 'Detecting...'
+                        : 'Use my current location',
+                    style: GoogleFonts.inter(
+                        color: _orange,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14)),
               ]),
             ),
           ),
@@ -1125,7 +1553,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
           // Search bar
           Container(
-            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _gb)),
+            decoration: BoxDecoration(
+                color: _card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _gb)),
             child: TextField(
               controller: _locSearchCtrl,
               style: GoogleFonts.inter(color: _txt, fontSize: 14),
@@ -1134,10 +1565,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 hintText: 'Search city, area, landmark...',
                 hintStyle: GoogleFonts.inter(color: _muted, fontSize: 13),
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 prefixIcon: const Icon(Icons.search, color: _orange, size: 20),
                 suffixIcon: _locSearchCtrl.text.isNotEmpty
-                    ? GestureDetector(onTap: () => setState(() { _locSearchCtrl.clear(); _searchResults = []; }), child: const Icon(Icons.close, color: _muted, size: 18))
+                    ? GestureDetector(
+                        onTap: () => setState(() {
+                              _locSearchCtrl.clear();
+                              _searchResults = [];
+                            }),
+                        child: const Icon(Icons.close, color: _muted, size: 18))
                     : null,
               ),
             ),
@@ -1148,17 +1585,29 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             Container(
               margin: const EdgeInsets.only(top: 4),
               constraints: const BoxConstraints(maxHeight: 160),
-              decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12), border: Border.all(color: _gb)),
+              decoration: BoxDecoration(
+                  color: _card,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _gb)),
               child: ListView.builder(
-                shrinkWrap: true, padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
                 itemCount: _searchResults.length,
                 itemBuilder: (_, i) {
                   final r = _searchResults[i];
                   return ListTile(
                     dense: true,
-                    leading: const Icon(Icons.location_on, color: _orange, size: 18),
-                    title: Text(r['name'] ?? '', style: GoogleFonts.inter(color: _txt, fontSize: 13, fontWeight: FontWeight.w500)),
-                    subtitle: Text(r['full_name'] ?? '', style: GoogleFonts.inter(color: _muted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    leading:
+                        const Icon(Icons.location_on, color: _orange, size: 18),
+                    title: Text(r['name'] ?? '',
+                        style: GoogleFonts.inter(
+                            color: _txt,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500)),
+                    subtitle: Text(r['full_name'] ?? '',
+                        style: GoogleFonts.inter(color: _muted, fontSize: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
                     onTap: () => _selectResult(r),
                   );
                 },
@@ -1170,30 +1619,37 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           if (hasPin || _cityCtrl.text.isEmpty)
             Container(
               height: 230,
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: _orange.withValues(alpha: 0.25))),
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: _orange.withValues(alpha: 0.25))),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(17),
-                child: FlutterMap(
-                  mapController: _mapCtrl,
-                  options: MapOptions(
-                    initialCenter: LatLng(pinLat, pinLng),
-                    initialZoom: hasPin ? 13.0 : 4.0,
-                    onTap: (_, point) {
-                      setState(() { _lat = point.latitude; _lng = point.longitude; });
-                      _reverseGeocode(point.latitude, point.longitude);
-                    },
+                child: GoogleMap(
+                  onMapCreated: (c) => _googleMapCtrl = c,
+                  initialCameraPosition: CameraPosition(
+                    target: LatLng(pinLat, pinLng),
+                    zoom: hasPin ? 13.0 : 4.0,
                   ),
-                  children: [
-                    TileLayer(urlTemplate: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', userAgentPackageName: 'com.meetra.app'),
-                    if (hasPin)
-                      MarkerLayer(markers: [Marker(
-                        point: LatLng(pinLat, pinLng), width: 44, height: 44,
-                        child: Container(
-                          decoration: BoxDecoration(shape: BoxShape.circle, color: _orange.withValues(alpha: 0.15), border: Border.all(color: _orange, width: 2)),
-                          child: const Icon(Icons.location_pin, color: _orange, size: 28),
-                        ),
-                      )]),
-                  ],
+                  mapType: MapType.normal,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  onTap: (point) {
+                    setState(() {
+                      _lat = point.latitude;
+                      _lng = point.longitude;
+                    });
+                    _reverseGeocode(point.latitude, point.longitude);
+                  },
+                  markers: hasPin
+                      ? {
+                          Marker(
+                            markerId: const MarkerId('pin'),
+                            position: LatLng(pinLat, pinLng),
+                            icon: BitmapDescriptor.defaultMarkerWithHue(
+                                BitmapDescriptor.hueOrange),
+                          ),
+                        }
+                      : {},
                 ),
               ),
             ),
@@ -1203,30 +1659,46 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             Container(
               margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _green.withValues(alpha: 0.25))),
+              decoration: BoxDecoration(
+                  color: _card,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _green.withValues(alpha: 0.25))),
               child: Row(children: [
                 const Icon(Icons.location_on, color: _green, size: 18),
                 const SizedBox(width: 10),
-                Expanded(child: Text(
-                  [_cityCtrl.text, _stateCtrl.text].where((s) => s.isNotEmpty).join(', '),
-                  style: GoogleFonts.inter(color: _txt, fontSize: 14, fontWeight: FontWeight.w600),
+                Expanded(
+                    child: Text(
+                  [_cityCtrl.text, _stateCtrl.text]
+                      .where((s) => s.isNotEmpty)
+                      .join(', '),
+                  style: GoogleFonts.inter(
+                      color: _txt, fontSize: 14, fontWeight: FontWeight.w600),
                 )),
                 const Icon(Icons.check_circle, color: _green, size: 18),
               ]),
             ),
 
           const SizedBox(height: 8),
-          Text('Tap the map to pin your location. It is required to find events near you.',
-              style: GoogleFonts.inter(color: _orange, fontSize: 11), textAlign: TextAlign.center),
-        ].animate(interval: 50.ms).fade(duration: 500.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0),
+          Text(
+              'Tap the map to pin your location. It is required to find events near you.',
+              style: GoogleFonts.inter(color: _orange, fontSize: 11),
+              textAlign: TextAlign.center),
+        ]
+            .animate(interval: 50.ms)
+            .fade(duration: 500.ms, curve: Curves.easeOut)
+            .slideY(begin: 0.1, end: 0),
       ),
     );
   }
 
   // ── Shared helpers ───────────────────────────────────────────────
-  Widget _inputField(String hint, TextEditingController ctrl, IconData icon, {void Function(String)? onChanged}) {
+  Widget _inputField(String hint, TextEditingController ctrl, IconData icon,
+      {void Function(String)? onChanged}) {
     return Container(
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _gb)),
+      decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _gb)),
       child: TextField(
         controller: ctrl,
         style: GoogleFonts.inter(color: _txt, fontSize: 15),
@@ -1243,12 +1715,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   ImageProvider _buildSafeImage(String? url) {
-    if (url == null || url.isEmpty) return const NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
+    if (url == null || url.isEmpty)
+      return const NetworkImage(
+          'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
     if (url.startsWith('http')) return NetworkImage(url);
     try {
-      return MemoryImage(base64Decode(url.contains(',') ? url.split(',').last : url));
+      return MemoryImage(
+          base64Decode(url.contains(',') ? url.split(',').last : url));
     } catch (_) {
-      return const NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
+      return const NetworkImage(
+          'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
     }
   }
 }

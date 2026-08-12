@@ -5,8 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'image_upload_service.dart';
 import 'dart:async';
 import 'package:http/http.dart' as http;
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'services/location_service.dart';
 import 'utils/constants.dart';
@@ -35,7 +34,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   double? _lat;
   double? _lng;
-  final MapController _mapCtrl = MapController();
+  GoogleMapController? _googleMapCtrl;
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _searchDebounce;
 
@@ -53,8 +52,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _dobPickerExpanded = false;
   bool? _isMapNightMode;
   bool _fetchingGps = false;
-  static const _monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  
+  static const _monthNames = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
+  ];
+
   String? _avatarUrl;
   String _gender = '';
   Set<String> _interests = {};
@@ -80,8 +92,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.initState();
     final p = widget.initialProfile;
     final authMeta = _sb.auth.currentUser?.userMetadata ?? {};
-    
-    _nameCtrl = TextEditingController(text: p['name'] ?? p['full_name'] ?? authMeta['name'] ?? authMeta['full_name'] ?? '');
+
+    _nameCtrl = TextEditingController(
+        text: p['name'] ??
+            p['full_name'] ??
+            authMeta['name'] ??
+            authMeta['full_name'] ??
+            '');
     _userCtrl = TextEditingController(text: p['username'] ?? '');
     _originalUsername = p['username'] ?? '';
     _isUsernameAvailable = _originalUsername.isNotEmpty;
@@ -102,7 +119,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _dobDay = d.day;
       } catch (_) {}
     }
-    
+
     _avatarUrl = p['avatar_url'] ?? authMeta['avatar_url'];
     _gender = p['gender'] ?? authMeta['gender'] ?? '';
     _isPublic = p['is_public'] ?? true;
@@ -116,13 +133,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _religion = p['religion'] ?? '';
     _pets = p['pets'] ?? '';
 
-    if (p['interests'] is List) _interests = Set<String>.from((p['interests'] as List).map((e) => e.toString()));
+    if (p['interests'] is List)
+      _interests =
+          Set<String>.from((p['interests'] as List).map((e) => e.toString()));
     if (p['looking_for'] is List && (p['looking_for'] as List).isNotEmpty) {
       _lookingFor = (p['looking_for'] as List).first.toString();
     }
-    if (p['personality_traits'] is List) _selectedTraits = Set<String>.from((p['personality_traits'] as List).map((e) => e.toString()));
-    if (p['languages'] is List) _selectedLanguages = Set<String>.from((p['languages'] as List).map((e) => e.toString()));
-    if (p['visible_vibes'] is List) _selectedVibes = Set<String>.from((p['visible_vibes'] as List).map((e) => e.toString()));
+    if (p['personality_traits'] is List)
+      _selectedTraits = Set<String>.from(
+          (p['personality_traits'] as List).map((e) => e.toString()));
+    if (p['languages'] is List)
+      _selectedLanguages =
+          Set<String>.from((p['languages'] as List).map((e) => e.toString()));
+    if (p['visible_vibes'] is List)
+      _selectedVibes = Set<String>.from(
+          (p['visible_vibes'] as List).map((e) => e.toString()));
   }
 
   @override
@@ -137,11 +162,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _searchDebounce?.cancel();
     _usernameDebounce?.cancel();
     _jobTitleCtrl.dispose();
+    _googleMapCtrl?.dispose();
     super.dispose();
   }
 
   Future<void> _pickAvatar() async {
-    final url = await ImageUploadService.pickAndUpload(context: context, folder: 'avatars');
+    final url = await ImageUploadService.pickAndUpload(
+        context: context, folder: 'avatars');
     if (url != null) {
       setState(() => _avatarUrl = url);
     }
@@ -157,15 +184,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _save() async {
     if (_nameCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name cannot be empty')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Name cannot be empty')));
       return;
     }
     if (_userCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Username cannot be empty')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Username cannot be empty')));
       return;
     }
     if (!_isUsernameAvailable && _userCtrl.text.trim() != _originalUsername) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please choose a valid, unique username.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Please choose a valid, unique username.')));
       return;
     }
 
@@ -211,7 +241,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           await _sb.from('profiles').update(payload).eq('id', uid);
           success = true;
         } on PostgrestException catch (e) {
-          if (e.code == 'PGRST204' || e.message.contains('Could not find the') || e.message.contains('column')) {
+          if (e.code == 'PGRST204' ||
+              e.message.contains('Could not find the') ||
+              e.message.contains('column')) {
             final colName = _extractColumnFromError(e.message);
             if (colName != null && payload.containsKey(colName)) {
               payload.remove(colName);
@@ -221,8 +253,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             bool removedAny = false;
             final commonCols = [
-              'dob', 'languages', 'personality_traits', 'visible_vibes', 
-              'zodiac', 'relationship_type', 'religion', 'match_gender'
+              'dob',
+              'languages',
+              'personality_traits',
+              'visible_vibes',
+              'zodiac',
+              'relationship_type',
+              'religion',
+              'match_gender'
             ];
             for (final col in commonCols) {
               if (e.message.contains("'$col'") && payload.containsKey(col)) {
@@ -244,7 +282,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error saving: $e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -258,7 +297,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void _commitDob() {
     final maxDay = _daysInMonth(_dobMonth, _dobYear);
     if (_dobDay > maxDay) _dobDay = maxDay;
-    _dobCtrl.text = '$_dobYear-${_dobMonth.toString().padLeft(2, '0')}-${_dobDay.toString().padLeft(2, '0')}';
+    _dobCtrl.text =
+        '$_dobYear-${_dobMonth.toString().padLeft(2, '0')}-${_dobDay.toString().padLeft(2, '0')}';
   }
 
   Widget _buildDobPicker() {
@@ -271,11 +311,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     const visibleItems = 3;
 
     return StatefulBuilder(builder: (ctx, setLocal) {
-      FixedExtentScrollController dayCtrl2 = FixedExtentScrollController(initialItem: _dobDay - 1);
-      FixedExtentScrollController monthCtrl2 = FixedExtentScrollController(initialItem: _dobMonth - 1);
-      FixedExtentScrollController yearCtrl2 = FixedExtentScrollController(initialItem: years.indexOf(_dobYear).clamp(0, years.length - 1));
+      FixedExtentScrollController dayCtrl2 =
+          FixedExtentScrollController(initialItem: _dobDay - 1);
+      FixedExtentScrollController monthCtrl2 =
+          FixedExtentScrollController(initialItem: _dobMonth - 1);
+      FixedExtentScrollController yearCtrl2 = FixedExtentScrollController(
+          initialItem: years.indexOf(_dobYear).clamp(0, years.length - 1));
 
-      Widget col(FixedExtentScrollController c, List items, Function(int) onChange, {bool isYear = false}) {
+      Widget col(
+          FixedExtentScrollController c, List items, Function(int) onChange,
+          {bool isYear = false}) {
         return Expanded(
           child: ListWheelScrollView.useDelegate(
             controller: c,
@@ -305,7 +350,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     style: GoogleFonts.inter(
                       fontSize: sel ? 26 : 20,
                       fontWeight: sel ? FontWeight.w800 : FontWeight.w400,
-                      color: sel ? Colors.white : Colors.white.withValues(alpha: 0.35),
+                      color: sel
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.35),
                     ),
                     child: Text(label),
                   ),
@@ -317,7 +364,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         );
       }
 
-      final localDays = List.generate(_daysInMonth(_dobMonth, _dobYear), (i) => i + 1);
+      final localDays =
+          List.generate(_daysInMonth(_dobMonth, _dobYear), (i) => i + 1);
 
       return AnimatedContainer(
         duration: const Duration(milliseconds: 350),
@@ -326,8 +374,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFF0D1117),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.25), width: 1.5),
-          boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.08), blurRadius: 20, spreadRadius: 2)],
+          border: Border.all(
+              color: const Color(0xFFFF6B00).withValues(alpha: 0.25),
+              width: 1.5),
+          boxShadow: [
+            BoxShadow(
+                color: const Color(0xFFFF6B00).withValues(alpha: 0.08),
+                blurRadius: 20,
+                spreadRadius: 2)
+          ],
         ),
         child: Column(
           children: [
@@ -337,13 +392,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   GestureDetector(
-                    onTap: () { setState(() => _dobPickerExpanded = false); },
-                    child: Text('Cancel', style: GoogleFonts.inter(color: Colors.white38, fontSize: 14)),
+                    onTap: () {
+                      setState(() => _dobPickerExpanded = false);
+                    },
+                    child: Text('Cancel',
+                        style: GoogleFonts.inter(
+                            color: Colors.white38, fontSize: 14)),
                   ),
                   Row(children: [
-                    const Icon(Icons.cake_outlined, color: Color(0xFFFF6B00), size: 16),
+                    const Icon(Icons.cake_outlined,
+                        color: Color(0xFFFF6B00), size: 16),
                     const SizedBox(width: 6),
-                    Text('Date of Birth', style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                    Text('Date of Birth',
+                        style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700)),
                   ]),
                   GestureDetector(
                     onTap: () {
@@ -353,12 +417,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       });
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF22C55E)]),
+                        gradient: const LinearGradient(
+                            colors: [Color(0xFFFF6B00), Color(0xFF22C55E)]),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text('Done', style: GoogleFonts.inter(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w800)),
+                      child: Text('Done',
+                          style: GoogleFonts.inter(
+                              color: Colors.black,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800)),
                     ),
                   ),
                 ],
@@ -368,9 +438,33 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Row(
                 children: [
-                  Expanded(child: Center(child: Text('DAY', style: GoogleFonts.inter(color: const Color(0xFFFF6B00).withValues(alpha: 0.6), fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w700)))),
-                  Expanded(child: Center(child: Text('MONTH', style: GoogleFonts.inter(color: const Color(0xFFFF6B00).withValues(alpha: 0.6), fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w700)))),
-                  Expanded(child: Center(child: Text('YEAR', style: GoogleFonts.inter(color: const Color(0xFFFF6B00).withValues(alpha: 0.6), fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w700)))),
+                  Expanded(
+                      child: Center(
+                          child: Text('DAY',
+                              style: GoogleFonts.inter(
+                                  color: const Color(0xFFFF6B00)
+                                      .withValues(alpha: 0.6),
+                                  fontSize: 10,
+                                  letterSpacing: 1.5,
+                                  fontWeight: FontWeight.w700)))),
+                  Expanded(
+                      child: Center(
+                          child: Text('MONTH',
+                              style: GoogleFonts.inter(
+                                  color: const Color(0xFFFF6B00)
+                                      .withValues(alpha: 0.6),
+                                  fontSize: 10,
+                                  letterSpacing: 1.5,
+                                  fontWeight: FontWeight.w700)))),
+                  Expanded(
+                      child: Center(
+                          child: Text('YEAR',
+                              style: GoogleFonts.inter(
+                                  color: const Color(0xFFFF6B00)
+                                      .withValues(alpha: 0.6),
+                                  fontSize: 10,
+                                  letterSpacing: 1.5,
+                                  fontWeight: FontWeight.w700)))),
                 ],
               ),
             ),
@@ -385,23 +479,59 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       margin: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
                         border: Border(
-                          top: BorderSide(color: const Color(0xFFFF6B00).withValues(alpha: 0.5), width: 1),
-                          bottom: BorderSide(color: const Color(0xFFFF6B00).withValues(alpha: 0.5), width: 1),
+                          top: BorderSide(
+                              color: const Color(0xFFFF6B00)
+                                  .withValues(alpha: 0.5),
+                              width: 1),
+                          bottom: BorderSide(
+                              color: const Color(0xFFFF6B00)
+                                  .withValues(alpha: 0.5),
+                              width: 1),
                         ),
                       ),
                     ),
                   ),
-                  Positioned(top: 0, left: 0, right: 0, height: itemH * 0.9,
-                    child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [const Color(0xFF0D1117), const Color(0xFF0D1117).withValues(alpha: 0)])))),
-                  Positioned(bottom: 0, left: 0, right: 0, height: itemH * 0.9,
-                    child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [const Color(0xFF0D1117), const Color(0xFF0D1117).withValues(alpha: 0)])))),
+                  Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: itemH * 0.9,
+                      child: Container(
+                          decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                            const Color(0xFF0D1117),
+                            const Color(0xFF0D1117).withValues(alpha: 0)
+                          ])))),
+                  Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: itemH * 0.9,
+                      child: Container(
+                          decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                  colors: [
+                            const Color(0xFF0D1117),
+                            const Color(0xFF0D1117).withValues(alpha: 0)
+                          ])))),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
                       children: [
-                        col(dayCtrl2, localDays, (i) { _dobDay = localDays[i]; }),
-                        col(monthCtrl2, months, (i) { _dobMonth = months[i]; }, isYear: false),
-                        col(yearCtrl2, years, (i) { _dobYear = years[i]; }, isYear: true),
+                        col(dayCtrl2, localDays, (i) {
+                          _dobDay = localDays[i];
+                        }),
+                        col(monthCtrl2, months, (i) {
+                          _dobMonth = months[i];
+                        }, isYear: false),
+                        col(yearCtrl2, years, (i) {
+                          _dobYear = years[i];
+                        }, isYear: true),
                       ],
                     ),
                   ),
@@ -441,7 +571,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     if (username.isEmpty) {
-      setState(() { _usernameError = null; _isUsernameAvailable = false; _isUsernameChecking = false; });
+      setState(() {
+        _usernameError = null;
+        _isUsernameAvailable = false;
+        _isUsernameChecking = false;
+      });
       return;
     }
 
@@ -454,7 +588,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
-    setState(() { _usernameError = null; _isUsernameChecking = true; _isUsernameAvailable = false; });
+    setState(() {
+      _usernameError = null;
+      _isUsernameChecking = true;
+      _isUsernameAvailable = false;
+    });
 
     _usernameDebounce = Timer(const Duration(milliseconds: 600), () async {
       try {
@@ -476,7 +614,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           });
         }
       } catch (e) {
-        if (mounted) setState(() { _isUsernameChecking = false; _usernameError = 'Error checking username'; });
+        if (mounted)
+          setState(() {
+            _isUsernameChecking = false;
+            _usernameError = 'Error checking username';
+          });
       }
     });
   }
@@ -490,21 +632,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _lat = lat;
       _lng = lng;
       _cityCtrl.text = name;
-      _stateCtrl.text = fullName.split(',').length > 1 ? fullName.split(',')[1].trim() : '';
+      _stateCtrl.text =
+          fullName.split(',').length > 1 ? fullName.split(',')[1].trim() : '';
       _locSearchCtrl.text = name;
       _searchResults = [];
     });
-    _mapCtrl.move(LatLng(lat, lng), 14.0);
+    _googleMapCtrl
+        ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lng), 14.0));
   }
 
   Future<void> _reverseGeocode(double lat, double lng) async {
     try {
-      final url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&addressdetails=1';
-      final resp = await http.get(Uri.parse(url), headers: {'User-Agent': 'MeetraApp/1.0'});
+      final url =
+          'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&addressdetails=1';
+      final resp = await http
+          .get(Uri.parse(url), headers: {'User-Agent': 'MeetraApp/1.0'});
       if (resp.statusCode == 200 && mounted) {
         final data = jsonDecode(resp.body);
         final addr = data['address'] ?? {};
-        final city = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['county'] ?? '';
+        final city = addr['city'] ??
+            addr['town'] ??
+            addr['village'] ??
+            addr['county'] ??
+            '';
         final state = addr['state'] ?? '';
         setState(() {
           _cityCtrl.text = city;
@@ -523,7 +673,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         if (mounted) {
           setState(() => _fetchingGps = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: const Text('Please enable location services'), backgroundColor: Colors.red.shade700),
+            SnackBar(
+                content: const Text('Please enable location services'),
+                backgroundColor: Colors.red.shade700),
           );
         }
         return;
@@ -543,20 +695,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
 
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
       );
 
       setState(() {
         _lat = position.latitude;
         _lng = position.longitude;
       });
-      _mapCtrl.move(LatLng(position.latitude, position.longitude), 14.0);
+      _googleMapCtrl?.animateCamera(CameraUpdate.newLatLngZoom(
+          LatLng(position.latitude, position.longitude), 14.0));
       await _reverseGeocode(position.latitude, position.longitude);
-
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not get location: $e'), backgroundColor: Colors.red.shade700),
+          SnackBar(
+              content: Text('Could not get location: $e'),
+              backgroundColor: Colors.red.shade700),
         );
       }
     } finally {
@@ -575,14 +730,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       appBar: AppBar(
         backgroundColor: bg,
         elevation: 0,
-        title: Text('Edit Profile', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.bold)),
+        title: Text('Edit Profile',
+            style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.bold)),
         actions: [
           if (_saving)
-            const Padding(padding: EdgeInsets.all(16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: cyan)))
+            const Padding(
+                padding: EdgeInsets.all(16),
+                child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child:
+                        CircularProgressIndicator(strokeWidth: 2, color: cyan)))
           else
             TextButton(
               onPressed: _save,
-              child: Text('Save', style: GoogleFonts.inter(color: cyan, fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Text('Save',
+                  style: GoogleFonts.inter(
+                      color: cyan, fontWeight: FontWeight.bold, fontSize: 16)),
             ),
         ],
       ),
@@ -598,7 +762,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Stack(
                   children: [
                     Container(
-                      width: 110, height: 110,
+                      width: 110,
+                      height: 110,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(color: cyan, width: 2),
@@ -609,11 +774,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ),
                     ),
                     Positioned(
-                      bottom: 0, right: 0,
+                      bottom: 0,
+                      right: 0,
                       child: Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(color: cyan, shape: BoxShape.circle),
-                        child: const Icon(Icons.camera_alt, color: Colors.black, size: 18),
+                        decoration: const BoxDecoration(
+                            color: cyan, shape: BoxShape.circle),
+                        child: const Icon(Icons.camera_alt,
+                            color: Colors.black, size: 18),
                       ),
                     ),
                   ],
@@ -629,29 +797,51 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             _buildLabel('Username'),
             Container(
               decoration: BoxDecoration(
-                color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E),
+                color: isDoodleMode(context)
+                    ? DoodleColors.paper
+                    : const Color(0xFF1A1A2E),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: _isUsernameAvailable
-                      ? const Color(0xFF22C55E).withValues(alpha: 0.6)
-                      : (_usernameError != null
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.6)
-                          : (isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05)))),
+                    color: _isUsernameAvailable
+                        ? const Color(0xFF22C55E).withValues(alpha: 0.6)
+                        : (_usernameError != null
+                            ? const Color(0xFFEF4444).withValues(alpha: 0.6)
+                            : (isDoodleMode(context)
+                                ? DoodleColors.cardBorder
+                                : Colors.white.withValues(alpha: 0.05)))),
               ),
               child: TextField(
                 controller: _userCtrl,
                 onChanged: _checkUsernameAvailability,
-                style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white),
+                style: GoogleFonts.inter(
+                    color: isDoodleMode(context)
+                        ? DoodleColors.textPrimary
+                        : Colors.white),
                 decoration: InputDecoration(
                   hintText: 'Choose a unique username',
-                  hintStyle: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white24),
+                  hintStyle: GoogleFonts.inter(
+                      color: isDoodleMode(context)
+                          ? DoodleColors.textMuted
+                          : Colors.white24),
                   prefixText: '@',
-                  prefixStyle: GoogleFonts.inter(color: const Color(0xFFFF6B00), fontWeight: FontWeight.bold),
+                  prefixStyle: GoogleFonts.inter(
+                      color: const Color(0xFFFF6B00),
+                      fontWeight: FontWeight.bold),
                   suffixIcon: _isUsernameChecking
-                      ? const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF6B00))))
+                      ? const Padding(
+                          padding: EdgeInsets.all(14),
+                          child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Color(0xFFFF6B00))))
                       : _isUsernameAvailable
-                          ? const Icon(Icons.check_circle, color: Color(0xFF22C55E), size: 20)
-                          : (_usernameError != null ? const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 20) : null),
+                          ? const Icon(Icons.check_circle,
+                              color: Color(0xFF22C55E), size: 20)
+                          : (_usernameError != null
+                              ? const Icon(Icons.error_outline,
+                                  color: Color(0xFFEF4444), size: 20)
+                              : null),
                   contentPadding: const EdgeInsets.all(16),
                   border: InputBorder.none,
                 ),
@@ -660,7 +850,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             if (_usernameError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4, left: 4),
-                child: Text(_usernameError!, style: GoogleFonts.inter(color: const Color(0xFFEF4444), fontSize: 12)),
+                child: Text(_usernameError!,
+                    style: GoogleFonts.inter(
+                        color: const Color(0xFFEF4444), fontSize: 12)),
               ),
             const SizedBox(height: 16),
 
@@ -670,21 +862,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             _buildLabel('Date of Birth'),
             GestureDetector(
-              onTap: () => setState(() => _dobPickerExpanded = !_dobPickerExpanded),
+              onTap: () =>
+                  setState(() => _dobPickerExpanded = !_dobPickerExpanded),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 decoration: BoxDecoration(
-                  color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E),
+                  color: isDoodleMode(context)
+                      ? DoodleColors.paper
+                      : const Color(0xFF1A1A2E),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _dobPickerExpanded ? const Color(0xFFFF6B00) : (_dobCtrl.text.isNotEmpty ? const Color(0xFFFF6B00).withValues(alpha: 0.5) : (isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05))),
+                    color: _dobPickerExpanded
+                        ? const Color(0xFFFF6B00)
+                        : (_dobCtrl.text.isNotEmpty
+                            ? const Color(0xFFFF6B00).withValues(alpha: 0.5)
+                            : (isDoodleMode(context)
+                                ? DoodleColors.cardBorder
+                                : Colors.white.withValues(alpha: 0.05))),
                     width: _dobPickerExpanded ? 1.5 : 1,
                   ),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.cake_outlined, color: _dobCtrl.text.isNotEmpty ? const Color(0xFFFF6B00) : (isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8)), size: 22),
+                    Icon(Icons.cake_outlined,
+                        color: _dobCtrl.text.isNotEmpty
+                            ? const Color(0xFFFF6B00)
+                            : (isDoodleMode(context)
+                                ? DoodleColors.textMuted
+                                : const Color(0xFF94A3B8)),
+                        size: 22),
                     const SizedBox(width: 14),
                     Expanded(
                       child: _dobCtrl.text.isNotEmpty
@@ -695,21 +903,43 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   (() {
                                     try {
                                       final d = DateTime.parse(_dobCtrl.text);
-                                    return '${_monthNames[d.month - 1]} ${d.day}, ${d.year}';
-                                  } catch (e) { return _dobCtrl.text; }
-                                })(),
-                                style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 2),
-                              Text('Date of birth', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8), fontSize: 11)),
-                            ],
-                          )
-                        : Text('Select Date of Birth', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white24, fontSize: 16)),
-                  ),
-                  Icon(
-                    _dobPickerExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                    color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8), size: 20,
-                  ),
+                                      return '${_monthNames[d.month - 1]} ${d.day}, ${d.year}';
+                                    } catch (e) {
+                                      return _dobCtrl.text;
+                                    }
+                                  })(),
+                                  style: GoogleFonts.inter(
+                                      color: isDoodleMode(context)
+                                          ? DoodleColors.textPrimary
+                                          : Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 2),
+                                Text('Date of birth',
+                                    style: GoogleFonts.inter(
+                                        color: isDoodleMode(context)
+                                            ? DoodleColors.textMuted
+                                            : const Color(0xFF94A3B8),
+                                        fontSize: 11)),
+                              ],
+                            )
+                          : Text('Select Date of Birth',
+                              style: GoogleFonts.inter(
+                                  color: isDoodleMode(context)
+                                      ? DoodleColors.textMuted
+                                      : Colors.white24,
+                                  fontSize: 16)),
+                    ),
+                    Icon(
+                      _dobPickerExpanded
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                      color: isDoodleMode(context)
+                          ? DoodleColors.textMuted
+                          : const Color(0xFF94A3B8),
+                      size: 20,
+                    ),
                   ],
                 ),
               ),
@@ -719,19 +949,46 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             _buildLabel('Location'),
             Container(
-              decoration: BoxDecoration(color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(14), border: Border.all(color: isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05))),
+              decoration: BoxDecoration(
+                  color: isDoodleMode(context)
+                      ? DoodleColors.paper
+                      : const Color(0xFF1A1A2E),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                      color: isDoodleMode(context)
+                          ? DoodleColors.cardBorder
+                          : Colors.white.withValues(alpha: 0.05))),
               child: TextField(
                 controller: _locSearchCtrl,
-                style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontSize: 14),
+                style: GoogleFonts.inter(
+                    color: isDoodleMode(context)
+                        ? DoodleColors.textPrimary
+                        : Colors.white,
+                    fontSize: 14),
                 onChanged: _onSearchChanged,
                 decoration: InputDecoration(
                   hintText: 'Search city, area, landmark...',
-                  hintStyle: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white24, fontSize: 14),
+                  hintStyle: GoogleFonts.inter(
+                      color: isDoodleMode(context)
+                          ? DoodleColors.textMuted
+                          : Colors.white24,
+                      fontSize: 14),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  prefixIcon: const Icon(Icons.search, color: Color(0xFFFF6B00), size: 20),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  prefixIcon: const Icon(Icons.search,
+                      color: Color(0xFFFF6B00), size: 20),
                   suffixIcon: _locSearchCtrl.text.isNotEmpty
-                      ? GestureDetector(onTap: () => setState(() { _locSearchCtrl.clear(); _searchResults = []; }), child: Icon(Icons.close, color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8), size: 18))
+                      ? GestureDetector(
+                          onTap: () => setState(() {
+                                _locSearchCtrl.clear();
+                                _searchResults = [];
+                              }),
+                          child: Icon(Icons.close,
+                              color: isDoodleMode(context)
+                                  ? DoodleColors.textMuted
+                                  : const Color(0xFF94A3B8),
+                              size: 18))
                       : null,
                 ),
               ),
@@ -740,7 +997,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               Container(
                 margin: const EdgeInsets.only(top: 4),
                 constraints: const BoxConstraints(maxHeight: 180),
-                decoration: BoxDecoration(color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(12), border: Border.all(color: isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05))),
+                decoration: BoxDecoration(
+                    color: isDoodleMode(context)
+                        ? DoodleColors.paper
+                        : const Color(0xFF1A1A2E),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: isDoodleMode(context)
+                            ? DoodleColors.cardBorder
+                            : Colors.white.withValues(alpha: 0.05))),
                 child: ListView.builder(
                   shrinkWrap: true,
                   padding: EdgeInsets.zero,
@@ -749,9 +1014,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     final r = _searchResults[i];
                     return ListTile(
                       dense: true,
-                      leading: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 18),
-                      title: Text(r['name'] ?? '', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
-                      subtitle: Text(r['full_name'] ?? '', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8), fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      leading: const Icon(Icons.location_on,
+                          color: Color(0xFFFF6B00), size: 18),
+                      title: Text(r['name'] ?? '',
+                          style: GoogleFonts.inter(
+                              color: isDoodleMode(context)
+                                  ? DoodleColors.textPrimary
+                                  : Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500)),
+                      subtitle: Text(r['full_name'] ?? '',
+                          style: GoogleFonts.inter(
+                              color: isDoodleMode(context)
+                                  ? DoodleColors.textMuted
+                                  : const Color(0xFF94A3B8),
+                              fontSize: 11),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
                       onTap: () => _selectSearchResult(r),
                     );
                   },
@@ -768,68 +1047,57 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 borderRadius: BorderRadius.circular(16),
                 child: Stack(
                   children: [
-                    FlutterMap(
-                      mapController: _mapCtrl,
-                      options: MapOptions(
-                        initialCenter: _lat != null && _lng != null ? LatLng(_lat!, _lng!) : const LatLng(20.5937, 78.9629),
-                        initialZoom: _lat != null && _lng != null ? 14.0 : 4.0,
-                        onTap: (tapPosition, point) {
-                          setState(() {
-                            _lat = point.latitude;
-                            _lng = point.longitude;
-                          });
-                          _reverseGeocode(point.latitude, point.longitude);
-                        },
+                    GoogleMap(
+                      onMapCreated: (c) => _googleMapCtrl = c,
+                      initialCameraPosition: CameraPosition(
+                        target: _lat != null && _lng != null
+                            ? LatLng(_lat!, _lng!)
+                            : const LatLng(20.5937, 78.9629),
+                        zoom: _lat != null && _lng != null ? 14.0 : 4.0,
                       ),
-                      children: [
-                        TileLayer(
-                          urlTemplate: (_isMapNightMode ?? !isDoodleMode(context)) ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                          subdomains: const ['a', 'b', 'c', 'd'],
-                        ),
-                        if (_lat != null && _lng != null)
-                          MarkerLayer(
-                            markers: [
+                      mapType: MapType.normal,
+                      myLocationButtonEnabled: false,
+                      zoomControlsEnabled: false,
+                      onTap: (point) {
+                        setState(() {
+                          _lat = point.latitude;
+                          _lng = point.longitude;
+                        });
+                        _reverseGeocode(point.latitude, point.longitude);
+                      },
+                      markers: _lat != null && _lng != null
+                          ? {
                               Marker(
-                                point: LatLng(_lat!, _lng!),
-                                width: 60, height: 60,
-                                child: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 40),
+                                markerId: const MarkerId('selected'),
+                                position: LatLng(_lat!, _lng!),
+                                icon: BitmapDescriptor.defaultMarkerWithHue(
+                                    BitmapDescriptor.hueOrange),
                               ),
-                            ],
-                          ),
-                      ],
+                            }
+                          : {},
                     ),
                     Positioned(
-                      right: 12, top: 12,
-                      child: Column(
-                        children: [
-                          GestureDetector(
-                            onTap: () => setState(() => _isMapNightMode = !(_isMapNightMode ?? !isDoodleMode(context))),
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white24),
-                              ),
-                              child: Icon((_isMapNightMode ?? !isDoodleMode(context)) ? Icons.light_mode : Icons.dark_mode, color: Colors.white, size: 20),
-                            ),
+                      right: 12,
+                      top: 12,
+                      child: GestureDetector(
+                        onTap: _fetchingGps ? null : _useCurrentLocation,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                            border:
+                                Border.all(color: cyan.withValues(alpha: 0.5)),
                           ),
-                          const SizedBox(height: 12),
-                          GestureDetector(
-                            onTap: _fetchingGps ? null : _useCurrentLocation,
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: cyan.withValues(alpha: 0.5)),
-                              ),
-                              child: _fetchingGps 
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: cyan))
-                                : const Icon(Icons.my_location, color: cyan, size: 20),
-                            ),
-                          ),
-                        ],
+                          child: _fetchingGps
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: cyan))
+                              : const Icon(Icons.my_location,
+                                  color: cyan, size: 20),
+                        ),
                       ),
                     ),
                   ],
@@ -846,73 +1114,99 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               _buildLabel('Job Title'),
               _buildField(_jobTitleCtrl, 'e.g. Software Engineer'),
               const SizedBox(height: 16),
-              
               _buildLabel('Height (cm)'),
               Slider(
                 value: _heightCm,
-                min: 120, max: 220, divisions: 100,
+                min: 120,
+                max: 220,
+                divisions: 100,
                 activeColor: cyan,
                 label: '${_heightCm.round()} cm',
                 onChanged: (v) => setState(() => _heightCm = v),
               ),
-              Center(child: Text('${_heightCm.round()} cm', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontWeight: FontWeight.bold))),
+              Center(
+                  child: Text('${_heightCm.round()} cm',
+                      style: GoogleFonts.inter(
+                          color: isDoodleMode(context)
+                              ? DoodleColors.textPrimary
+                              : Colors.white,
+                          fontWeight: FontWeight.bold))),
               const SizedBox(height: 16),
-              
               _buildLabel('Education'),
-              _buildSingleSelectWrap(ProfileConstants.eduLevels, _education, (v) => setState(() => _education = v)),
+              _buildSingleSelectWrap(ProfileConstants.eduLevels, _education,
+                  (v) => setState(() => _education = v)),
               const SizedBox(height: 16),
-
               _buildLabel('Religion'),
-              _buildSingleSelectWrap(ProfileConstants.religions, _religion, (v) => setState(() => _religion = v)),
+              _buildSingleSelectWrap(ProfileConstants.religions, _religion,
+                  (v) => setState(() => _religion = v)),
               const SizedBox(height: 16),
-
               _buildLabel('Zodiac'),
-              _buildSingleSelectWrap(ProfileConstants.zodiacSigns, _zodiac, (v) => setState(() => _zodiac = v)),
+              _buildSingleSelectWrap(ProfileConstants.zodiacSigns, _zodiac,
+                  (v) => setState(() => _zodiac = v)),
             ]),
 
             _buildSection('Lifestyle Habits', [
               _buildLabel('Smoking'),
-              _buildSingleSelectWrap(['Never', 'Socially', 'Regularly', 'Trying to quit'], _smoking, (v) => setState(() => _smoking = v)),
+              _buildSingleSelectWrap(
+                  ['Never', 'Socially', 'Regularly', 'Trying to quit'],
+                  _smoking,
+                  (v) => setState(() => _smoking = v)),
               const SizedBox(height: 16),
-              
               _buildLabel('Drinking'),
-              _buildSingleSelectWrap(['Never', 'Socially', 'Regularly', 'Trying to quit'], _drinking, (v) => setState(() => _drinking = v)),
+              _buildSingleSelectWrap(
+                  ['Never', 'Socially', 'Regularly', 'Trying to quit'],
+                  _drinking,
+                  (v) => setState(() => _drinking = v)),
               const SizedBox(height: 16),
-              
               _buildLabel('Diet'),
-              _buildSingleSelectWrap(['Anything', 'Vegetarian', 'Vegan', 'Pescatarian', 'Keto', 'Other'], _diet, (v) => setState(() => _diet = v)),
+              _buildSingleSelectWrap([
+                'Anything',
+                'Vegetarian',
+                'Vegan',
+                'Pescatarian',
+                'Keto',
+                'Other'
+              ], _diet, (v) => setState(() => _diet = v)),
               const SizedBox(height: 16),
-
               _buildLabel('Fitness Routine'),
-              _buildSingleSelectWrap(['Active', 'Light', 'Rarely', 'Never', 'Prefer not to say'], _exercise, (v) => setState(() => _exercise = v)),
+              _buildSingleSelectWrap(
+                  ['Active', 'Light', 'Rarely', 'Never', 'Prefer not to say'],
+                  _exercise,
+                  (v) => setState(() => _exercise = v)),
               const SizedBox(height: 16),
-
               _buildLabel('Pets'),
-              _buildSingleSelectWrap(['Dog', 'Cat', 'Both', 'Other', 'None'], _pets, (v) => setState(() => _pets = v)),
+              _buildSingleSelectWrap(['Dog', 'Cat', 'Both', 'Other', 'None'],
+                  _pets, (v) => setState(() => _pets = v)),
             ]),
 
             _buildSection('Preferences', [
               _buildLabel('Looking For (Intent)'),
-              _buildSingleSelectWrap(ProfileConstants.purposeOptions, _lookingFor, (v) => setState(() => _lookingFor = v)),
+              _buildSingleSelectWrap(ProfileConstants.purposeOptions,
+                  _lookingFor, (v) => setState(() => _lookingFor = v)),
               const SizedBox(height: 16),
-
               _buildLabel('Languages Spoken'),
-              _buildMultiSelectWrap(ProfileConstants.languages, _selectedLanguages),
+              _buildMultiSelectWrap(
+                  ProfileConstants.languages, _selectedLanguages),
             ]),
 
             _buildSection('Personality & Vibes', [
               _buildLabel('Top Interests'),
-              _buildMultiSelectWrap(ProfileConstants.interestCategories.values.expand((x) => x).toList(), _interests, max: 5),
+              _buildMultiSelectWrap(
+                  ProfileConstants.interestCategories.values
+                      .expand((x) => x)
+                      .toList(),
+                  _interests,
+                  max: 5),
               const SizedBox(height: 16),
-
               _buildLabel('Personality Traits'),
-              _buildMultiSelectWrap(ProfileConstants.personalityTraits, _selectedTraits, max: 5),
+              _buildMultiSelectWrap(
+                  ProfileConstants.personalityTraits, _selectedTraits,
+                  max: 5),
               const SizedBox(height: 16),
-
               _buildLabel('Visible Vibes'),
-              _buildMultiSelectWrap(ProfileConstants.vibeOptions, _selectedVibes),
+              _buildMultiSelectWrap(
+                  ProfileConstants.vibeOptions, _selectedVibes),
             ]),
-
 
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -920,8 +1214,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Public Profile', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontWeight: FontWeight.bold)),
-                    Text('Allow others to find you', style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : text2, fontSize: 12)),
+                    Text('Public Profile',
+                        style: GoogleFonts.inter(
+                            color: isDoodleMode(context)
+                                ? DoodleColors.textPrimary
+                                : Colors.white,
+                            fontWeight: FontWeight.bold)),
+                    Text('Allow others to find you',
+                        style: GoogleFonts.inter(
+                            color: isDoodleMode(context)
+                                ? DoodleColors.textMuted
+                                : text2,
+                            fontSize: 12)),
                   ],
                 ),
                 Switch(
@@ -941,24 +1245,43 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget _buildLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(text, style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1)),
+      child: Text(text,
+          style: GoogleFonts.inter(
+              color: isDoodleMode(context)
+                  ? DoodleColors.textMuted
+                  : const Color(0xFF94A3B8),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1)),
     );
   }
 
-  Widget _buildField(TextEditingController ctrl, String hint, {int maxLines = 1}) {
+  Widget _buildField(TextEditingController ctrl, String hint,
+      {int maxLines = 1}) {
     return Container(
       decoration: BoxDecoration(
-        color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E),
+        color: isDoodleMode(context)
+            ? DoodleColors.paper
+            : const Color(0xFF1A1A2E),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(
+            color: isDoodleMode(context)
+                ? DoodleColors.cardBorder
+                : Colors.white.withValues(alpha: 0.05)),
       ),
       child: TextField(
         controller: ctrl,
         maxLines: maxLines,
-        style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white),
+        style: GoogleFonts.inter(
+            color: isDoodleMode(context)
+                ? DoodleColors.textPrimary
+                : Colors.white),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textMuted : Colors.white24),
+          hintStyle: GoogleFonts.inter(
+              color: isDoodleMode(context)
+                  ? DoodleColors.textMuted
+                  : Colors.white24),
           contentPadding: const EdgeInsets.all(16),
           border: InputBorder.none,
         ),
@@ -968,22 +1291,48 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Widget _buildGenderSelector() {
     return Row(
-      children: ['Male', 'Female', 'Other'].map((g) => Expanded(
-        child: GestureDetector(
-          onTap: () => setState(() => _gender = g),
-          child: Container(
-            margin: const EdgeInsets.only(right: 8),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: _gender == g ? (isDoodleMode(context) ? DoodleColors.amber : const Color(0xFFFF6B00).withValues(alpha: 0.1)) : (isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E)),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _gender == g ? (isDoodleMode(context) ? DoodleColors.amber : const Color(0xFFFF6B00)) : (isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05))),
-            ),
-            alignment: Alignment.center,
-            child: Text(g, style: GoogleFonts.inter(color: _gender == g ? (isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white) : (isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8)), fontWeight: _gender == g ? FontWeight.bold : FontWeight.normal)),
-          ),
-        ),
-      )).toList(),
+      children: ['Male', 'Female', 'Other']
+          .map((g) => Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _gender = g),
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _gender == g
+                          ? (isDoodleMode(context)
+                              ? DoodleColors.amber
+                              : const Color(0xFFFF6B00).withValues(alpha: 0.1))
+                          : (isDoodleMode(context)
+                              ? DoodleColors.paper
+                              : const Color(0xFF1A1A2E)),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: _gender == g
+                              ? (isDoodleMode(context)
+                                  ? DoodleColors.amber
+                                  : const Color(0xFFFF6B00))
+                              : (isDoodleMode(context)
+                                  ? DoodleColors.cardBorder
+                                  : Colors.white.withValues(alpha: 0.05))),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(g,
+                        style: GoogleFonts.inter(
+                            color: _gender == g
+                                ? (isDoodleMode(context)
+                                    ? DoodleColors.textPrimary
+                                    : Colors.white)
+                                : (isDoodleMode(context)
+                                    ? DoodleColors.textMuted
+                                    : const Color(0xFF94A3B8)),
+                            fontWeight: _gender == g
+                                ? FontWeight.bold
+                                : FontWeight.normal)),
+                  ),
+                ),
+              ))
+          .toList(),
     );
   }
 
@@ -993,11 +1342,33 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? (isDoodleMode(context) ? DoodleColors.amber : const Color(0xFFFF6B00).withValues(alpha: 0.1)) : (isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF1A1A2E)),
+          color: selected
+              ? (isDoodleMode(context)
+                  ? DoodleColors.amber
+                  : const Color(0xFFFF6B00).withValues(alpha: 0.1))
+              : (isDoodleMode(context)
+                  ? DoodleColors.paper
+                  : const Color(0xFF1A1A2E)),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? (isDoodleMode(context) ? DoodleColors.amber : const Color(0xFFFF6B00)) : (isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05))),
+          border: Border.all(
+              color: selected
+                  ? (isDoodleMode(context)
+                      ? DoodleColors.amber
+                      : const Color(0xFFFF6B00))
+                  : (isDoodleMode(context)
+                      ? DoodleColors.cardBorder
+                      : Colors.white.withValues(alpha: 0.05))),
         ),
-        child: Text(label, style: GoogleFonts.inter(color: selected ? (isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white) : (isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8)), fontSize: 13)),
+        child: Text(label,
+            style: GoogleFonts.inter(
+                color: selected
+                    ? (isDoodleMode(context)
+                        ? DoodleColors.textPrimary
+                        : Colors.white)
+                    : (isDoodleMode(context)
+                        ? DoodleColors.textMuted
+                        : const Color(0xFF94A3B8)),
+                fontSize: 13)),
       ),
     );
   }
@@ -1006,58 +1377,86 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
       decoration: BoxDecoration(
-        color: isDoodleMode(context) ? DoodleColors.paper : const Color(0xFF13131D),
+        color: isDoodleMode(context)
+            ? DoodleColors.paper
+            : const Color(0xFF13131D),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDoodleMode(context) ? DoodleColors.cardBorder : Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(
+            color: isDoodleMode(context)
+                ? DoodleColors.cardBorder
+                : Colors.white.withValues(alpha: 0.05)),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          iconColor: isDoodleMode(context) ? DoodleColors.amber : const Color(0xFFFF6B00),
-          collapsedIconColor: isDoodleMode(context) ? DoodleColors.textMuted : const Color(0xFF94A3B8),
-          title: Text(title, style: GoogleFonts.inter(color: isDoodleMode(context) ? DoodleColors.textPrimary : Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          iconColor: isDoodleMode(context)
+              ? DoodleColors.amber
+              : const Color(0xFFFF6B00),
+          collapsedIconColor: isDoodleMode(context)
+              ? DoodleColors.textMuted
+              : const Color(0xFF94A3B8),
+          title: Text(title,
+              style: GoogleFonts.inter(
+                  color: isDoodleMode(context)
+                      ? DoodleColors.textPrimary
+                      : Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16)),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           children: [
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: children)
+            Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: children)
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSingleSelectWrap(List<String> options, String current, ValueChanged<String> onSelect) {
+  Widget _buildSingleSelectWrap(
+      List<String> options, String current, ValueChanged<String> onSelect) {
     return Wrap(
-      spacing: 8, runSpacing: 8,
-      children: options.map((opt) => _buildChip(opt, current == opt, () => onSelect(opt))).toList(),
+      spacing: 8,
+      runSpacing: 8,
+      children: options
+          .map((opt) => _buildChip(opt, current == opt, () => onSelect(opt)))
+          .toList(),
     );
   }
 
-  Widget _buildMultiSelectWrap(List<String> options, Set<String> currentSet, {int? max}) {
+  Widget _buildMultiSelectWrap(List<String> options, Set<String> currentSet,
+      {int? max}) {
     return Wrap(
-      spacing: 8, runSpacing: 8,
-      children: options.map((opt) => _buildChip(opt, currentSet.contains(opt), () {
-        setState(() {
-          if (currentSet.contains(opt)) {
-            currentSet.remove(opt);
-          } else {
-            if (max != null && currentSet.length >= max) {
-              currentSet.remove(currentSet.first);
-            }
-            currentSet.add(opt);
-          }
-        });
-      })).toList(),
+      spacing: 8,
+      runSpacing: 8,
+      children: options
+          .map((opt) => _buildChip(opt, currentSet.contains(opt), () {
+                setState(() {
+                  if (currentSet.contains(opt)) {
+                    currentSet.remove(opt);
+                  } else {
+                    if (max != null && currentSet.length >= max) {
+                      currentSet.remove(currentSet.first);
+                    }
+                    currentSet.add(opt);
+                  }
+                });
+              }))
+          .toList(),
     );
   }
 
   ImageProvider _buildSafeImage(String? url) {
-    if (url == null || url.isEmpty) return const NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
+    if (url == null || url.isEmpty)
+      return const NetworkImage(
+          'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
     if (url.startsWith('http')) return NetworkImage(url);
     try {
       final base64Str = url.contains(',') ? url.split(',').last : url;
       return MemoryImage(base64Decode(base64Str));
     } catch (_) {
-      return const NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
+      return const NetworkImage(
+          'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200');
     }
   }
 }

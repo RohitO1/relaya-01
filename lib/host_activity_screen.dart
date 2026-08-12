@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:ui'; // For ImageFilter and BackdropFilter
 
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
@@ -69,7 +68,7 @@ class _HostActivityScreenState extends State<HostActivityScreen>
   final _hookCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   final _pageCtrl = PageController();
-  final MapController _mapController = MapController();
+  GoogleMapController? _googleMapController;
 
   // ── ANIMATION ──
   late AnimationController _pulseCtrl;
@@ -448,8 +447,7 @@ class _HostActivityScreenState extends State<HostActivityScreen>
     _noteCtrl.dispose();
     _searchCtrl.dispose();
     _priceCtrl.dispose();
-    _pageCtrl.dispose();
-    _mapController.dispose();
+    _googleMapController?.dispose();
     _pulseCtrl.dispose();
     _debounce?.cancel();
     _geocodeDebounce?.cancel();
@@ -539,7 +537,8 @@ class _HostActivityScreenState extends State<HostActivityScreen>
           _pinLocation = LatLng(position.latitude, position.longitude);
           _fetchingGps = false;
         });
-        _mapController.move(_pinLocation, 16.0);
+        _googleMapController
+            ?.animateCamera(CameraUpdate.newLatLngZoom(_pinLocation, 16.0));
         _reverseGeocode(_pinLocation);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Row(children: [
@@ -658,7 +657,8 @@ class _HostActivityScreenState extends State<HostActivityScreen>
       _locationNameCtrl.text = res['display_name'];
     });
     FocusScope.of(context).unfocus();
-    _mapController.move(_pinLocation, 16.0);
+    _googleMapController
+        ?.animateCamera(CameraUpdate.newLatLngZoom(_pinLocation, 16.0));
   }
 
   Future<void> _pickTime() async {
@@ -2402,32 +2402,27 @@ class _HostActivityScreenState extends State<HostActivityScreen>
   }
 
   Widget _buildFlutterMapWidget(Color accent, String baseUrl) {
-    return FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-        initialCenter: _pinLocation,
-        initialZoom: 15.0,
-        onTap: (_, pt) {
-          _mapController.move(pt, _mapController.camera.zoom);
-          setState(() => _pinLocation = pt);
-          _debounceReverseGeocode(pt);
-        },
-        onPositionChanged: (pos, hasGesture) {
-          if (hasGesture) {
-            _pinLocation = pos
-                .center; // Update coordinate in memory to prevent janky gesture resets
-            _debounceReverseGeocode(pos.center);
-          }
-        },
-        interactionOptions:
-            const InteractionOptions(flags: InteractiveFlag.all),
+    return GoogleMap(
+      onMapCreated: (c) => _googleMapController = c,
+      initialCameraPosition: CameraPosition(
+        target: _pinLocation,
+        zoom: 15.0,
       ),
-      children: [
-        TileLayer(
-            userAgentPackageName: 'com.meetra.app',
-            urlTemplate: baseUrl,
-            subdomains: const ['a', 'b', 'c', 'd']),
-      ],
+      mapType: MapType.normal,
+      myLocationEnabled: true,
+      zoomControlsEnabled: false,
+      myLocationButtonEnabled: false,
+      onTap: (pt) {
+        _googleMapController?.animateCamera(CameraUpdate.newLatLng(pt));
+        setState(() => _pinLocation = pt);
+        _debounceReverseGeocode(pt);
+      },
+      onCameraMove: (pos) {
+        _pinLocation = pos.target; // Update coordinate in memory
+      },
+      onCameraIdle: () {
+        _debounceReverseGeocode(_pinLocation);
+      },
     );
   }
 

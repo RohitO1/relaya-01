@@ -9,8 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'rush_in_consumer_detail_view.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart' hide Path;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'dart:async';
@@ -3480,7 +3479,7 @@ class LocationMapPickerSheet extends StatefulWidget {
 }
 
 class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
-  final MapController _mapController = MapController();
+  GoogleMapController? _googleMapController;
   final TextEditingController _searchCtrl = TextEditingController();
 
   LatLng _selectedPoint = const LatLng(0, 0); // Default, updated on init
@@ -3508,7 +3507,7 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
 
   @override
   void dispose() {
-    _mapController.dispose();
+    _googleMapController?.dispose();
     _searchCtrl.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -3592,7 +3591,8 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
           _selectedPoint = LatLng(position.latitude, position.longitude);
           _fetchingGps = false;
         });
-        _mapController.move(_selectedPoint, 14.0);
+        _googleMapController
+            ?.animateCamera(CameraUpdate.newLatLngZoom(_selectedPoint, 14.0));
         _reverseGeocode(_selectedPoint);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Row(children: [
@@ -3668,15 +3668,15 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
       _searchCtrl.text = '';
       _resolvedName = result['name'];
     });
-    _mapController.move(pt, 14);
+    _googleMapController?.animateCamera(CameraUpdate.newLatLngZoom(pt, 14));
   }
 
-  void _onMapTap(TapPosition tapPos, LatLng point) {
+  void _onMapTap(LatLng point) {
     setState(() {
       _selectedPoint = point;
       _searchResults = [];
     });
-    _mapController.move(point, _mapController.camera.zoom);
+    _googleMapController?.animateCamera(CameraUpdate.newLatLngZoom(point, 14));
     _reverseGeocode(point);
   }
 
@@ -3802,34 +3802,25 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
                           1.0,
                           0.0,
                         ]),
-                  child: FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                        initialCenter: _selectedPoint,
-                        initialZoom: 14,
-                        onTap: _onMapTap,
-                        interactionOptions: const InteractionOptions(
-                            flags: InteractiveFlag.all)),
-                    children: [
-                      TileLayer(
-                          userAgentPackageName: 'com.meetra.app',
-                          urlTemplate:
-                              'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'),
-                      MarkerLayer(markers: [
-                        Marker(
-                            point: _selectedPoint,
-                            width: 80,
-                            height: 80,
-                            child: const Icon(Icons.location_on,
-                                color: ProfileColors.amber,
-                                size: 45,
-                                shadows: [
-                                  Shadow(
-                                      color: ProfileColors.amber,
-                                      blurRadius: 15)
-                                ])),
-                      ]),
-                    ],
+                  child: GoogleMap(
+                    onMapCreated: (c) => _googleMapController = c,
+                    initialCameraPosition: CameraPosition(
+                      target: _selectedPoint,
+                      zoom: 14.0,
+                    ),
+                    mapType: MapType.normal,
+                    myLocationEnabled: true,
+                    zoomControlsEnabled: false,
+                    myLocationButtonEnabled: false,
+                    onTap: _onMapTap,
+                    markers: {
+                      Marker(
+                        markerId: const MarkerId('selected'),
+                        position: _selectedPoint,
+                        icon: BitmapDescriptor.defaultMarkerWithHue(
+                            BitmapDescriptor.hueOrange),
+                      ),
+                    },
                   ),
                 ),
                 if (_isMapDarkMode)

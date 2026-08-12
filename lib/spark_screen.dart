@@ -6,8 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -3822,7 +3821,7 @@ class _SparkMapView extends StatefulWidget {
 }
 
 class _SparkMapViewState extends State<_SparkMapView> {
-  final MapController _mapController = MapController();
+  GoogleMapController? _mapController;
   String _layer = 'street';
   bool _showLayersBox = false;
   LatLng? _actualLocation;
@@ -3844,7 +3843,8 @@ class _SparkMapViewState extends State<_SparkMapView> {
               const LocationSettings(accuracy: LocationAccuracy.high));
       if (mounted) {
         setState(() => _actualLocation = LatLng(pos.latitude, pos.longitude));
-        _mapController.move(_actualLocation!, 14.0);
+        _mapController
+            ?.animateCamera(CameraUpdate.newLatLngZoom(_actualLocation!, 14.0));
       }
     } catch (_) {
       // Fallback to active location if GPS fails or permission denied
@@ -3853,7 +3853,8 @@ class _SparkMapViewState extends State<_SparkMapView> {
         final lng = locationService.activeLng;
         if (lat != null && lng != null) {
           setState(() => _actualLocation = LatLng(lat, lng));
-          _mapController.move(_actualLocation!, 14.0);
+          _mapController?.animateCamera(
+              CameraUpdate.newLatLngZoom(_actualLocation!, 14.0));
         }
       }
     }
@@ -3902,157 +3903,43 @@ class _SparkMapViewState extends State<_SparkMapView> {
                 ])
               : const ColorFilter.matrix(
                   [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]),
-          child: FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _actualLocation ??
+          child: GoogleMap(
+            onMapCreated: (c) => _mapController = c,
+            initialCameraPosition: CameraPosition(
+              target: _actualLocation ??
                   LatLng(locationService.activeLat ?? 20.5937,
                       locationService.activeLng ?? 78.9629),
-              initialZoom: 13,
-              maxZoom: 22.0,
+              zoom: 13,
             ),
-            children: [
-              TileLayer(
-                urlTemplate: _getTileUrl(),
-                userAgentPackageName: 'com.meetra.app',
-                maxZoom: 22.0,
-                maxNativeZoom: 17,
-              ),
-              MarkerLayer(
-                markers: [
-                  // User's Live Location Marker
-                  if (_actualLocation != null)
-                    Marker(
-                      point: _actualLocation!,
-                      width: 50,
-                      height: 50,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: SparkColors.red.withValues(alpha: 0.2),
-                          border: Border.all(
-                              color: SparkColors.red.withValues(alpha: 0.6),
-                              width: 2),
+            mapType: MapType.normal,
+            myLocationEnabled: true,
+            zoomControlsEnabled: false,
+            myLocationButtonEnabled: false,
+            markers: {
+              if (_actualLocation != null)
+                Marker(
+                  markerId: const MarkerId('me'),
+                  position: _actualLocation!,
+                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueAzure),
+                ),
+              ...sparkDataStore.values
+                  .where((v) => !(v.isAnonymous && !v.isApproved))
+                  .map((v) => Marker(
+                        markerId: MarkerId(v.id),
+                        position: LatLng(v.lat, v.lng),
+                        icon: BitmapDescriptor.defaultMarkerWithHue(
+                          v.isApproved
+                              ? BitmapDescriptor.hueGreen
+                              : BitmapDescriptor.hueOrange,
                         ),
-                        child: Center(
-                          child: Container(
-                            width: 16,
-                            height: 16,
-                            decoration: const BoxDecoration(
-                                color: SparkColors.red, shape: BoxShape.circle),
-                          ),
-                        ),
-                      ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(
-                          begin: const Offset(0.8, 0.8),
-                          end: const Offset(1.2, 1.2)),
-                    ),
-
-                  // Spark Activities & Rush-ins
-                  ...sparkDataStore.values
-                      .where((v) => !(v.isAnonymous && !v.isApproved))
-                      .map((v) => Marker(
-                            point: LatLng(v.lat, v.lng),
-                            width: 44,
-                            height: 44,
-                            child: GestureDetector(
-                              onTap: () {
-                                final parent = context.findAncestorStateOfType<
-                                    _SparkScreenState>();
-                                if (parent != null) parent._showDetailSheet(v);
-                              },
-                              child: v.isApproved
-                                  ? Container(
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        gradient: const LinearGradient(colors: [
-                                          Color(0xFF34D399),
-                                          Color(0xFF059669)
-                                        ]), // Emerald Neon
-                                        border: Border.all(
-                                            color: Colors.white, width: 2.5),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                              color: Color(0xFF10B981),
-                                              blurRadius: 15,
-                                              spreadRadius: 3)
-                                        ],
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: Icon(_getVibeIcon(v),
-                                          color: Colors.white, size: 18),
-                                    )
-                                      .animate(
-                                          onPlay: (c) =>
-                                              c.repeat(reverse: true))
-                                      .scale(end: const Offset(1.2, 1.2))
-                                  : v.type == 'rush'
-                                      ? Container(
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            gradient: const LinearGradient(
-                                                colors: [
-                                                  SparkColors.yellow,
-                                                  SparkColors.orange
-                                                ]),
-                                            border: Border.all(
-                                                color: SparkColors.yellow
-                                                    .withValues(alpha: 0.6),
-                                                width: 3),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                  color: SparkColors.yellow
-                                                      .withValues(alpha: 0.3),
-                                                  blurRadius: 10,
-                                                  spreadRadius: 2)
-                                            ],
-                                          ),
-                                          alignment: Alignment.center,
-                                          child: Icon(_getVibeIcon(v),
-                                              color: Colors.white, size: 22),
-                                        )
-                                          .animate(
-                                              onPlay: (c) =>
-                                                  c.repeat(reverse: true))
-                                          .scale(end: const Offset(1.15, 1.15))
-                                      : Container(
-                                          alignment: Alignment.topCenter,
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.all(6),
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  gradient:
-                                                      const LinearGradient(
-                                                          colors: [
-                                                        SparkColors.actPrimary,
-                                                        SparkColors.actSecondary
-                                                      ]),
-                                                  border: Border.all(
-                                                      color: Colors.white,
-                                                      width: 2),
-                                                  boxShadow: const [
-                                                    BoxShadow(
-                                                        color: Colors.black45,
-                                                        blurRadius: 4,
-                                                        offset: Offset(0, 2))
-                                                  ],
-                                                ),
-                                                child: const Icon(
-                                                    Icons.location_on,
-                                                    color: Colors.white,
-                                                    size: 14),
-                                              ),
-                                            ],
-                                          ),
-                                        ).animate().fadeIn(),
-                            ),
-                          )),
-                ],
-              )
-            ],
+                        onTap: () {
+                          final parent = context
+                              .findAncestorStateOfType<_SparkScreenState>();
+                          if (parent != null) parent._showDetailSheet(v);
+                        },
+                      )),
+            },
           ),
         ),
 
@@ -4147,7 +4034,8 @@ class _SparkMapViewState extends State<_SparkMapView> {
                     locationSettings: const LocationSettings(
                         accuracy: LocationAccuracy.high,
                         timeLimit: Duration(seconds: 15)));
-                _mapController.move(LatLng(pos.latitude, pos.longitude), 15);
+                _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
+                    LatLng(pos.latitude, pos.longitude), 15.0));
 
                 String locationText =
                     'Location: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
@@ -4289,7 +4177,8 @@ class _SparkMapViewState extends State<_SparkMapView> {
       _searchCtrl.text = res['display_name'];
     });
     FocusScope.of(context).unfocus();
-    _mapController.move(LatLng(lat, lon), 15.0);
+    _mapController
+        ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lon), 15.0));
   }
 
   Future<void> _searchAndMove(String query) async {
@@ -4304,7 +4193,8 @@ class _SparkMapViewState extends State<_SparkMapView> {
       if (data.isNotEmpty) {
         final lat = double.parse(data[0]['lat'].toString());
         final lon = double.parse(data[0]['lon'].toString());
-        _mapController.move(LatLng(lat, lon), 14);
+        _mapController
+            ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lon), 14.0));
         setState(() {
           _searchResults = [];
           _showDropdown = false;
@@ -4970,7 +4860,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
     locationService.activeLat ?? 20.5937,
     locationService.activeLng ?? 78.9629,
   );
-  final MapController _mapController = MapController();
+  GoogleMapController? _mapController;
   bool _fetchingGps = false;
 
   @override
@@ -4999,7 +4889,8 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           _pinLocation = LatLng(lat, lon);
           _fetchingGps = false;
         });
-        _mapController.move(_pinLocation, 16.0);
+        _mapController
+            ?.animateCamera(CameraUpdate.newLatLngZoom(_pinLocation, 16.0));
       } else {
         if (mounted) setState(() => _fetchingGps = false);
       }
@@ -5019,7 +4910,8 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           _pinLocation = LatLng(pos.latitude, pos.longitude);
           _fetchingGps = false;
         });
-        _mapController.move(_pinLocation, 16.0);
+        _mapController
+            ?.animateCamera(CameraUpdate.newLatLngZoom(_pinLocation, 16.0));
       }
     } catch (_) {
       // Fall back to saved location from service
@@ -5031,7 +4923,8 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
             _pinLocation = LatLng(lat, lng);
             _fetchingGps = false;
           });
-          _mapController.move(_pinLocation, 14.0);
+          _mapController
+              ?.animateCamera(CameraUpdate.newLatLngZoom(_pinLocation, 14.0));
         } else {
           setState(() => _fetchingGps = false);
         }
@@ -5599,34 +5492,27 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
             borderRadius: BorderRadius.circular(12),
             child: Stack(
               children: [
-                FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _pinLocation,
-                    initialZoom: 14.0,
-                    onTap: (tapPosition, point) =>
-                        setState(() => _pinLocation = point),
-                    interactionOptions: const InteractionOptions(
-                        flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
+                GoogleMap(
+                  onMapCreated: (c) => _mapController = c,
+                  initialCameraPosition: CameraPosition(
+                    target: _pinLocation,
+                    zoom: 14.0,
                   ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                      subdomains: const ['a', 'b', 'c'],
+                  mapType: MapType.normal,
+                  myLocationEnabled: true,
+                  zoomControlsEnabled: false,
+                  myLocationButtonEnabled: false,
+                  onTap: (point) {
+                    setState(() => _pinLocation = point);
+                  },
+                  markers: {
+                    Marker(
+                      markerId: const MarkerId('pin'),
+                      position: _pinLocation,
+                      icon: BitmapDescriptor.defaultMarkerWithHue(
+                          BitmapDescriptor.hueRed),
                     ),
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: _pinLocation,
-                          width: 40,
-                          height: 40,
-                          child:
-                              Icon(Icons.location_pin, color: accent, size: 40),
-                        ),
-                      ],
-                    ),
-                  ],
+                  },
                 ),
                 Positioned(
                   bottom: 12,

@@ -3,8 +3,7 @@ import 'dart:async'; // Required for Timer
 import 'dart:convert'; // Required for jsonDecode
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart' hide Path;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -63,10 +62,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ── About Me ──
   final TextEditingController _bioController = TextEditingController();
-  
+
   // ── Navigation Transition ──
   String _navTransition = 'Slide';
-  
+
   // ── Account Settings ──
   bool _isPublic = true;
 
@@ -127,7 +126,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (raw == null) return [];
     if (raw is List) return raw.map((e) => e.toString()).toList();
     if (raw is String) {
-      return raw.replaceAll('{', '').replaceAll('}', '').split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      return raw
+          .replaceAll('{', '')
+          .replaceAll('}', '')
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
     }
     return [];
   }
@@ -135,21 +140,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadAll() async {
     try {
       final uid = Supabase.instance.client.auth.currentUser?.id;
-      if (uid == null) { if (mounted) setState(() => _loading = false); return; }
+      if (uid == null) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
 
       // 1. Load profile from Supabase
-      final data = await Supabase.instance.client.from('profiles').select().eq('id', uid).maybeSingle();
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', uid)
+          .maybeSingle();
       final prefs = await SharedPreferences.getInstance();
 
       // 3. Load activity count
       int actCount = 0;
       int connCount = 0;
       try {
-        final acts = await Supabase.instance.client.from('activities').select('id').eq('user_id', uid);
+        final acts = await Supabase.instance.client
+            .from('activities')
+            .select('id')
+            .eq('user_id', uid);
         actCount = (acts as List).length;
       } catch (_) {}
       try {
-        final conns = await Supabase.instance.client.from('requests').select('id').eq('target_id', uid).eq('status', 'approved');
+        final conns = await Supabase.instance.client
+            .from('requests')
+            .select('id')
+            .eq('target_id', uid)
+            .eq('status', 'approved');
         connCount = (conns as List).length;
       } catch (_) {}
 
@@ -165,9 +184,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _isPublic = data['is_public'] ?? true;
           _selectedVibes = _parseList(data['interests']);
           _selectedPurposes = _parseList(data['looking_for']);
-          
+
           if (data['notification_settings'] != null) {
-            _notifSettings = Map<String, dynamic>.from(data['notification_settings']);
+            _notifSettings =
+                Map<String, dynamic>.from(data['notification_settings']);
           }
 
           // Local preferences
@@ -186,12 +206,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             try {
               final decoded = jsonDecode(locJson);
               if (decoded is List) {
-                _savedLocations = decoded.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
+                _savedLocations = decoded
+                    .map<Map<String, dynamic>>(
+                        (e) => Map<String, dynamic>.from(e))
+                    .toList();
               }
             } catch (_) {}
           }
-          if (_activeLocation.isNotEmpty && !_savedLocations.any((l) => l['name'] == _activeLocation)) {
-            _savedLocations.insert(0, {'name': _activeLocation, 'lat': 0.0, 'lng': 0.0});
+          if (_activeLocation.isNotEmpty &&
+              !_savedLocations.any((l) => l['name'] == _activeLocation)) {
+            _savedLocations
+                .insert(0, {'name': _activeLocation, 'lat': 0.0, 'lng': 0.0});
           }
 
           final galleryRaw = prefs.getStringList('gallery_urls');
@@ -255,16 +280,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Row(children: [Icon(Icons.check_circle, color: Colors.white, size: 18), SizedBox(width: 8), Text('All preferences saved!')]),
+          content: const Row(children: [
+            Icon(Icons.check_circle, color: Colors.white, size: 18),
+            SizedBox(width: 8),
+            Text('All preferences saved!')
+          ]),
           backgroundColor: const Color(0xFF10B981),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     }
   }
-
-
 
   void _showAddLocationDialog() {
     // Listen for location changes AFTER sheet closes
@@ -276,7 +304,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() {
           _activeLocation = loc;
           if (!_savedLocations.any((l) => l['name'] == loc)) {
-            _savedLocations.insert(0, {'name': loc, 'lat': lat ?? 0.0, 'lng': lng ?? 0.0});
+            _savedLocations
+                .insert(0, {'name': loc, 'lat': lat ?? 0.0, 'lng': lng ?? 0.0});
           }
         });
         _saveProfileToDb(lat: lat, lng: lng);
@@ -284,6 +313,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       locationService.coordinatesUpdateNotifier.removeListener(onChanged);
     }
+
     locationService.coordinatesUpdateNotifier.addListener(onChanged);
     showLocationSearchSheet(context);
   }
@@ -304,23 +334,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             const Icon(Icons.diamond, color: Color(0xFFFF6B00), size: 48),
             const SizedBox(height: 16),
-            const Text('Relaya Elite', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+            const Text('Relaya Elite',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
             const SizedBox(height: 8),
-            const Text('Unlock premium features', style: TextStyle(color: Colors.white38, fontSize: 13)),
+            const Text('Unlock premium features',
+                style: TextStyle(color: Colors.white38, fontSize: 13)),
             const SizedBox(height: 24),
-            _upgradeFeatureRow(Icons.visibility_off, 'Browse Anonymously', 'See profiles without being seen'),
-            _upgradeFeatureRow(Icons.bolt, 'Unlimited Rush-Ins', 'No cooldown between Rush-Ins'),
-            _upgradeFeatureRow(Icons.location_on, 'Global Discovery', 'Match with people anywhere in the world'),
-            _upgradeFeatureRow(Icons.verified, 'Priority Verification', 'Get verified faster with priority queue'),
-            _upgradeFeatureRow(Icons.favorite, 'See Who Likes You', 'See who sent you join requests'),
+            _upgradeFeatureRow(Icons.visibility_off, 'Browse Anonymously',
+                'See profiles without being seen'),
+            _upgradeFeatureRow(Icons.bolt, 'Unlimited Rush-Ins',
+                'No cooldown between Rush-Ins'),
+            _upgradeFeatureRow(Icons.location_on, 'Global Discovery',
+                'Match with people anywhere in the world'),
+            _upgradeFeatureRow(Icons.verified, 'Priority Verification',
+                'Get verified faster with priority queue'),
+            _upgradeFeatureRow(Icons.favorite, 'See Who Likes You',
+                'See who sent you join requests'),
             const SizedBox(height: 24),
             GestureDetector(
-              onTap: () { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Elite upgrade coming soon!'), backgroundColor: Color(0xFFFF7E40))); },
+              onTap: () {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Elite upgrade coming soon!'),
+                    backgroundColor: Color(0xFFFF7E40)));
+              },
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF7E40)]), borderRadius: BorderRadius.circular(16)),
-                child: const Center(child: Text('Upgrade — Coming Soon', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white))),
+                decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                        colors: [Color(0xFFFF6B00), Color(0xFFFF7E40)]),
+                    borderRadius: BorderRadius.circular(16)),
+                child: const Center(
+                    child: Text('Upgrade — Coming Soon',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.white))),
               ),
             ),
             const SizedBox(height: 12),
@@ -337,10 +387,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           Icon(icon, color: const Color(0xFFFF6B00), size: 20),
           const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            Text(desc, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-          ])),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 13)),
+                Text(desc,
+                    style:
+                        const TextStyle(color: Colors.white38, fontSize: 11)),
+              ])),
         ],
       ),
     );
@@ -355,8 +412,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_loading) {
       return Scaffold(
         backgroundColor: doodle ? DoodleColors.cream : const Color(0xFF050508),
-        appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: IconButton(icon: Icon(Icons.arrow_back_ios, size: 18, color: textP), onPressed: () => Navigator.pop(context))),
-        body: const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B00))),
+        appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+                icon: Icon(Icons.arrow_back_ios, size: 18, color: textP),
+                onPressed: () => Navigator.pop(context))),
+        body: const Center(
+            child: CircularProgressIndicator(color: Color(0xFFFF6B00))),
       );
     }
 
@@ -365,8 +428,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(icon: Icon(Icons.arrow_back_ios, color: textP, size: 18), onPressed: () => Navigator.pop(context)),
-        title: Text('Settings', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 1)),
+        leading: IconButton(
+            icon: Icon(Icons.arrow_back_ios, color: textP, size: 18),
+            onPressed: () => Navigator.pop(context)),
+        title: Text('Settings',
+            style: doodle
+                ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18)
+                : const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    letterSpacing: 1)),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -382,8 +453,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(children: [Text('Appearance ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text('✨', style: TextStyle(fontSize: 18))]),
-                  Text('Customize your visual experience.', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.white38 : Colors.black38, fontSize: 11)),
+                  const Row(children: [
+                    Text('Appearance ',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text('✨', style: TextStyle(fontSize: 18))
+                  ]),
+                  Text('Customize your visual experience.',
+                      style: TextStyle(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white38
+                              : Colors.black38,
+                          fontSize: 11)),
                   const SizedBox(height: 20),
                   ValueListenableBuilder<ThemeMode>(
                     valueListenable: themeService.themeModeNotifier,
@@ -396,7 +477,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               icon: Icons.wb_sunny_outlined,
                               label: 'Day',
                               isSelected: !isDark,
-                              onTap: () => themeService.setTheme(ThemeMode.light),
+                              onTap: () =>
+                                  themeService.setTheme(ThemeMode.light),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -405,7 +487,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               icon: Icons.nightlight_round_outlined,
                               label: 'Night',
                               isSelected: isDark,
-                              onTap: () => themeService.setTheme(ThemeMode.dark),
+                              onTap: () =>
+                                  themeService.setTheme(ThemeMode.dark),
                             ),
                           ),
                         ],
@@ -425,24 +508,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(children: [Text('Navigation ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text('🧭', style: TextStyle(fontSize: 18))]),
-                  Text('Customize how you swipe between pages.', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.white38 : Colors.black38, fontSize: 11)),
+                  const Row(children: [
+                    Text('Navigation ',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text('🧭', style: TextStyle(fontSize: 18))
+                  ]),
+                  Text('Customize how you swipe between pages.',
+                      style: TextStyle(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white38
+                              : Colors.black38,
+                          fontSize: 11)),
                   const SizedBox(height: 20),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF101015) : const Color(0xFFF3F4F6),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF101015)
+                          : const Color(0xFFF3F4F6),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? Colors.white12 : Colors.black12),
+                      border: Border.all(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white12
+                              : Colors.black12),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: _navTransition,
                         isExpanded: true,
-                        dropdownColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1B202D) : Colors.white,
-                        icon: Icon(Icons.keyboard_arrow_down, color: Theme.of(context).brightness == Brightness.dark ? Colors.white54 : Colors.black54),
-                        style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black, fontSize: 14, fontWeight: FontWeight.w600),
-                        items: ['Slide', 'Fade', 'Scale', '3D Flip'].map((String value) {
+                        dropdownColor:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF1B202D)
+                                : Colors.white,
+                        icon: Icon(Icons.keyboard_arrow_down,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white54
+                                    : Colors.black54),
+                        style: TextStyle(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : Colors.black,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600),
+                        items: ['Slide', 'Fade', 'Scale', '3D Flip']
+                            .map((String value) {
                           return DropdownMenuItem<String>(
                             value: value,
                             child: Text(value),
@@ -452,7 +564,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           if (newValue != null) {
                             setState(() => _navTransition = newValue);
                             _saveLocalPreferences();
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Navigation set to $newValue'), backgroundColor: const Color(0xFF06B6D4), duration: const Duration(seconds: 1)));
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text('Navigation set to $newValue'),
+                                backgroundColor: const Color(0xFF06B6D4),
+                                duration: const Duration(seconds: 1)));
                           }
                         },
                       ),
@@ -470,24 +585,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Account Plan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text('Account Plan',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(color: doodle ? DoodleColors.paper : const Color(0xFF101015), borderRadius: BorderRadius.circular(14), border: Border.all(color: doodle ? DoodleColors.cardBorder : Colors.transparent)),
+                    decoration: BoxDecoration(
+                        color: doodle
+                            ? DoodleColors.paper
+                            : const Color(0xFF101015),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color: doodle
+                                ? DoodleColors.cardBorder
+                                : Colors.transparent)),
                     child: Row(
                       children: [
-                        Icon(Icons.account_circle_outlined, color: textM, size: 28),
+                        Icon(Icons.account_circle_outlined,
+                            color: textM, size: 28),
                         const SizedBox(width: 12),
-                        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Standard', style: TextStyle(color: textP, fontWeight: FontWeight.bold, fontSize: 14)),
-                          Text('Free Account', style: TextStyle(color: textM, fontSize: 11)),
-                        ]),
+                        Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Standard',
+                                  style: TextStyle(
+                                      color: textP,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14)),
+                              Text('Free Account',
+                                  style: TextStyle(color: textM, fontSize: 11)),
+                            ]),
                         const Spacer(),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: doodle ? DoodleColors.amber : const Color(0xFF10B981).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                          child: Text('Active', style: TextStyle(color: doodle ? DoodleColors.brown : const Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold)),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                              color: doodle
+                                  ? DoodleColors.amber
+                                  : const Color(0xFF10B981)
+                                      .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8)),
+                          child: Text('Active',
+                              style: TextStyle(
+                                  color: doodle
+                                      ? DoodleColors.brown
+                                      : const Color(0xFF10B981),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -500,15 +645,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        gradient: LinearGradient(colors: [const Color(0xFFFF6B00).withValues(alpha: 0.15), const Color(0xFFFF7E40).withValues(alpha: 0.15)]),
-                        border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3)),
+                        gradient: LinearGradient(colors: [
+                          const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                          const Color(0xFFFF7E40).withValues(alpha: 0.15)
+                        ]),
+                        border: Border.all(
+                            color:
+                                const Color(0xFFFF6B00).withValues(alpha: 0.3)),
                       ),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.diamond, color: Color(0xFFFF6B00), size: 16),
+                          Icon(Icons.diamond,
+                              color: Color(0xFFFF6B00), size: 16),
                           SizedBox(width: 8),
-                          Text('Upgrade to Elite', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFFFF6B00))),
+                          Text('Upgrade to Elite',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Color(0xFFFF6B00))),
                         ],
                       ),
                     ),
@@ -525,16 +680,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Activity & History', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text('Activity & History',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 16),
                   _buildTrustRow(Icons.history, 'Rush-In History', 'View All',
-                      const Color(0xFF3B82F6),
-                      onTap: () {
-                        final currentUid = Supabase.instance.client.auth.currentUser?.id;
-                        if (currentUid != null) {
-                          showRushInHistorySheet(context, currentUid);
-                        }
-                      }),
+                      const Color(0xFF3B82F6), onTap: () {
+                    final currentUid =
+                        Supabase.instance.client.auth.currentUser?.id;
+                    if (currentUid != null) {
+                      showRushInHistorySheet(context, currentUid);
+                    }
+                  }),
                 ],
               ),
             ),
@@ -547,25 +704,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Trust & Safety', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text('Trust & Safety',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 16),
-                  _buildTrustRow(Icons.verified_user, 'Identity Verified', _isVerified ? 'Verified' : 'Pending',
+                  _buildTrustRow(
+                      Icons.verified_user,
+                      'Identity Verified',
+                      _isVerified ? 'Verified' : 'Pending',
                       _isVerified ? const Color(0xFF10B981) : Colors.amber,
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Verification is reviewed by our team. It may take up to 24 hours.'),
-                          backgroundColor: Color(0xFFFF8A00),
-                        ));
-                      }),
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text(
+                          'Verification is reviewed by our team. It may take up to 24 hours.'),
+                      backgroundColor: Color(0xFFFF8A00),
+                    ));
+                  }),
                   const Divider(color: Colors.white10, height: 24),
-                  _buildTrustRow(Icons.link_off, 'Linked Account', _isLinked ? 'Linked' : 'Not Linked',
+                  _buildTrustRow(
+                      Icons.link_off,
+                      'Linked Account',
+                      _isLinked ? 'Linked' : 'Not Linked',
                       _isLinked ? const Color(0xFF10B981) : Colors.white54,
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Account linking (Google, Apple) coming soon!'),
-                          backgroundColor: Color(0xFFFF8A00),
-                        ));
-                      }),
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content:
+                          Text('Account linking (Google, Apple) coming soon!'),
+                      backgroundColor: Color(0xFFFF8A00),
+                    ));
+                  }),
                 ],
               ),
             ),
@@ -583,17 +750,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF3B82F6)]),
+                        gradient: const LinearGradient(
+                            colors: [Color(0xFFFF6B00), Color(0xFF3B82F6)]),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.explore, color: Colors.white, size: 18),
+                      child: const Icon(Icons.explore,
+                          color: Colors.white, size: 18),
                     ),
                     const SizedBox(width: 12),
                     const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Discovery Location', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
-                        Text('Filter all feeds by location', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                        Text('Discovery Location',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: Colors.white)),
+                        Text('Filter all feeds by location',
+                            style:
+                                TextStyle(color: Colors.white38, fontSize: 11)),
                       ],
                     ),
                   ]),
@@ -603,17 +778,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ValueListenableBuilder<String>(
                     valueListenable: locationService.activeLocationNotifier,
                     builder: (context, activeLoc, _) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFF6B00).withValues(alpha: 0.07),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: activeLoc.isEmpty ? 0.1 : 0.4)),
+                        border: Border.all(
+                            color: const Color(0xFFFF6B00).withValues(
+                                alpha: activeLoc.isEmpty ? 0.1 : 0.4)),
                       ),
                       child: Row(
                         children: [
                           Icon(
-                            activeLoc.isEmpty ? Icons.location_off_outlined : Icons.my_location,
-                            color: activeLoc.isEmpty ? Colors.white24 : const Color(0xFFFF6B00),
+                            activeLoc.isEmpty
+                                ? Icons.location_off_outlined
+                                : Icons.my_location,
+                            color: activeLoc.isEmpty
+                                ? Colors.white24
+                                : const Color(0xFFFF6B00),
                             size: 20,
                           ),
                           const SizedBox(width: 12),
@@ -622,7 +804,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  activeLoc.isEmpty ? 'No location set' : activeLoc,
+                                  activeLoc.isEmpty
+                                      ? 'No location set'
+                                      : activeLoc,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -632,18 +816,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                 ),
                                 if (activeLoc.isNotEmpty)
-                                  const Text('Active · Feeds filtered to this area', style: TextStyle(color: Color(0xFFFF6B00), fontSize: 10, fontWeight: FontWeight.w600)),
+                                  const Text(
+                                      'Active · Feeds filtered to this area',
+                                      style: TextStyle(
+                                          color: Color(0xFFFF6B00),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600)),
                               ],
                             ),
                           ),
                           if (activeLoc.isNotEmpty)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                                color: const Color(0xFFFF6B00)
+                                    .withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Text('ACTIVE', style: TextStyle(color: Color(0xFFFF6B00), fontSize: 9, fontWeight: FontWeight.w900)),
+                              child: const Text('ACTIVE',
+                                  style: TextStyle(
+                                      color: Color(0xFFFF6B00),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w900)),
                             ),
                         ],
                       ),
@@ -659,29 +854,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFF3B82F6)]),
+                        gradient: const LinearGradient(
+                            colors: [Color(0xFFFF6B00), Color(0xFF3B82F6)]),
                         borderRadius: BorderRadius.circular(14),
-                        boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))],
+                        boxShadow: [
+                          BoxShadow(
+                              color: const Color(0xFFFF6B00)
+                                  .withValues(alpha: 0.25),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4))
+                        ],
                       ),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.search, color: Colors.white, size: 18),
                           SizedBox(width: 8),
-                          Text('Search Any City or District', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                          Text('Search Any City or District',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14)),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 8),
                   const Center(
-                    child: Text('Works for any district in India', style: TextStyle(color: Colors.white24, fontSize: 10)),
+                    child: Text('Works for any district in India',
+                        style: TextStyle(color: Colors.white24, fontSize: 10)),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 20),
-            
+
             // ═══════════════════════════════════════════════
             // 4. PRIVACY
             // ═══════════════════════════════════════════════
@@ -690,7 +897,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Privacy', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text('Privacy',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -698,9 +907,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Public Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textP)),
+                          Text('Public Account',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: textP)),
                           const SizedBox(height: 4),
-                          Text('When off, only followers will see your posts.', style: TextStyle(color: textM, fontSize: 11)),
+                          Text('When off, only followers will see your posts.',
+                              style: TextStyle(color: textM, fontSize: 11)),
                         ],
                       ),
                       Switch(
@@ -708,11 +922,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         activeThumbColor: const Color(0xFFFF6B00),
                         onChanged: (val) async {
                           setState(() => _isPublic = val);
-                          final uid = Supabase.instance.client.auth.currentUser?.id;
+                          final uid =
+                              Supabase.instance.client.auth.currentUser?.id;
                           if (uid != null) {
                             final messenger = ScaffoldMessenger.of(context);
-                            await Supabase.instance.client.from('profiles').update({'is_public': val}).eq('id', uid);
-                            messenger.showSnackBar(SnackBar(content: Text(val ? 'Account is now public' : 'Account is now private')));
+                            await Supabase.instance.client
+                                .from('profiles')
+                                .update({'is_public': val}).eq('id', uid);
+                            messenger.showSnackBar(SnackBar(
+                                content: Text(val
+                                    ? 'Account is now public'
+                                    : 'Account is now private')));
                           }
                         },
                       ),
@@ -731,21 +951,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Discovery Settings', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const Text('Control who you see.', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  const Text('Discovery Settings',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text('Control who you see.',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
                   const SizedBox(height: 20),
 
                   // Show Me toggle
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Show Me on Meetra', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    Switch(
-                      value: _showMe,
-                      onChanged: (v) { setState(() => _showMe = v); _saveLocalPreferences(); },
-                      activeThumbColor: const Color(0xFFFF6B00),
-                      activeTrackColor: const Color(0xFFFF6B00).withValues(alpha: 0.3),
-                    ),
+                      const Text('Show Me on Meetra',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 14)),
+                      Switch(
+                        value: _showMe,
+                        onChanged: (v) {
+                          setState(() => _showMe = v);
+                          _saveLocalPreferences();
+                        },
+                        activeThumbColor: const Color(0xFFFF6B00),
+                        activeTrackColor:
+                            const Color(0xFFFF6B00).withValues(alpha: 0.3),
+                      ),
                     ],
                   ),
                   const Divider(color: Colors.white10, height: 16),
@@ -754,40 +983,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Global Discovery', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      const Text('Global Discovery',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 14)),
                       Switch(
                         value: _isGlobal,
-                        onChanged: (v) { setState(() => _isGlobal = v); _saveLocalPreferences(); },
+                        onChanged: (v) {
+                          setState(() => _isGlobal = v);
+                          _saveLocalPreferences();
+                        },
                         activeThumbColor: const Color(0xFFFF6B00),
-                        activeTrackColor: const Color(0xFFFF6B00).withValues(alpha: 0.3),
+                        activeTrackColor:
+                            const Color(0xFFFF6B00).withValues(alpha: 0.3),
                       ),
                     ],
                   ),
                   if (!_isGlobal) ...[
                     const Divider(color: Colors.white10, height: 16),
-                    Text('Distance Radius: ${_distanceRadius.round()} km', style: const TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.w600, fontSize: 13)),
+                    Text('Distance Radius: ${_distanceRadius.round()} km',
+                        style: const TextStyle(
+                            color: Color(0xFFFF6B00),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13)),
                     SliderTheme(
                       data: SliderThemeData(
                         activeTrackColor: const Color(0xFFFF6B00),
-                        inactiveTrackColor: const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                        inactiveTrackColor:
+                            const Color(0xFFFF6B00).withValues(alpha: 0.15),
                         thumbColor: const Color(0xFFFF6B00),
-                        overlayColor: const Color(0xFFFF6B00).withValues(alpha: 0.2),
+                        overlayColor:
+                            const Color(0xFFFF6B00).withValues(alpha: 0.2),
                         trackHeight: 4,
                       ),
-                      child: Slider(value: _distanceRadius, min: 1, max: 200, onChanged: (v) => setState(() => _distanceRadius = v), onChangeEnd: (_) => _saveLocalPreferences()),
+                      child: Slider(
+                          value: _distanceRadius,
+                          min: 1,
+                          max: 200,
+                          onChanged: (v) => setState(() => _distanceRadius = v),
+                          onChangeEnd: (_) => _saveLocalPreferences()),
                     ),
                   ],
                   const SizedBox(height: 8),
-                  Text('Age Range: ${_ageRange.start.round()} - ${_ageRange.end.round()}', style: const TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text(
+                      'Age Range: ${_ageRange.start.round()} - ${_ageRange.end.round()}',
+                      style: const TextStyle(
+                          color: Color(0xFFFF6B00),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13)),
                   SliderTheme(
                     data: SliderThemeData(
                       activeTrackColor: const Color(0xFFFF6B00),
-                      inactiveTrackColor: const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                      inactiveTrackColor:
+                          const Color(0xFFFF6B00).withValues(alpha: 0.15),
                       thumbColor: const Color(0xFFFF6B00),
-                      overlayColor: const Color(0xFFFF6B00).withValues(alpha: 0.2),
+                      overlayColor:
+                          const Color(0xFFFF6B00).withValues(alpha: 0.2),
                       trackHeight: 4,
                     ),
-                    child: RangeSlider(values: _ageRange, min: 18, max: 65, onChanged: (v) => setState(() => _ageRange = v), onChangeEnd: (_) => _saveLocalPreferences()),
+                    child: RangeSlider(
+                        values: _ageRange,
+                        min: 18,
+                        max: 65,
+                        onChanged: (v) => setState(() => _ageRange = v),
+                        onChangeEnd: (_) => _saveLocalPreferences()),
                   ),
                 ],
               ),
@@ -804,16 +1062,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   const Row(children: [Text('Notifications ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text('🔔', style: TextStyle(fontSize: 18))]),
-                   const Text('Control how you receive alerts.', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                   const SizedBox(height: 20),
-                   _buildNotificationToggle('Matches & Knocks', 'Notify when someone knocks back', 'matches'),
-                   const Divider(color: Colors.white10, height: 24),
-                   _buildNotificationToggle('Nearby Activities', 'Alert when new Rush-Ins start nearby', 'nearby_activities'),
-                   const Divider(color: Colors.white10, height: 24),
-                   _buildNotificationToggle('Approvals & Rejections', 'Status updates for your join requests', 'approvals'),
-                   const Divider(color: Colors.white10, height: 24),
-                   _buildNotificationToggle('Messages', 'New chat and message alerts', 'messages'),
+                  const Row(children: [
+                    Text('Notifications ',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text('🔔', style: TextStyle(fontSize: 18))
+                  ]),
+                  const Text('Control how you receive alerts.',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  const SizedBox(height: 20),
+                  _buildNotificationToggle('Matches & Knocks',
+                      'Notify when someone knocks back', 'matches'),
+                  const Divider(color: Colors.white10, height: 24),
+                  _buildNotificationToggle(
+                      'Nearby Activities',
+                      'Alert when new Rush-Ins start nearby',
+                      'nearby_activities'),
+                  const Divider(color: Colors.white10, height: 24),
+                  _buildNotificationToggle('Approvals & Rejections',
+                      'Status updates for your join requests', 'approvals'),
+                  const Divider(color: Colors.white10, height: 24),
+                  _buildNotificationToggle(
+                      'Messages', 'New chat and message alerts', 'messages'),
                 ],
               ),
             ),
@@ -826,34 +1096,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    const Text('About Me', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    GestureDetector(
-                      onTap: () async { await _saveProfileToDb(); if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bio saved!'), backgroundColor: Color(0xFF10B981))); }, // ignore: use_build_context_synchronously
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.4))),
-                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.save_outlined, color: Color(0xFFFF6B00), size: 14),
-                          SizedBox(width: 6),
-                          Text('Save', style: TextStyle(color: Color(0xFFFF6B00), fontSize: 11, fontWeight: FontWeight.bold)),
-                        ]),
-                      ),
-                    ),
-                  ]),
+                  Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('About Me',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
+                        GestureDetector(
+                          onTap: () async {
+                            await _saveProfileToDb();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('Bio saved!'),
+                                    backgroundColor: Color(0xFF10B981)));
+                          }, // ignore: use_build_context_synchronously
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                    color: const Color(0xFFFF6B00)
+                                        .withValues(alpha: 0.4))),
+                            child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.save_outlined,
+                                      color: Color(0xFFFF6B00), size: 14),
+                                  SizedBox(width: 6),
+                                  Text('Save',
+                                      style: TextStyle(
+                                          color: Color(0xFFFF6B00),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold)),
+                                ]),
+                          ),
+                        ),
+                      ]),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _bioController,
                     maxLines: 3,
                     maxLength: 300,
-                    style: TextStyle(color: doodle ? DoodleColors.textPrimary : Colors.white70, fontSize: 13),
+                    style: TextStyle(
+                        color:
+                            doodle ? DoodleColors.textPrimary : Colors.white70,
+                        fontSize: 13),
                     decoration: InputDecoration(
                       hintText: 'Write something about yourself...',
-                      hintStyle: TextStyle(color: doodle ? DoodleColors.textMuted : Colors.white24),
+                      hintStyle: TextStyle(
+                          color:
+                              doodle ? DoodleColors.textMuted : Colors.white24),
                       filled: true,
-                      fillColor: doodle ? DoodleColors.paper : const Color(0xFF101015),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: doodle ? BorderSide(color: DoodleColors.cardBorder) : BorderSide.none),
-                      counterStyle: TextStyle(color: doodle ? DoodleColors.textMuted : Colors.white24),
+                      fillColor:
+                          doodle ? DoodleColors.paper : const Color(0xFF101015),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: doodle
+                              ? BorderSide(color: DoodleColors.cardBorder)
+                              : BorderSide.none),
+                      counterStyle: TextStyle(
+                          color:
+                              doodle ? DoodleColors.textMuted : Colors.white24),
                     ),
                   ),
                 ],
@@ -868,17 +1173,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('My Photos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const Text('The first photo is your primary profile picture.', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  const Text('My Photos',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text('The first photo is your primary profile picture.',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
                   const SizedBox(height: 16),
                   GestureDetector(
                     onTap: () async {
-                      final url = await ImageUploadService.pickAndUpload(context: context, folder: 'avatars');
+                      final url = await ImageUploadService.pickAndUpload(
+                          context: context, folder: 'avatars');
                       if (url != null && mounted) {
                         setState(() => _avatarUrl = url);
                         await ImageUploadService.updateProfileAvatar(url);
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Primary photo updated!'), backgroundColor: Color(0xFF10B981))); // ignore: use_build_context_synchronously
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('Primary photo updated!'),
+                            backgroundColor: Color(
+                                0xFF10B981))); // ignore: use_build_context_synchronously
                       }
                     },
                     child: ClipRRect(
@@ -887,36 +1199,99 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ? Stack(
                               alignment: Alignment.topRight,
                               children: [
-                                Image(image: _safeImageProvider(_avatarUrl), height: 220, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(height: 220, width: double.infinity, color: doodle ? DoodleColors.paper : const Color(0xFF101015), child: Center(child: Icon(Icons.broken_image, color: doodle ? DoodleColors.textMuted : Colors.white24, size: 40)))),
+                                Image(
+                                    image: _safeImageProvider(_avatarUrl),
+                                    height: 220,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                        height: 220,
+                                        width: double.infinity,
+                                        color: doodle
+                                            ? DoodleColors.paper
+                                            : const Color(0xFF101015),
+                                        child: Center(
+                                            child: Icon(Icons.broken_image,
+                                                color: doodle
+                                                    ? DoodleColors.textMuted
+                                                    : Colors.white24,
+                                                size: 40)))),
                                 Container(
                                   margin: const EdgeInsets.all(12),
                                   padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
-                                  child: const Icon(Icons.edit, color: Colors.white, size: 18),
+                                  decoration: BoxDecoration(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.5),
+                                      shape: BoxShape.circle),
+                                  child: const Icon(Icons.edit,
+                                      color: Colors.white, size: 18),
                                 ),
                               ],
                             )
-                          : Container(height: 220, width: double.infinity, decoration: BoxDecoration(color: doodle ? DoodleColors.paper : const Color(0xFF101015), border: Border.all(color: doodle ? DoodleColors.cardBorder : Colors.transparent), borderRadius: BorderRadius.circular(16)), child: Center(child: Icon(Icons.add_a_photo, color: doodle ? DoodleColors.textMuted : Colors.white24, size: 40))),
+                          : Container(
+                              height: 220,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                  color: doodle
+                                      ? DoodleColors.paper
+                                      : const Color(0xFF101015),
+                                  border: Border.all(
+                                      color: doodle
+                                          ? DoodleColors.cardBorder
+                                          : Colors.transparent),
+                                  borderRadius: BorderRadius.circular(16)),
+                              child: Center(
+                                  child: Icon(Icons.add_a_photo,
+                                      color: doodle
+                                          ? DoodleColors.textMuted
+                                          : Colors.white24,
+                                      size: 40))),
                     ),
                   ),
                   const SizedBox(height: 12),
                   GridView.count(
-                    crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10,
-                    children: List.generate(6, (i) => GestureDetector(
-                      onTap: () async {
-                        final url = await ImageUploadService.pickAndUpload(context: context, folder: 'gallery');
-                        if (url != null && mounted) {
-                          setState(() => _galleryUrls[i] = url);
-                          _saveLocalPreferences();
-                        }
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(color: doodle ? DoodleColors.paper : const Color(0xFF101015), borderRadius: BorderRadius.circular(12), border: Border.all(color: doodle ? DoodleColors.cardBorder : Colors.white10)),
-                        child: _galleryUrls[i].isNotEmpty
-                            ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image(image: _safeImageProvider(_galleryUrls[i]), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()))
-                            : const Center(child: Icon(Icons.add, color: Color(0xFFFF6B00), size: 24)),
-                      ),
-                    )),
+                    crossAxisCount: 3,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    children: List.generate(
+                        6,
+                        (i) => GestureDetector(
+                              onTap: () async {
+                                final url =
+                                    await ImageUploadService.pickAndUpload(
+                                        context: context, folder: 'gallery');
+                                if (url != null && mounted) {
+                                  setState(() => _galleryUrls[i] = url);
+                                  _saveLocalPreferences();
+                                }
+                              },
+                              child: Container(
+                                decoration: BoxDecoration(
+                                    color: doodle
+                                        ? DoodleColors.paper
+                                        : const Color(0xFF101015),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                        color: doodle
+                                            ? DoodleColors.cardBorder
+                                            : Colors.white10)),
+                                child: _galleryUrls[i].isNotEmpty
+                                    ? ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Image(
+                                            image: _safeImageProvider(
+                                                _galleryUrls[i]),
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) =>
+                                                const SizedBox.shrink()))
+                                    : const Center(
+                                        child: Icon(Icons.add,
+                                            color: Color(0xFFFF6B00),
+                                            size: 24)),
+                              ),
+                            )),
                   ),
                 ],
               ),
@@ -930,15 +1305,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Activity Dashboard', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const Text('Your social stats at a glance.', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  const Text('Activity Dashboard',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text('Your social stats at a glance.',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
                   const SizedBox(height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildStatColumn(Icons.event, 'Activities', '$_activityCount', const Color(0xFFFF6B00)),
+                      _buildStatColumn(Icons.event, 'Activities',
+                          '$_activityCount', const Color(0xFFFF6B00)),
                       Container(width: 1, height: 50, color: Colors.white10),
-                      _buildStatColumn(Icons.people, 'Connections', '$_connectionCount', const Color(0xFFFF7E40)),
+                      _buildStatColumn(Icons.people, 'Connections',
+                          '$_connectionCount', const Color(0xFFFF7E40)),
                     ],
                   ),
                 ],
@@ -953,27 +1333,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(children: [Text('Why are you here? ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text('💡', style: TextStyle(fontSize: 18))]),
-                  const Text('This helps us match you with the right people', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  const Row(children: [
+                    Text('Why are you here? ',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text('💡', style: TextStyle(fontSize: 18))
+                  ]),
+                  const Text('This helps us match you with the right people',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
                   const SizedBox(height: 16),
                   ..._purposeOptions.map((opt) {
                     final isSelected = _selectedPurposes.contains(opt['label']);
                     return GestureDetector(
-                      onTap: () => setState(() { isSelected ? _selectedPurposes.remove(opt['label']) : _selectedPurposes.add(opt['label']); }),
+                      onTap: () => setState(() {
+                        isSelected
+                            ? _selectedPurposes.remove(opt['label'])
+                            : _selectedPurposes.add(opt['label']);
+                      }),
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
                         decoration: BoxDecoration(
-                          color: isSelected ? (doodle ? DoodleColors.amber : const Color(0xFFFF6B00).withValues(alpha: 0.08)) : (doodle ? DoodleColors.paper : const Color(0xFF101015)),
+                          color: isSelected
+                              ? (doodle
+                                  ? DoodleColors.amber
+                                  : const Color(0xFFFF6B00)
+                                      .withValues(alpha: 0.08))
+                              : (doodle
+                                  ? DoodleColors.paper
+                                  : const Color(0xFF101015)),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: isSelected ? (doodle ? DoodleColors.brown : const Color(0xFFFF6B00).withValues(alpha: 0.4)) : (doodle ? DoodleColors.cardBorder : Colors.white10)),
+                          border: Border.all(
+                              color: isSelected
+                                  ? (doodle
+                                      ? DoodleColors.brown
+                                      : const Color(0xFFFF6B00)
+                                          .withValues(alpha: 0.4))
+                                  : (doodle
+                                      ? DoodleColors.cardBorder
+                                      : Colors.white10)),
                         ),
                         child: Row(children: [
-                          Icon(opt['icon'] as IconData, color: isSelected ? const Color(0xFFFF6B00) : Colors.white54, size: 22),
+                          Icon(opt['icon'] as IconData,
+                              color: isSelected
+                                  ? const Color(0xFFFF6B00)
+                                  : Colors.white54,
+                              size: 22),
                           const SizedBox(width: 14),
-                          Text(opt['label'] as String, style: TextStyle(color: isSelected ? const Color(0xFFFF6B00) : Colors.white70, fontWeight: FontWeight.w500, fontSize: 14)),
+                          Text(opt['label'] as String,
+                              style: TextStyle(
+                                  color: isSelected
+                                      ? const Color(0xFFFF6B00)
+                                      : Colors.white70,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 14)),
                           const Spacer(),
-                          if (isSelected) const Icon(Icons.check_circle, color: Color(0xFFFF6B00), size: 18),
+                          if (isSelected)
+                            const Icon(Icons.check_circle,
+                                color: Color(0xFFFF6B00), size: 18),
                         ]),
                       ),
                     );
@@ -990,33 +1408,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(children: [Text('Your Vibe ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text('🎯', style: TextStyle(fontSize: 18))]),
-                  Text('Pick at least 2 interests (max 6)', style: TextStyle(color: Colors.red.shade300, fontSize: 12)),
+                  const Row(children: [
+                    Text('Your Vibe ',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text('🎯', style: TextStyle(fontSize: 18))
+                  ]),
+                  Text('Pick at least 2 interests (max 6)',
+                      style:
+                          TextStyle(color: Colors.red.shade300, fontSize: 12)),
                   const SizedBox(height: 16),
                   Wrap(
-                    spacing: 10, runSpacing: 10,
+                    spacing: 10,
+                    runSpacing: 10,
                     children: _vibeOptions.map((opt) {
                       final isSelected = _selectedVibes.contains(opt['label']);
                       return GestureDetector(
-                        onTap: () => setState(() { isSelected ? _selectedVibes.remove(opt['label']) : (_selectedVibes.length < 6 ? _selectedVibes.add(opt['label']) : null); }),
+                        onTap: () => setState(() {
+                          isSelected
+                              ? _selectedVibes.remove(opt['label'])
+                              : (_selectedVibes.length < 6
+                                  ? _selectedVibes.add(opt['label'])
+                                  : null);
+                        }),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
-                            color: isSelected ? (doodle ? DoodleColors.amber : const Color(0xFFFF6B00).withValues(alpha: 0.12)) : (doodle ? DoodleColors.paper : const Color(0xFF101015)),
+                            color: isSelected
+                                ? (doodle
+                                    ? DoodleColors.amber
+                                    : const Color(0xFFFF6B00)
+                                        .withValues(alpha: 0.12))
+                                : (doodle
+                                    ? DoodleColors.paper
+                                    : const Color(0xFF101015)),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: isSelected ? (doodle ? DoodleColors.brown : const Color(0xFFFF6B00).withValues(alpha: 0.5)) : (doodle ? DoodleColors.cardBorder : Colors.white12)),
+                            border: Border.all(
+                                color: isSelected
+                                    ? (doodle
+                                        ? DoodleColors.brown
+                                        : const Color(0xFFFF6B00)
+                                            .withValues(alpha: 0.5))
+                                    : (doodle
+                                        ? DoodleColors.cardBorder
+                                        : Colors.white12)),
                           ),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(opt['icon'] as IconData, color: isSelected ? const Color(0xFFFF6B00) : Colors.white54, size: 16),
+                            Icon(opt['icon'] as IconData,
+                                color: isSelected
+                                    ? const Color(0xFFFF6B00)
+                                    : Colors.white54,
+                                size: 16),
                             const SizedBox(width: 8),
-                            Text(opt['label'] as String, style: TextStyle(color: isSelected ? const Color(0xFFFF6B00) : Colors.white70, fontWeight: FontWeight.w600, fontSize: 13)),
+                            Text(opt['label'] as String,
+                                style: TextStyle(
+                                    color: isSelected
+                                        ? const Color(0xFFFF6B00)
+                                        : Colors.white70,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13)),
                           ]),
                         ),
                       );
                     }).toList(),
                   ),
                   const SizedBox(height: 12),
-                  Text('${_selectedVibes.length}/6 selected', style: TextStyle(color: Colors.red.shade300, fontSize: 12)),
+                  Text('${_selectedVibes.length}/6 selected',
+                      style:
+                          TextStyle(color: Colors.red.shade300, fontSize: 12)),
                 ],
               ),
             ),
@@ -1029,11 +1489,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)]),
+                  gradient: const LinearGradient(
+                      colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)]),
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 6))],
+                  boxShadow: [
+                    BoxShadow(
+                        color: const Color(0xFFFF6B00).withValues(alpha: 0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 6))
+                  ],
                 ),
-                child: const Center(child: Text('Save All Changes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white))),
+                child: const Center(
+                    child: Text('Save All Changes',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.white))),
               ),
             ),
 
@@ -1047,9 +1518,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3)),
+                  border: Border.all(
+                      color: const Color(0xFFFF6B00).withValues(alpha: 0.3)),
                 ),
-                child: const Center(child: Text('Sign Out', style: TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.bold, fontSize: 14))),
+                child: const Center(
+                    child: Text('Sign Out',
+                        style: TextStyle(
+                            color: Color(0xFFFF6B00),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14))),
               ),
             ),
 
@@ -1058,26 +1535,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // DELETE ACCOUNT
             GestureDetector(
               onTap: () {
-                showDialog(context: context, builder: (ctx) => AlertDialog(
-                  backgroundColor: const Color(0xFF0A0A0F),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  title: const Text('Delete Account?', style: TextStyle(fontWeight: FontWeight.bold)),
-                  content: const Text('This action is permanent and cannot be undone. All your data will be lost.', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-                    TextButton(onPressed: () { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please contact support to delete your account.'), backgroundColor: Color(0xFFE11D48))); },
-                      child: const Text('Delete', style: TextStyle(color: Color(0xFFE11D48), fontWeight: FontWeight.bold))),
-                  ],
-                ));
+                showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                          backgroundColor: const Color(0xFF0A0A0F),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20)),
+                          title: const Text('Delete Account?',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          content: const Text(
+                              'This action is permanent and cannot be undone. All your data will be lost.',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 13)),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('Cancel',
+                                    style: TextStyle(color: Colors.white54))),
+                            TextButton(
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              'Please contact support to delete your account.'),
+                                          backgroundColor: Color(0xFFE11D48)));
+                                },
+                                child: const Text('Delete',
+                                    style: TextStyle(
+                                        color: Color(0xFFE11D48),
+                                        fontWeight: FontWeight.bold))),
+                          ],
+                        ));
               },
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFE11D48).withValues(alpha: 0.3)),
+                  border: Border.all(
+                      color: const Color(0xFFE11D48).withValues(alpha: 0.3)),
                 ),
-                child: const Center(child: Text('Delete Account', style: TextStyle(color: Color(0xFFE11D48), fontWeight: FontWeight.bold, fontSize: 14))),
+                child: const Center(
+                    child: Text('Delete Account',
+                        style: TextStyle(
+                            color: Color(0xFFE11D48),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14))),
               ),
             ),
           ],
@@ -1092,13 +1596,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF0A0A0F),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Sign Out?', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to sign out of Meetra?', style: TextStyle(color: Colors.white54, fontSize: 13)),
+        title: const Text('Sign Out?',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Are you sure you want to sign out of Meetra?',
+            style: TextStyle(color: Colors.white54, fontSize: 13)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: Colors.white54))),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Sign Out', style: TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.bold)),
+            child: const Text('Sign Out',
+                style: TextStyle(
+                    color: Color(0xFFFF6B00), fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -1120,7 +1631,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
-        decoration: DoodleDecorations.card(color: DoodleColors.paper, borderColor: borderColor ?? DoodleColors.brown),
+        decoration: DoodleDecorations.card(
+            color: DoodleColors.paper,
+            borderColor: borderColor ?? DoodleColors.brown),
         child: child,
       );
     }
@@ -1131,10 +1644,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF0A0A0F) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: borderColor?.withValues(alpha: 0.3) ?? (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06))),
+        border: Border.all(
+            color: borderColor?.withValues(alpha: 0.3) ??
+                (isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.black.withValues(alpha: 0.06))),
         boxShadow: [
-          if (borderColor != null) BoxShadow(color: borderColor.withValues(alpha: 0.08), blurRadius: 20),
-          if (!isDark) BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4)),
+          if (borderColor != null)
+            BoxShadow(
+                color: borderColor.withValues(alpha: 0.08), blurRadius: 20),
+          if (!isDark)
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4)),
         ],
       ),
       child: child,
@@ -1152,8 +1675,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              Text(subtitle, style: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 11)),
+              Text(title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14)),
+              Text(subtitle,
+                  style: TextStyle(
+                      color: isDark ? Colors.white38 : Colors.black38,
+                      fontSize: 11)),
             ],
           ),
         ),
@@ -1169,72 +1697,97 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildTrustRow(IconData icon, String label, String status, Color statusColor, {VoidCallback? onTap}) {
+  Widget _buildTrustRow(
+      IconData icon, String label, String status, Color statusColor,
+      {VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Row(children: [
         Icon(icon, color: statusColor, size: 18),
         const SizedBox(width: 10),
-        Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14))),
+        Expanded(
+            child: Text(label,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w500, fontSize: 14))),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: statusColor.withValues(alpha: 0.4))),
-          child: Text(status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor)),
+          decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: statusColor.withValues(alpha: 0.4))),
+          child: Text(status,
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: statusColor)),
         ),
       ]),
     );
   }
 
-  Widget _buildStatColumn(IconData icon, String label, String value, Color color) {
+  Widget _buildStatColumn(
+      IconData icon, String label, String value, Color color) {
     return Column(children: [
       Icon(icon, color: color, size: 28),
       const SizedBox(height: 8),
-      Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+      Text(value,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
       const SizedBox(height: 4),
       Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
     ]);
   }
 
-  Widget _buildThemeButton({required IconData icon, required String label, required bool isSelected, required VoidCallback onTap}) {
+  Widget _buildThemeButton(
+      {required IconData icon,
+      required String label,
+      required bool isSelected,
+      required VoidCallback onTap}) {
     final theme = Theme.of(context);
     final isDarkNow = theme.brightness == Brightness.dark;
-    
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: isSelected 
-              ? (label == 'Day' ? Colors.amber.withValues(alpha: 0.1) : const Color(0xFFFF8A00).withValues(alpha: 0.1))
-              : (isDarkNow ? const Color(0xFF101015) : Colors.black.withValues(alpha: 0.03)),
+          color: isSelected
+              ? (label == 'Day'
+                  ? Colors.amber.withValues(alpha: 0.1)
+                  : const Color(0xFFFF8A00).withValues(alpha: 0.1))
+              : (isDarkNow
+                  ? const Color(0xFF101015)
+                  : Colors.black.withValues(alpha: 0.03)),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected 
+            color: isSelected
                 ? (label == 'Day' ? Colors.amber : const Color(0xFFFF8A00))
                 : (isDarkNow ? Colors.white10 : Colors.black12),
           ),
         ),
         child: Column(
           children: [
-            Icon(icon, color: isSelected 
-                ? (label == 'Day' ? Colors.amber : const Color(0xFFFF8A00))
-                : (isDarkNow ? Colors.white38 : Colors.black38), size: 24),
+            Icon(icon,
+                color: isSelected
+                    ? (label == 'Day' ? Colors.amber : const Color(0xFFFF8A00))
+                    : (isDarkNow ? Colors.white38 : Colors.black38),
+                size: 24),
             const SizedBox(height: 8),
-            Text(label, style: TextStyle(
-              fontWeight: FontWeight.bold, 
-              fontSize: 14,
-              color: isSelected 
-                  ? (label == 'Day' ? Colors.amber : const Color(0xFFFF8A00))
-                  : (isDarkNow ? Colors.white38 : Colors.black38),
-            )),
+            Text(label,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: isSelected
+                      ? (label == 'Day'
+                          ? Colors.amber
+                          : const Color(0xFFFF8A00))
+                      : (isDarkNow ? Colors.white38 : Colors.black38),
+                )),
           ],
         ),
       ),
     );
   }
 }
-
 
 // ═══════════════════════════════════════════════════════════════════
 // ADD LOCATION DIALOG — with integrated FlutterMap + search
@@ -1248,14 +1801,13 @@ class AddLocationDialog extends StatefulWidget {
 }
 
 class _AddLocationDialogState extends State<AddLocationDialog> {
-  final MapController _mapController = MapController();
+  GoogleMapController? _googleMapController;
   final TextEditingController _searchCtrl = TextEditingController();
   LatLng _selectedPoint = const LatLng(25.4358, 78.5685);
   String _resolvedName = '';
   bool _isResolving = false;
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _debounce;
-  bool _isMapDarkMode = true; // Added for theme shift
 
   @override
   void initState() {
@@ -1273,44 +1825,72 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
   void dispose() {
     _searchCtrl.dispose();
     _debounce?.cancel();
+    _googleMapController?.dispose();
     super.dispose();
   }
 
   Future<void> _reverseGeocode(LatLng point) async {
     setState(() => _isResolving = true);
     try {
-      final url = 'https://nominatim.openstreetmap.org/reverse?lat=${point.latitude}&lon=${point.longitude}&format=json&addressdetails=1&zoom=10';
-      final resp = await http.get(Uri.parse(url), headers: {'User-Agent': 'MeetraApp/1.0'});
+      final url =
+          'https://nominatim.openstreetmap.org/reverse?lat=${point.latitude}&lon=${point.longitude}&format=json&addressdetails=1&zoom=10';
+      final resp = await http
+          .get(Uri.parse(url), headers: {'User-Agent': 'MeetraApp/1.0'});
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         final addr = data['address'] ?? {};
-        final district = addr['state_district'] ?? addr['county'] ?? addr['city'] ?? addr['town'] ?? addr['village'] ?? '';
+        final district = addr['state_district'] ??
+            addr['county'] ??
+            addr['city'] ??
+            addr['town'] ??
+            addr['village'] ??
+            '';
         final state = addr['state'] ?? '';
         final name = [district, state].where((s) => s.isNotEmpty).join(', ');
-        if (mounted) setState(() { _resolvedName = name.isNotEmpty ? name : (data['display_name'] ?? 'Unknown'); _isResolving = false; });
+        if (mounted)
+          setState(() {
+            _resolvedName =
+                name.isNotEmpty ? name : (data['display_name'] ?? 'Unknown');
+            _isResolving = false;
+          });
       } else {
-        if (mounted) setState(() { _resolvedName = 'Could not resolve'; _isResolving = false; });
+        if (mounted)
+          setState(() {
+            _resolvedName = 'Could not resolve';
+            _isResolving = false;
+          });
       }
     } catch (e) {
-      if (mounted) setState(() { _resolvedName = 'Network error'; _isResolving = false; });
+      if (mounted)
+        setState(() {
+          _resolvedName = 'Network error';
+          _isResolving = false;
+        });
     }
   }
 
   Future<void> _searchPlace(String query) async {
-    if (query.trim().length < 3) { setState(() => _searchResults = []); return; }
+    if (query.trim().length < 3) {
+      setState(() => _searchResults = []);
+      return;
+    }
     try {
-      final url = 'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&addressdetails=1&limit=5';
-      final resp = await http.get(Uri.parse(url), headers: {'User-Agent': 'MeetraApp/1.0'});
+      final url =
+          'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&addressdetails=1&limit=5';
+      final resp = await http
+          .get(Uri.parse(url), headers: {'User-Agent': 'MeetraApp/1.0'});
       if (resp.statusCode == 200) {
         final List data = jsonDecode(resp.body);
         if (mounted) {
           setState(() {
-            _searchResults = data.map<Map<String, dynamic>>((e) => {
-              'name': e['display_name']?.split(',').first.trim() ?? '',
-              'full_name': e['display_name'] ?? '',
-              'lat': double.tryParse(e['lat']?.toString() ?? '') ?? 0.0,
-              'lng': double.tryParse(e['lon']?.toString() ?? '') ?? 0.0,
-            }).toList();
+            _searchResults = data
+                .map<Map<String, dynamic>>((e) => {
+                      'name': e['display_name']?.split(',').first.trim() ?? '',
+                      'full_name': e['display_name'] ?? '',
+                      'lat': double.tryParse(e['lat']?.toString() ?? '') ?? 0.0,
+                      'lng': double.tryParse(e['lon']?.toString() ?? '') ?? 0.0,
+                    })
+                .toList();
           });
         }
       }
@@ -1319,19 +1899,18 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
 
   void _onSearchChanged(String val) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () => _searchPlace(val));
-  }
-
-  void _onMapTap(TapPosition tapPos, LatLng point) {
-    setState(() { _selectedPoint = point; _searchResults = []; });
-    _mapController.move(point, _mapController.camera.zoom);
-    _reverseGeocode(point);
+    _debounce =
+        Timer(const Duration(milliseconds: 500), () => _searchPlace(val));
   }
 
   void _selectSearchResult(Map<String, dynamic> result) {
     final pt = LatLng(result['lat'], result['lng']);
-    setState(() { _selectedPoint = pt; _searchResults = []; _searchCtrl.text = ''; });
-    _mapController.move(pt, 12);
+    setState(() {
+      _selectedPoint = pt;
+      _searchResults = [];
+      _searchCtrl.text = '';
+    });
+    _googleMapController?.animateCamera(CameraUpdate.newLatLngZoom(pt, 12));
     _reverseGeocode(pt);
   }
 
@@ -1350,63 +1929,89 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
             children: [
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Select Home Base', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5)),
+                  const Text('Select Home Base',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                          letterSpacing: 0.5)),
                   const SizedBox(height: 4),
-                  Text('Set your city for accurate discovery', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11, fontWeight: FontWeight.bold)),
+                  Text('Set your city for accurate discovery',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold)),
                 ]),
-                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white38)),
+                IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, color: Colors.white38)),
               ]),
               const SizedBox(height: 20),
-              
+
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(24),
                   child: Stack(
                     children: [
-                      // Map with Theme Shifter
-                      ColorFiltered(
-                        colorFilter: ColorFilter.matrix(_isMapDarkMode ? [
-                          -1.0, 0.0, 0.0, 0.0, 255.0,
-                          0.0, -1.0, 0.0, 0.0, 255.0,
-                          0.0, 0.0, -1.0, 0.0, 255.0,
-                          0.0, 0.0, 0.0, 1.0, 0.0,
-                        ] : [
-                          1.0, 0.0, 0.0, 0.0, 0.0,
-                          0.0, 1.0, 0.0, 0.0, 0.0,
-                          0.0, 0.0, 1.0, 0.0, 0.0,
-                          0.0, 0.0, 0.0, 1.0, 0.0,
-                        ]),
-                        child: FlutterMap(
-                          mapController: _mapController,
-                          options: MapOptions(initialCenter: _selectedPoint, initialZoom: 12, onTap: _onMapTap, interactionOptions: const InteractionOptions(flags: InteractiveFlag.all)),
-                          children: [
-                            TileLayer(userAgentPackageName: 'com.meetra.app', urlTemplate: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'),
-                            MarkerLayer(markers: [
-                              Marker(point: _selectedPoint, width: 60, height: 60, child: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 45, shadows: [Shadow(color: Color(0xFFFF6B00), blurRadius: 15)])),
-                            ]),
-                          ],
-                        ),
+                      // Map
+                      GoogleMap(
+                        onMapCreated: (c) => _googleMapController = c,
+                        initialCameraPosition:
+                            CameraPosition(target: _selectedPoint, zoom: 12),
+                        mapType: MapType.normal,
+                        myLocationButtonEnabled: false,
+                        zoomControlsEnabled: false,
+                        onTap: (point) {
+                          setState(() {
+                            _selectedPoint = point;
+                            _searchResults = [];
+                          });
+                          _reverseGeocode(point);
+                        },
+                        markers: {
+                          Marker(
+                            markerId: const MarkerId('selected'),
+                            position: _selectedPoint,
+                            icon: BitmapDescriptor.defaultMarkerWithHue(
+                                BitmapDescriptor.hueOrange),
+                          ),
+                        },
                       ),
 
                       // Dark Wash
-                      if (_isMapDarkMode) Container(color: const Color(0xFFFF5C00).withValues(alpha: 0.1)),
+                      if (_isMapDarkMode)
+                        Container(
+                            color:
+                                const Color(0xFFFF5C00).withValues(alpha: 0.1)),
 
                       // Glassmorphic Search
                       Positioned(
-                        top: 16, left: 16, right: 64,
+                        top: 16,
+                        left: 16,
+                        right: 64,
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(20),
                           child: BackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                             child: Container(
                               height: 48,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10)),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: Colors.white10)),
                               child: TextField(
                                 controller: _searchCtrl,
                                 onChanged: _onSearchChanged,
-                                style: const TextStyle(color: Colors.white, fontSize: 13),
-                                decoration: const InputDecoration(hintText: 'Search city...', hintStyle: TextStyle(color: Colors.white38, fontSize: 13), border: InputBorder.none, icon: Icon(Icons.search, color: Color(0xFFFF6B00), size: 18)),
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 13),
+                                decoration: const InputDecoration(
+                                    hintText: 'Search city...',
+                                    hintStyle: TextStyle(
+                                        color: Colors.white38, fontSize: 13),
+                                    border: InputBorder.none,
+                                    icon: Icon(Icons.search,
+                                        color: Color(0xFFFF6B00), size: 18)),
                               ),
                             ),
                           ),
@@ -1415,13 +2020,26 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
 
                       // Day/Night Shifter
                       Positioned(
-                        top: 16, right: 16,
+                        top: 16,
+                        right: 16,
                         child: GestureDetector(
-                          onTap: () => setState(() => _isMapDarkMode = !_isMapDarkMode),
+                          onTap: () =>
+                              setState(() => _isMapDarkMode = !_isMapDarkMode),
                           child: Container(
-                            width: 48, height: 48,
-                            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), shape: BoxShape.circle, border: Border.all(color: Colors.white10)),
-                            child: Icon(_isMapDarkMode ? Icons.wb_sunny : Icons.nightlight_round, color: _isMapDarkMode ? Colors.yellow : Colors.blueGrey, size: 20),
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.6),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white10)),
+                            child: Icon(
+                                _isMapDarkMode
+                                    ? Icons.wb_sunny
+                                    : Icons.nightlight_round,
+                                color: _isMapDarkMode
+                                    ? Colors.yellow
+                                    : Colors.blueGrey,
+                                size: 20),
                           ),
                         ),
                       ),
@@ -1429,23 +2047,45 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
                       // Search Results
                       if (_searchResults.isNotEmpty)
                         Positioned(
-                          top: 72, left: 16, right: 64,
+                          top: 72,
+                          left: 16,
+                          right: 64,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(20),
                             child: BackdropFilter(
                               filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                               child: Container(
-                                constraints: const BoxConstraints(maxHeight: 180),
-                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.3))),
+                                constraints:
+                                    const BoxConstraints(maxHeight: 180),
+                                decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.8),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                        color: const Color(0xFFFF6B00)
+                                            .withValues(alpha: 0.3))),
                                 child: ListView.separated(
-                                  shrinkWrap: true, padding: EdgeInsets.zero, itemCount: _searchResults.length,
-                                  separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1),
+                                  shrinkWrap: true,
+                                  padding: EdgeInsets.zero,
+                                  itemCount: _searchResults.length,
+                                  separatorBuilder: (_, __) => const Divider(
+                                      color: Colors.white10, height: 1),
                                   itemBuilder: (ctx, i) {
                                     final r = _searchResults[i];
                                     return ListTile(
-                                      dense: true, leading: const Icon(Icons.location_on, color: Color(0xFFFF6B00), size: 16),
-                                      title: Text(r['name'], style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                                      subtitle: Text(r['full_name'], style: const TextStyle(color: Colors.white38, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      dense: true,
+                                      leading: const Icon(Icons.location_on,
+                                          color: Color(0xFFFF6B00), size: 16),
+                                      title: Text(r['name'],
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold)),
+                                      subtitle: Text(r['full_name'],
+                                          style: const TextStyle(
+                                              color: Colors.white38,
+                                              fontSize: 10),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis),
                                       onTap: () => _selectSearchResult(r),
                                     );
                                   },
@@ -1459,42 +2099,73 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
                 ),
               ),
               const SizedBox(height: 20),
-              
+
               // Resolution Result
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03), borderRadius: BorderRadius.circular(16)),
+                decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.03),
+                    borderRadius: BorderRadius.circular(16)),
                 child: Row(children: [
-                  const Icon(Icons.map_outlined, color: Color(0xFFFF6B00), size: 18),
+                  const Icon(Icons.map_outlined,
+                      color: Color(0xFFFF6B00), size: 18),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _isResolving
-                        ? const LinearProgressIndicator(backgroundColor: Colors.white10, color: Color(0xFFFF6B00))
-                        : Text(_resolvedName.isEmpty ? 'Tap map to select' : _resolvedName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        ? const LinearProgressIndicator(
+                            backgroundColor: Colors.white10,
+                            color: Color(0xFFFF6B00))
+                        : Text(
+                            _resolvedName.isEmpty
+                                ? 'Tap map to select'
+                                : _resolvedName,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 14)),
                   ),
                 ]),
               ),
-              
+
               const SizedBox(height: 24),
               Row(children: [
                 Expanded(
                   child: GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: Container(height: 54, alignment: Alignment.center, decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white10)), child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white54))),
+                    child: Container(
+                        height: 54,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white10)),
+                        child: const Text('Cancel',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: Colors.white54))),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: GestureDetector(
                     onTap: () {
-                      if (_resolvedName.isEmpty || _resolvedName == 'Could not resolve' || _resolvedName == 'Network error') return;
-                      widget.onLocationAdded(_resolvedName, _selectedPoint.latitude, _selectedPoint.longitude);
+                      if (_resolvedName.isEmpty ||
+                          _resolvedName == 'Could not resolve' ||
+                          _resolvedName == 'Network error') return;
+                      widget.onLocationAdded(_resolvedName,
+                          _selectedPoint.latitude, _selectedPoint.longitude);
                       Navigator.pop(context);
                     },
                     child: Container(
-                      height: 54, alignment: Alignment.center,
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), gradient: const LinearGradient(colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)])),
-                      child: const Text('Add Location', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                      height: 54,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          gradient: const LinearGradient(
+                              colors: [Color(0xFFFF6B00), Color(0xFFFF8A00)])),
+                      child: const Text('Add Location',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Colors.white)),
                     ),
                   ),
                 ),

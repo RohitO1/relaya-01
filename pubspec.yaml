@@ -2,7 +2,7 @@ name: meetra_app
 description: The Real-World Social Loop.
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -14,8 +14,7 @@ dependencies:
   card_swiper: ^3.0.1
   # We use google_fonts to give the app a premium, modern typography look easily.
   google_fonts: ^8.1.0
-  flutter_map: ^8.2.2
-  latlong2: ^0.9.1
+  google_maps_flutter: ^2.6.0
   http: ^1.6.0
   geolocator: ^14.0.2
   supabase_flutter: "<2.15.0"
