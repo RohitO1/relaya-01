@@ -6381,6 +6381,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     return Container(
       key: const ValueKey('map_view'),
       margin: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 90),
+      clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(25),
         border:
@@ -6391,124 +6392,91 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
               blurRadius: 20)
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(25),
-        child: Stack(children: [
-          // Dark mode overlay ï¿½ only when allowed by layer type
-          if (_isMapDarkMode && _mapLayer.allowsDarkMode)
-            ColorFiltered(
-              colorFilter: const ColorFilter.matrix([
-                -1.0,
-                0.0,
-                0.0,
-                0.0,
-                255.0,
-                0.0,
-                -1.0,
-                0.0,
-                0.0,
-                255.0,
-                0.0,
-                0.0,
-                -1.0,
-                0.0,
-                255.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-              ]),
-              child: _buildFlutterMap(liveActivities),
-            )
-          else
-            _buildFlutterMap(liveActivities),
+      child: Stack(children: [
+        // Map rendered directly — ClipRRect/ColorFiltered break HTML platform views on web
+        _buildFlutterMap(liveActivities),
 
-          // Neon hue wash ï¿½ dark street mode only
-          if (_isMapDarkMode && _mapLayer.allowsDarkMode)
-            IgnorePointer(
-                child: Container(
-                    color: const Color(0xFFFF5C00).withValues(alpha: 0.2))),
+        // Search Bar Overlay
+        Positioned(
+          top: 16,
+          left: 16,
+          right: 64,
+          child: _buildSearchBar(),
+        ),
 
-          // Search Bar Overlay
+        // Dropdown Overlay
+        if (_showDropdown)
           Positioned(
-            top: 16,
+            top: 66,
             left: 16,
             right: 64,
-            child: _buildSearchBar(),
+            child: _buildSearchDropdown(),
           ),
 
-          // Dropdown Overlay
-          if (_showDropdown)
-            Positioned(
-              top: 66,
-              left: 16,
-              right: 64,
-              child: _buildSearchDropdown(),
+        // Light/Dark Theme Toggle
+        Positioned(
+          top: 16,
+          right: 16,
+          child: GestureDetector(
+            onTap: () => setState(() => _isMapDarkMode = !_isMapDarkMode),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                  color: Colors.black54, shape: BoxShape.circle),
+              child: Icon(
+                  _isMapDarkMode
+                      ? Icons.wb_sunny
+                      : Icons.nightlight_round,
+                  color: _isMapDarkMode ? Colors.yellow : Colors.blueGrey,
+                  size: 20),
             ),
+          ),
+        ),
 
-          // Light/Dark Theme Toggle
-          Positioned(
-              top: 16,
-              right: 16,
-              child: GestureDetector(
-                  onTap: () => setState(() => _isMapDarkMode = !_isMapDarkMode),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                        color: Colors.black54, shape: BoxShape.circle),
-                    child: Icon(
-                        _isMapDarkMode
-                            ? Icons.wb_sunny
-                            : Icons.nightlight_round,
-                        color: _isMapDarkMode ? Colors.yellow : Colors.blueGrey,
-                        size: 20),
-                  ))),
-
-          // My Location Button ï¿½ bottom-right, mirrors layer FAB on bottom-left
-          Positioned(
-            bottom: 16,
-            right: 16,
-            child: GestureDetector(
-              onTap: _startLocationTracking,
-              child: Container(
-                width: 45,
-                height: 45,
-                decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.5),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white30, width: 1),
-                ),
-                child: _isFetchingLocation
-                    ? const Padding(
-                        padding: EdgeInsets.all(10),
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.my_location,
-                        color: Colors.white, size: 24),
+        // My Location Button — bottom-right
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: GestureDetector(
+            onTap: _startLocationTracking,
+            child: Container(
+              width: 45,
+              height: 45,
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.5),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white30, width: 1),
               ),
+              child: _isFetchingLocation
+                  ? const Padding(
+                      padding: EdgeInsets.all(10),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.my_location,
+                      color: Colors.white, size: 24),
             ),
           ),
+        ),
 
-          // Layer picker popup (appears above the FAB when open)
-          if (_showLayerPicker)
-            Positioned(
-              bottom: 72,
-              left: 16,
-              child: _buildLayerPickerPopup(),
-            ),
-
-          // Layer FAB ï¿½ always visible in bottom-left
+        // Layer picker popup
+        if (_showLayerPicker)
           Positioned(
-            bottom: 16,
+            bottom: 72,
             left: 16,
-            child: _buildLayerFab(),
+            child: _buildLayerPickerPopup(),
           ),
-        ]),
-      ),
+
+        // Layer FAB — bottom-left
+        Positioned(
+          bottom: 16,
+          left: 16,
+          child: _buildLayerFab(),
+        ),
+      ]),
     );
   }
+
 
   Widget _buildFlutterMap(List<Map<String, dynamic>> liveActivities) {
     // Build markers ONLY for Standard Activities on the map
