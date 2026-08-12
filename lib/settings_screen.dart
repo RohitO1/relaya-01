@@ -1806,6 +1806,7 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
   LatLng _selectedPoint = const LatLng(25.4358, 78.5685);
   String _resolvedName = '';
   bool _isResolving = false;
+  bool _isMapDarkMode = true;
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _debounce;
 

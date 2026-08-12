@@ -18,6 +18,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'home_screen.dart';
 import 'profile_screen.dart';
@@ -6051,7 +6052,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     if (_locationSubscription != null) {
       _locationSubscription!.cancel();
     }
-    _mapController.dispose();
+    _mapController?.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -6514,11 +6515,12 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     final activityMarkers =
         liveActivities.map((act) => _buildActivityMarker(act)).toList();
 
-    // Live-location marker (pulsing dot ? arrow)
+    // Live-location marker and popup markers — google_maps_flutter API
     final popupMarkers = _selectedMapActivity != null
         ? [
             Marker(
-              point: LatLng(
+              markerId: const MarkerId('popup_activity'),
+              position: LatLng(
                 _selectedMapActivity!['lat'] as double? ??
                     _selectedMapActivity!['latitude'] as double? ??
                     40.7128,
@@ -6526,10 +6528,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                     _selectedMapActivity!['longitude'] as double? ??
                     -74.0060,
               ),
-              width: 250,
-              height: 250,
-              alignment: Alignment.topCenter,
-              child: _buildMapPopupCard(_selectedMapActivity!),
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
             )
           ]
         : <Marker>[];
@@ -6537,10 +6536,9 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     final locationMarkers = _myLocation != null
         ? [
             Marker(
-              point: _myLocation!,
-              width: 60,
-              height: 60,
-              child: _MyLocationMarker(heading: _myHeading),
+              markerId: const MarkerId('my_location_dot'),
+              position: _myLocation!,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
             )
           ]
         : <Marker>[];
