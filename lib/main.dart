@@ -5858,63 +5858,45 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 // ----------------------------------------------------
 // MAP LAYER TYPES
 // ----------------------------------------------------
-enum _MapLayer { street, satellite, terrain, cycling, humanitarian }
+enum _MapLayer { normal, satellite, terrain, hybrid }
 
 extension _MapLayerX on _MapLayer {
   String get label => const {
-        _MapLayer.street: 'Street',
+        _MapLayer.normal: 'Standard',
         _MapLayer.satellite: 'Satellite',
         _MapLayer.terrain: 'Terrain',
-        _MapLayer.cycling: 'Cycling',
-        _MapLayer.humanitarian: 'Aid Map',
+        _MapLayer.hybrid: 'Hybrid',
       }[this]!;
 
   IconData get icon => const {
-        _MapLayer.street: Icons.map_outlined,
+        _MapLayer.normal: Icons.map_outlined,
         _MapLayer.satellite: Icons.satellite_alt,
         _MapLayer.terrain: Icons.terrain,
-        _MapLayer.cycling: Icons.directions_bike,
-        _MapLayer.humanitarian: Icons.volunteer_activism,
+        _MapLayer.hybrid: Icons.layers,
       }[this]!;
 
   Color get accent => const {
-        _MapLayer.street: Color(0xFFFF6B00),
+        _MapLayer.normal: Color(0xFFFF6B00),
         _MapLayer.satellite: Color(0xFF4CAF50),
         _MapLayer.terrain: Color(0xFF8BC34A),
-        _MapLayer.cycling: Color(0xFFFF9800),
-        _MapLayer.humanitarian: Color(0xFFE91E63),
+        _MapLayer.hybrid: Color(0xFFFF9800),
       }[this]!;
-
-  String get tileUrl {
-    switch (this) {
-      case _MapLayer.street:
-        return 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
-      case _MapLayer.satellite:
-        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      case _MapLayer.terrain:
-        return 'https://tile.opentopomap.org/{z}/{x}/{y}.png';
-      case _MapLayer.cycling:
-        return 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
-      case _MapLayer.humanitarian:
-        return 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
-    }
-  }
 
   MapType get googleMapType {
     switch (this) {
-      case _MapLayer.street:
-      case _MapLayer.cycling:
-      case _MapLayer.humanitarian:
+      case _MapLayer.normal:
         return MapType.normal;
       case _MapLayer.satellite:
         return MapType.satellite;
       case _MapLayer.terrain:
         return MapType.terrain;
+      case _MapLayer.hybrid:
+        return MapType.hybrid;
     }
   }
 
-  // Satellite imagery already looks dark ï¿½ no need to invert it
-  bool get allowsDarkMode => this == _MapLayer.street || this == _MapLayer.cycling || this == _MapLayer.humanitarian;
+  // Satellite and Hybrid imagery already look dark
+  bool get allowsDarkMode => this == _MapLayer.normal || this == _MapLayer.terrain;
 }
 
 // ----------------------------------------------------
@@ -6099,7 +6081,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
   bool _isFetchingLocation = false;
   bool _showLayerPicker = false;
   Map<String, dynamic>? _selectedMapActivity;
-  _MapLayer _mapLayer = _MapLayer.street;
+  _MapLayer _mapLayer = _MapLayer.normal;
   LatLng? _myLocation;
   double? _myHeading;
   StreamSubscription<Position>? _locationSubscription;
@@ -6109,11 +6091,6 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
   Timer? _debounce;
 
   final List<Map<String, dynamic>> _searchResults = [];
-
-  void _applyMapStyle() {
-    // Flutter Web google_maps_flutter requires "[]" instead of null to reset styles to default (light)
-    _mapController?.setMapStyle(_isMapDarkMode ? _darkMapStyle : "[]");
-  }
 
   late final Stream<List<Map<String, dynamic>>> _activityStream;
   List<dynamic> _hiddenRushIns = [];
@@ -6602,7 +6579,6 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           child: GestureDetector(
             onTap: () {
               setState(() => _isMapDarkMode = !_isMapDarkMode);
-              _applyMapStyle();
             },
             child: Container(
               padding: const EdgeInsets.all(8),
@@ -6699,9 +6675,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     return GoogleMap(
       onMapCreated: (c) {
         _mapController = c;
-        // Apply immediately
-        _applyMapStyle();
       },
+      style: _isMapDarkMode ? _darkMapStyle : '[]',
       initialCameraPosition: CameraPosition(
         target: _myLocation ?? const LatLng(40.7128, -74.0060),
         zoom: 14.0,
@@ -6810,8 +6785,6 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                       _mapLayer = layer;
                       _showLayerPicker = false;
                     });
-                    // Some map types override styles, reapply just in case
-                    _applyMapStyle();
                   },
                   borderRadius:
                       selected ? BorderRadius.zero : BorderRadius.circular(0),
