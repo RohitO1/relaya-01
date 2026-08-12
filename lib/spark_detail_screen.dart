@@ -8,7 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'widgets/profile_detail_sheet.dart';
 import 'rush_in_chat_room_screen.dart';
 
-
 class SparkDetailScreen extends StatefulWidget {
   final SparkItem item;
   final Function(SparkItem) onJoin;
@@ -91,13 +90,24 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
     }
     final t = widget.item.title.toLowerCase();
     final d = widget.item.desc.toLowerCase();
-    if (t.contains('music') || t.contains('session') || t.contains('party') || t.contains('underground')) {
+    if (t.contains('music') ||
+        t.contains('session') ||
+        t.contains('party') ||
+        t.contains('underground')) {
       return 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800&auto=format&fit=crop';
-    } else if (t.contains('coffee') || t.contains('cafe') || d.contains('coffee')) {
+    } else if (t.contains('coffee') ||
+        t.contains('cafe') ||
+        d.contains('coffee')) {
       return 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800&auto=format&fit=crop';
-    } else if (t.contains('basketball') || t.contains('sport') || t.contains('gym') || t.contains('run')) {
+    } else if (t.contains('basketball') ||
+        t.contains('sport') ||
+        t.contains('gym') ||
+        t.contains('run')) {
       return 'https://images.unsplash.com/photo-1517649763962-0c623066013b?w=800&auto=format&fit=crop';
-    } else if (t.contains('outdoor') || t.contains('hike') || t.contains('nature') || t.contains('camp')) {
+    } else if (t.contains('outdoor') ||
+        t.contains('hike') ||
+        t.contains('nature') ||
+        t.contains('camp')) {
       return 'https://images.unsplash.com/photo-1533240332313-0db49b439ad3?w=800&auto=format&fit=crop';
     }
     return 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop';
@@ -108,10 +118,11 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
     setState(() => _loadingParticipants = true);
     try {
       final sb = Supabase.instance.client;
-      final reqs = await sb.from('requests')
+      final reqs = await sb
+          .from('requests')
           .select('id, sender_id, status')
           .eq('target_id', widget.item.id);
-      
+
       final List<String> senderIds = [];
       final Map<String, String> requestIds = {};
       final Map<String, String> requestStatuses = {};
@@ -136,17 +147,20 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
         return;
       }
 
-      final profiles = await sb.from('profiles')
+      final profiles = await sb
+          .from('profiles')
           .select('id, name, full_name, avatar_url')
           .inFilter('id', senderIds);
-      
+
       final List<Map<String, dynamic>> tempAttendees = [];
       final List<Map<String, dynamic>> tempWaitlist = [];
 
       for (final p in profiles as List) {
         final uid = p['id'].toString();
         final status = requestStatuses[uid];
-        final name = p['full_name']?.toString() ?? p['name']?.toString() ?? 'Unknown User';
+        final name = p['full_name']?.toString() ??
+            p['name']?.toString() ??
+            'Unknown User';
         final avatar = p['avatar_url']?.toString() ?? '';
         final requestId = requestIds[uid] ?? '';
 
@@ -184,7 +198,7 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
     try {
       final sb = Supabase.instance.client;
       await sb.from('requests').update({'status': status}).eq('id', requestId);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -210,7 +224,7 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
     try {
       final sb = Supabase.instance.client;
       await sb.from('requests').delete().eq('id', requestId);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -233,9 +247,12 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
   }
 
   void _showParticipantsSheet() {
-    final accentColor = widget.item.type == 'rush' ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00);
+    final accentColor = widget.item.type == 'rush'
+        ? const Color(0xFFFF6B00)
+        : const Color(0xFFFF3D00);
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-    final bool isUserHost = currentUserId != null && widget.item.hostId == currentUserId;
+    final bool isUserHost =
+        currentUserId != null && widget.item.hostId == currentUserId;
 
     showModalBottomSheet(
       context: context,
@@ -254,17 +271,30 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
               child: Column(
                 children: [
                   const SizedBox(height: 12),
-                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                  Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2))),
                   const SizedBox(height: 16),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Manage Participants', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text('Manage Participants',
+                            style: GoogleFonts.plusJakartaSans(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold)),
                         GestureDetector(
                           onTap: () => Navigator.pop(context),
-                          child: const CircleAvatar(radius: 14, backgroundColor: Colors.white10, child: Icon(Icons.close, color: Colors.white, size: 16)),
+                          child: const CircleAvatar(
+                              radius: 14,
+                              backgroundColor: Colors.white10,
+                              child: Icon(Icons.close,
+                                  color: Colors.white, size: 16)),
                         ),
                       ],
                     ),
@@ -289,23 +319,29 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                             child: TabBarView(
                               children: [
                                 _attendees.isEmpty
-                                    ? _emptyModalState('No approved attendees yet.', Icons.people_outline)
+                                    ? _emptyModalState(
+                                        'No approved attendees yet.',
+                                        Icons.people_outline)
                                     : ListView.builder(
                                         padding: const EdgeInsets.all(16),
                                         itemCount: _attendees.length,
                                         itemBuilder: (context, index) {
                                           final user = _attendees[index];
-                                          return _buildParticipantTile(user, isUserHost, true, setModalState);
+                                          return _buildParticipantTile(user,
+                                              isUserHost, true, setModalState);
                                         },
                                       ),
                                 _waitlist.isEmpty
-                                    ? _emptyModalState('No waitlisted candidates.', Icons.hourglass_empty)
+                                    ? _emptyModalState(
+                                        'No waitlisted candidates.',
+                                        Icons.hourglass_empty)
                                     : ListView.builder(
                                         padding: const EdgeInsets.all(16),
                                         itemCount: _waitlist.length,
                                         itemBuilder: (context, index) {
                                           final user = _waitlist[index];
-                                          return _buildParticipantTile(user, isUserHost, false, setModalState);
+                                          return _buildParticipantTile(user,
+                                              isUserHost, false, setModalState);
                                         },
                                       ),
                               ],
@@ -331,15 +367,19 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
         children: [
           Icon(icon, color: Colors.white12, size: 48),
           const SizedBox(height: 12),
-          Text(msg, style: GoogleFonts.inter(color: Colors.white38, fontSize: 14)),
+          Text(msg,
+              style: GoogleFonts.inter(color: Colors.white38, fontSize: 14)),
         ],
       ),
     );
   }
 
-  Widget _buildParticipantTile(Map<String, dynamic> user, bool isHost, bool isApprovedTab, StateSetter setModalState) {
-    final accentColor = widget.item.type == 'rush' ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00);
-    
+  Widget _buildParticipantTile(Map<String, dynamic> user, bool isHost,
+      bool isApprovedTab, StateSetter setModalState) {
+    final accentColor = widget.item.type == 'rush'
+        ? const Color(0xFFFF6B00)
+        : const Color(0xFFFF3D00);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -351,7 +391,8 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
       child: Row(
         children: [
           Container(
-            width: 44, height: 44,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white10),
@@ -364,8 +405,13 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                       color: accentColor.withValues(alpha: 0.2),
                       alignment: Alignment.center,
                       child: Text(
-                        user['name'].isNotEmpty ? user['name'][0].toUpperCase() : '?',
-                        style: GoogleFonts.inter(color: accentColor, fontWeight: FontWeight.bold, fontSize: 16),
+                        user['name'].isNotEmpty
+                            ? user['name'][0].toUpperCase()
+                            : '?',
+                        style: GoogleFonts.inter(
+                            color: accentColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16),
                       ),
                     ),
             ),
@@ -377,12 +423,20 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
               children: [
                 Text(
                   user['name'],
-                  style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                  style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   isApprovedTab ? 'Approved attendee' : 'Waitlisted candidate',
-                  style: GoogleFonts.inter(color: isApprovedTab ? const Color(0xFF10B981) : const Color(0xFFFF9F0A), fontSize: 11, fontWeight: FontWeight.w600),
+                  style: GoogleFonts.inter(
+                      color: isApprovedTab
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFFF9F0A),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -395,13 +449,19 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                   setModalState(() {});
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEF4444).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+                    border: Border.all(
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
                   ),
-                  child: Text('Remove', style: GoogleFonts.inter(color: const Color(0xFFEF4444), fontSize: 11, fontWeight: FontWeight.bold)),
+                  child: Text('Remove',
+                      style: GoogleFonts.inter(
+                          color: const Color(0xFFEF4444),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold)),
                 ),
               )
             else ...[
@@ -411,17 +471,24 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                   setModalState(() {});
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: const Color(0xFF10B981).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                    border: Border.all(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.check, color: Color(0xFF10B981), size: 12),
+                      const Icon(Icons.check,
+                          color: Color(0xFF10B981), size: 12),
                       const SizedBox(width: 4),
-                      Text('Accept', style: GoogleFonts.inter(color: const Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold)),
+                      Text('Accept',
+                          style: GoogleFonts.inter(
+                              color: const Color(0xFF10B981),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -433,17 +500,24 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                   setModalState(() {});
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEF4444).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+                    border: Border.all(
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.close, color: Color(0xFFEF4444), size: 12),
+                      const Icon(Icons.close,
+                          color: Color(0xFFEF4444), size: 12),
                       const SizedBox(width: 4),
-                      Text('Decline', style: GoogleFonts.inter(color: const Color(0xFFEF4444), fontSize: 11, fontWeight: FontWeight.bold)),
+                      Text('Decline',
+                          style: GoogleFonts.inter(
+                              color: const Color(0xFFEF4444),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -457,20 +531,132 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
 
   String _getCategoryLabel() {
     final t = widget.item.title.toLowerCase();
-    if (t.contains('music') || t.contains('session') || t.contains('dj')) return 'MUSIC';
-    if (t.contains('sport') || t.contains('basketball') || t.contains('gym')) return 'SPORTS';
-    if (t.contains('coffee') || t.contains('cafe') || t.contains('food')) return 'FOOD & DRINKS';
-    if (t.contains('hike') || t.contains('outdoor') || t.contains('camp')) return 'OUTDOOR';
-    if (t.contains('study') || t.contains('code') || t.contains('work')) return 'STUDY';
+    if (t.contains('music') || t.contains('session') || t.contains('dj'))
+      return 'MUSIC';
+    if (t.contains('sport') || t.contains('basketball') || t.contains('gym'))
+      return 'SPORTS';
+    if (t.contains('coffee') || t.contains('cafe') || t.contains('food'))
+      return 'FOOD & DRINKS';
+    if (t.contains('hike') || t.contains('outdoor') || t.contains('camp'))
+      return 'OUTDOOR';
+    if (t.contains('study') || t.contains('code') || t.contains('work'))
+      return 'STUDY';
     if (widget.item.type == 'rush') return 'RUSH-IN';
     return 'ACTIVITY';
+  }
+
+  void _confirmCancelRushIn() {
+    final reasonController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF151821),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Cancel Rush-In?',
+          style: GoogleFonts.plusJakartaSans(
+              color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Please provide a reason. This will be sent to all approved and waitlisted attendees.',
+              style: GoogleFonts.inter(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              style: GoogleFonts.inter(color: Colors.white),
+              maxLines: null,
+              decoration: InputDecoration(
+                hintText: 'e.g. Weather got bad, changed plans...',
+                hintStyle: GoogleFonts.inter(color: Colors.white30),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.05),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Keep Event',
+                style: GoogleFonts.inter(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444)),
+            onPressed: () {
+              final reason = reasonController.text.trim();
+              if (reason.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Please enter a reason',
+                        style: TextStyle(color: Colors.white))));
+                return;
+              }
+              Navigator.pop(ctx);
+              _cancelRushIn(reason);
+            },
+            child: Text('Cancel Event',
+                style: GoogleFonts.inter(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _cancelRushIn(String reason) async {
+    final sb = Supabase.instance.client;
+    final allUsers = [..._attendees, ..._waitlist];
+
+    // 1. Notify users
+    for (final u in allUsers) {
+      final userId = u['id'];
+      if (userId == null) continue;
+      try {
+        await sb.from('notifications').insert({
+          'user_id': userId,
+          'title': 'Rush-In Cancelled',
+          'body': 'The host cancelled "${widget.item.title}". Reason: $reason',
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        });
+      } catch (e) {
+        debugPrint('Failed to notify $userId: $e');
+      }
+    }
+
+    // 2. Delete activity
+    try {
+      await sb.from('activities').delete().eq('id', widget.item.id);
+      if (mounted) {
+        Navigator.pop(context, {'deleted': true, 'id': widget.item.id});
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Event cancelled successfully.',
+                style: TextStyle(color: Colors.white)),
+            backgroundColor: Color(0xFF10B981)));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Failed to delete: $e',
+                style: const TextStyle(color: Colors.white)),
+            backgroundColor: const Color(0xFFEF4444)));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
     final isRush = item.type == 'rush';
-    final accentColor = isRush ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00);
+    final accentColor =
+        isRush ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00);
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
 
     return StreamBuilder<List<Map<String, dynamic>>>(
@@ -478,384 +664,646 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
           ? const Stream.empty()
           : Supabase.instance.client
               .from('requests')
-              .stream(primaryKey: ['id'])
-              .eq('target_id', item.id),
+              .stream(primaryKey: ['id']).eq('target_id', item.id),
       builder: (context, snapshot) {
         final requests = snapshot.data ?? [];
         final hasRequested = currentUserId != null &&
-            (requests.any((r) => r['sender_id'] == currentUserId && r['status'] == 'pending') || _hasRequested);
+            (requests.any((r) =>
+                    r['sender_id'] == currentUserId &&
+                    r['status'] == 'pending') ||
+                _hasRequested);
         final isApproved = currentUserId != null &&
-            (requests.any((r) => r['sender_id'] == currentUserId && r['status'] == 'approved') || _isApproved);
+            (requests.any((r) =>
+                    r['sender_id'] == currentUserId &&
+                    r['status'] == 'approved') ||
+                _isApproved);
 
         // ANONYMOUS LOGIC: Hide identity if anonymous AND not yet approved
         final bool shouldHideIdentity = item.isAnonymous && !isApproved;
-        final String displayHostName = shouldHideIdentity ? 'Anonymous Host' : item.host;
-        final bool isUserHost = currentUserId != null && item.hostId == currentUserId;
+        final String displayHostName =
+            shouldHideIdentity ? 'Anonymous Host' : item.host;
+        final bool isUserHost =
+            currentUserId != null && item.hostId == currentUserId;
 
         // LOCATION LOGIC: Hidden for anonymous/ghost-mode until approved
-        final bool isLocationHidden = item.isAnonymous && !isApproved && !isUserHost;
+        final bool isLocationHidden =
+            item.isAnonymous && !isApproved && !isUserHost;
         final String displayLocation = isLocationHidden
             ? 'Location Hidden (Join to reveal)'
             : (item.location ?? 'TBD');
 
         return Scaffold(
-          backgroundColor: isDoodleMode(context) ? DoodleColors.cream : const Color(0xFF000000),
-      body: Stack(
-        children: [
-          CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          // Top bar with animated banner
-          SliverAppBar(
-            automaticallyImplyLeading: false,
-            backgroundColor: const Color(0xFF000000), // Solid black when collapsed
-            elevation: 0,
-            pinned: true,
-            stretch: true,
-            expandedHeight: 380,
-            flexibleSpace: FlexibleSpaceBar(
-              stretchModes: const [StretchMode.zoomBackground],
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _buildBannerImageWidget(_getEventImageUrl()),
-                  Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.black54, Colors.transparent, Color(0xFF000000)],
-                        begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                        stops: [0.0, 0.4, 1.0],
+          backgroundColor: isDoodleMode(context)
+              ? DoodleColors.cream
+              : const Color(0xFF000000),
+          body: Stack(
+            children: [
+              CustomScrollView(
+                physics: const BouncingScrollPhysics(),
+                slivers: [
+                  // Top bar with animated banner
+                  SliverAppBar(
+                    automaticallyImplyLeading: false,
+                    backgroundColor:
+                        const Color(0xFF000000), // Solid black when collapsed
+                    elevation: 0,
+                    pinned: true,
+                    stretch: true,
+                    expandedHeight: 380,
+                    flexibleSpace: FlexibleSpaceBar(
+                      stretchModes: const [StretchMode.zoomBackground],
+                      background: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          _buildBannerImageWidget(_getEventImageUrl()),
+                          Container(
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.black54,
+                                  Colors.transparent,
+                                  Color(0xFF000000)
+                                ],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                stops: [0.0, 0.4, 1.0],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    titleSpacing: 0,
+                    title: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _circleBtn(Icons.arrow_back_ios_new,
+                                () => Navigator.pop(context)),
+                            Text('Event Details',
+                                style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold)),
+                            Row(children: [
+                              if (isUserHost) ...[
+                                _circleBtn(Icons.delete_outline_rounded,
+                                    () => _confirmCancelRushIn(),
+                                    iconColor: const Color(0xFFFF3D5A)),
+                                const SizedBox(width: 10),
+                              ],
+                              _circleBtn(
+                                _isBookmarked
+                                    ? Icons.bookmark
+                                    : Icons.bookmark_border,
+                                () => setState(
+                                    () => _isBookmarked = !_isBookmarked),
+                                iconColor:
+                                    _isBookmarked ? accentColor : Colors.white,
+                              ),
+                              const SizedBox(width: 10),
+                              _circleBtn(Icons.share_outlined, () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Link copied!'),
+                                      backgroundColor: Colors.blueGrey),
+                                );
+                              }),
+                            ]),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Main Content
+                  SliverToBoxAdapter(
+                    child: Container(
+                      color: const Color(0xFF000000),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Live badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF3D5A)
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                  color: const Color(0xFFFF3D5A)
+                                      .withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                        color: Color(0xFFFF3D5A),
+                                        shape: BoxShape.circle)),
+                                const SizedBox(width: 8),
+                                Text(
+                                  isRush
+                                      ? 'Rush-in • ${item.timer ?? "2h left"}'
+                                      : 'Activity • Public',
+                                  style: GoogleFonts.inter(
+                                      color: const Color(0xFFFF3D5A),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+
+                          // Category
+                          Text(_getCategoryLabel(),
+                              style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF4E8BFF),
+                                  letterSpacing: 1.5)),
+                          const SizedBox(height: 6),
+
+                          // Title
+                          Text(item.title.toUpperCase(),
+                              style: GoogleFonts.plusJakartaSans(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.5)),
+                          const SizedBox(height: 20),
+
+                          // Meta rows
+                          _buildMetaRow(
+                              Icons.calendar_today_outlined,
+                              isRush
+                                  ? (item.timer ?? "Ends in 2h left")
+                                  : '${item.date ?? "Today"} at ${item.time ?? "18:00"}'),
+                          GestureDetector(
+                            onTap: (!isLocationHidden &&
+                                    item.lat != 0 &&
+                                    item.lng != 0)
+                                ? () async {
+                                    final uri = Uri.parse(
+                                      'https://www.google.com/maps/dir/?api=1'
+                                      '&destination=${item.lat},${item.lng}'
+                                      '&travelmode=driving',
+                                    );
+                                    if (await canLaunchUrl(uri))
+                                      launchUrl(uri,
+                                          mode: LaunchMode.externalApplication);
+                                  }
+                                : null,
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.location_on_outlined,
+                                      color: isLocationHidden
+                                          ? const Color(0xFFFF5C00)
+                                          : const Color(0xFF9E9E9E),
+                                      size: 20),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      displayLocation,
+                                      style: GoogleFonts.inter(
+                                          color: isLocationHidden
+                                              ? const Color(0xFFFF5C00)
+                                              : Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: isLocationHidden
+                                              ? FontWeight.bold
+                                              : FontWeight.w500),
+                                    ),
+                                  ),
+                                  if (!isLocationHidden)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFF5C00)
+                                            .withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Text('Show in map',
+                                          style: TextStyle(
+                                              color: Color(0xFFFF5C00),
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold)),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          _buildMetaRow(Icons.people_outline,
+                              '${item.slots} people going'),
+
+                          // Radius for rush-ins
+                          if (isRush && item.radius != null)
+                            _buildMetaRow(
+                                Icons.sensors, '${item.radius} radius'),
+                          const SizedBox(height: 8),
+
+                          // Tags
+                          if (item.tags.isNotEmpty) ...[
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: item.tags
+                                  .map((t) => Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.04),
+                                          border: Border.all(
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.08)),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Text(t,
+                                            style: GoogleFonts.inter(
+                                                color: Colors.white70,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold)),
+                                      ))
+                                  .toList(),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+
+                          // Host Card
+                          GestureDetector(
+                            onTap: shouldHideIdentity
+                                ? null
+                                : () async {
+                                    if (item.hostId != null) {
+                                      try {
+                                        final p = await Supabase.instance.client
+                                            .from('profiles')
+                                            .select()
+                                            .eq('id', item.hostId!)
+                                            .single();
+                                        if (context.mounted) {
+                                          showFullProfileSheet(
+                                              context, p, () {}, () {});
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(const SnackBar(
+                                                  content: Text(
+                                                      'Failed to load profile',
+                                                      style: TextStyle(
+                                                          color:
+                                                              Colors.white))));
+                                        }
+                                      }
+                                    }
+                                  },
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0C0E14),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.05)),
+                              ),
+                              child: Row(children: [
+                                // Avatar
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: shouldHideIdentity
+                                        ? const LinearGradient(colors: [
+                                            Color(0xFF3A3D46),
+                                            Color(0xFF1E2024)
+                                          ])
+                                        : null,
+                                    color: !shouldHideIdentity
+                                        ? const Color(0xFFFF6B00)
+                                            .withValues(alpha: 0.15)
+                                        : null,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: shouldHideIdentity
+                                      ? const Icon(Icons.theater_comedy,
+                                          color: Colors.white70, size: 20)
+                                      : (item.hostAvatar != null &&
+                                              item.hostAvatar!
+                                                  .startsWith('http')
+                                          ? ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(22),
+                                              child: Image.network(
+                                                  item.hostAvatar!,
+                                                  fit: BoxFit.cover,
+                                                  width: 44,
+                                                  height: 44))
+                                          : Text(
+                                              item.host.isNotEmpty
+                                                  ? item.host[0].toUpperCase()
+                                                  : '?',
+                                              style: GoogleFonts.inter(
+                                                  color:
+                                                      const Color(0xFFFF6B00),
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 18))),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                    child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                      Text('Hosted by',
+                                          style: GoogleFonts.inter(
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.5),
+                                              fontSize: 12)),
+                                      const SizedBox(height: 2),
+                                      Text(displayHostName,
+                                          style: GoogleFonts.inter(
+                                              color: Colors.white,
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold)),
+                                    ])),
+                                if (!shouldHideIdentity)
+                                  const Icon(Icons.chevron_right,
+                                      color: Colors.white24, size: 20),
+                              ]),
+                            ),
+                          ),
+                          const SizedBox(height: 28), // Attendees Section
+                          GestureDetector(
+                            onTap: shouldHideIdentity
+                                ? null
+                                : _showParticipantsSheet,
+                            child: Container(
+                              color: Colors.transparent,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('Attendees',
+                                          style: GoogleFonts.plusJakartaSans(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold)),
+                                      if (_loadingParticipants)
+                                        const SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white54))
+                                      else
+                                        Text('View List',
+                                            style: GoogleFonts.inter(
+                                                color: isRush
+                                                    ? const Color(0xFFFF6B00)
+                                                    : const Color(0xFFFF3D00),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(children: [
+                                    if (shouldHideIdentity) ...[
+                                      ...List.generate(
+                                        3,
+                                        (i) => Align(
+                                          widthFactor: 0.7,
+                                          child: Container(
+                                            width: 36,
+                                            height: 36,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                  color:
+                                                      const Color(0xFF000000),
+                                                  width: 2.5),
+                                              gradient: const LinearGradient(
+                                                  colors: [
+                                                    Color(0xFF333333),
+                                                    Color(0xFF222222)
+                                                  ]),
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: const Icon(
+                                                Icons.theater_comedy,
+                                                color: Colors.white,
+                                                size: 14),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF1C1C24),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: Border.all(
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.05)),
+                                        ),
+                                        child: Text('+??',
+                                            style: GoogleFonts.inter(
+                                                color: Colors.white70,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold)),
+                                      ),
+                                    ] else if (_attendees.isEmpty) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.02),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          border:
+                                              Border.all(color: Colors.white10),
+                                        ),
+                                        child: Text(
+                                          'No approved attendees yet.',
+                                          style: GoogleFonts.inter(
+                                              color: Colors.white38,
+                                              fontSize: 13),
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      ..._attendees.take(5).map(
+                                            (member) => Align(
+                                              widthFactor: 0.7,
+                                              child: Container(
+                                                width: 36,
+                                                height: 36,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(
+                                                      color: const Color(
+                                                          0xFF000000),
+                                                      width: 2.5),
+                                                ),
+                                                child: ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(18),
+                                                  child: member['avatar'] !=
+                                                              null &&
+                                                          member['avatar']
+                                                              .toString()
+                                                              .isNotEmpty
+                                                      ? Image.network(
+                                                          member['avatar'],
+                                                          fit: BoxFit.cover)
+                                                      : Container(
+                                                          color: (isRush
+                                                                  ? const Color(
+                                                                      0xFFFF6B00)
+                                                                  : const Color(
+                                                                      0xFFFF3D00))
+                                                              .withValues(
+                                                                  alpha: 0.2),
+                                                          alignment:
+                                                              Alignment.center,
+                                                          child: Text(
+                                                            member['name']
+                                                                    .isNotEmpty
+                                                                ? member['name']
+                                                                        [0]
+                                                                    .toUpperCase()
+                                                                : '?',
+                                                            style: GoogleFonts.inter(
+                                                                color: isRush
+                                                                    ? const Color(
+                                                                        0xFFFF6B00)
+                                                                    : const Color(
+                                                                        0xFFFF3D00),
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                fontSize: 14),
+                                                          ),
+                                                        ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      if (_attendees.length > 5) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF1C1C24),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            border: Border.all(
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.05)),
+                                          ),
+                                          child: Text(
+                                              '+${_attendees.length - 5}',
+                                              style: GoogleFonts.inter(
+                                                  color: Colors.white70,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold)),
+                                        ),
+                                      ],
+                                    ],
+                                    const SizedBox(width: 8),
+                                    if (!shouldHideIdentity &&
+                                        _waitlist.isNotEmpty) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFF3D5A)
+                                              .withValues(alpha: 0.15),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: Border.all(
+                                              color: const Color(0xFFFF3D5A)
+                                                  .withValues(alpha: 0.3)),
+                                        ),
+                                        child: Text(
+                                          '${_waitlist.length} Pending',
+                                          style: GoogleFonts.inter(
+                                              color: const Color(0xFFFF3D5A),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ],
+                                  ]),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+
+                          // About
+                          Text('About',
+                              style: GoogleFonts.plusJakartaSans(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 10),
+                          Text(
+                            _cleanDescription(item.desc).isNotEmpty
+                                ? _cleanDescription(item.desc)
+                                : 'Join us for an unforgettable experience! This event brings together like-minded people for an evening of great vibes, meaningful connections, and memorable moments.',
+                            style: GoogleFonts.inter(
+                                color: const Color(0xFF9E9E9E),
+                                fontSize: 14,
+                                height: 1.6),
+                          ),
+                          const SizedBox(height: 120),
+                        ],
                       ),
                     ),
                   ),
                 ],
               ),
-            ),
-            titleSpacing: 0,
-            title: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _circleBtn(Icons.arrow_back_ios_new, () => Navigator.pop(context)),
-                    Text('Event Details', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                    Row(children: [
-                      _circleBtn(
-                        _isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                        () => setState(() => _isBookmarked = !_isBookmarked),
-                        iconColor: _isBookmarked ? accentColor : Colors.white,
-                      ),
-                      const SizedBox(width: 10),
-                      _circleBtn(Icons.share_outlined, () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Link copied!'), backgroundColor: Colors.blueGrey),
-                        );
-                      }),
-                    ]),
-                  ],
-                ),
+
+              // ── Sticky Join Button ──
+              Positioned(
+                bottom: 20,
+                left: 20,
+                right: 20,
+                child: _buildStickyActionButton(
+                    isApproved: isApproved, hasRequested: hasRequested),
               ),
-            ),
+            ],
           ),
-
-          // Main Content
-                SliverToBoxAdapter(
-                  child: Container(
-                    color: const Color(0xFF000000),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Live badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF3D5A).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFFF3D5A).withValues(alpha: 0.3)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFFFF3D5A), shape: BoxShape.circle)),
-                              const SizedBox(width: 8),
-                              Text(
-                                isRush ? 'Rush-in • ${item.timer ?? "2h left"}' : 'Activity • Public',
-                                style: GoogleFonts.inter(color: const Color(0xFFFF3D5A), fontSize: 12, fontWeight: FontWeight.w700),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Category
-                        Text(_getCategoryLabel(), style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w900, color: const Color(0xFF4E8BFF), letterSpacing: 1.5)),
-                        const SizedBox(height: 6),
-
-                        // Title
-                        Text(item.title.toUpperCase(), style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                        const SizedBox(height: 20),
-
-                        // Meta rows
-                        _buildMetaRow(Icons.calendar_today_outlined, isRush ? (item.timer ?? "Ends in 2h left") : '${item.date ?? "Today"} at ${item.time ?? "18:00"}'),
-                        GestureDetector(
-                          onTap: (!isLocationHidden && item.lat != 0 && item.lng != 0) ? () async {
-                            final uri = Uri.parse(
-                              'https://www.google.com/maps/dir/?api=1'
-                              '&destination=${item.lat},${item.lng}'
-                              '&travelmode=driving',
-                            );
-                            if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
-                          } : null,
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Row(
-                              children: [
-                                Icon(Icons.location_on_outlined, color: isLocationHidden ? const Color(0xFFFF5C00) : const Color(0xFF9E9E9E), size: 20),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    displayLocation,
-                                    style: GoogleFonts.inter(color: isLocationHidden ? const Color(0xFFFF5C00) : Colors.white, fontSize: 14, fontWeight: isLocationHidden ? FontWeight.bold : FontWeight.w500),
-                                  ),
-                                ),
-                                if (!isLocationHidden) 
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFF5C00).withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: const Text('Show in map', style: TextStyle(color: Color(0xFFFF5C00), fontSize: 10, fontWeight: FontWeight.bold)),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        _buildMetaRow(Icons.people_outline, '${item.slots} people going'),
-
-                        // Radius for rush-ins
-                        if (isRush && item.radius != null)
-                          _buildMetaRow(Icons.sensors, '${item.radius} radius'),
-                        const SizedBox(height: 8),
-
-                        // Tags
-                        if (item.tags.isNotEmpty) ...[
-                          Wrap(
-                            spacing: 6, runSpacing: 6,
-                            children: item.tags.map((t) => Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.04),
-                                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(t, style: GoogleFonts.inter(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-                            )).toList(),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-
-                        // Host Card
-                        GestureDetector(
-                          onTap: shouldHideIdentity ? null : () async {
-                            if (item.hostId != null) {
-                              try {
-                                final p = await Supabase.instance.client.from('profiles').select().eq('id', item.hostId!).single();
-                                if (context.mounted) {
-                                  showFullProfileSheet(context, p, () {}, () {});
-                                }
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to load profile', style: TextStyle(color: Colors.white))));
-                                }
-                              }
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0C0E14),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-                            ),
-                            child: Row(children: [
-                              // Avatar
-                              Container(
-                                width: 44, height: 44,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: shouldHideIdentity ? const LinearGradient(colors: [Color(0xFF3A3D46), Color(0xFF1E2024)]) : null,
-                                  color: !shouldHideIdentity ? const Color(0xFFFF6B00).withValues(alpha: 0.15) : null,
-                                ),
-                                alignment: Alignment.center,
-                                child: shouldHideIdentity
-                                    ? const Icon(Icons.theater_comedy, color: Colors.white70, size: 20)
-                                    : (item.hostAvatar != null && item.hostAvatar!.startsWith('http')
-                                        ? ClipRRect(borderRadius: BorderRadius.circular(22), child: Image.network(item.hostAvatar!, fit: BoxFit.cover, width: 44, height: 44))
-                                        : Text(item.host.isNotEmpty ? item.host[0].toUpperCase() : '?', style: GoogleFonts.inter(color: const Color(0xFFFF6B00), fontWeight: FontWeight.bold, fontSize: 18))),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text('Hosted by', style: GoogleFonts.inter(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
-                                const SizedBox(height: 2),
-                                Text(displayHostName, style: GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
-                              ])),
-                              if (!shouldHideIdentity) const Icon(Icons.chevron_right, color: Colors.white24, size: 20),
-                            ]),
-                          ),
-                        ),
-                        const SizedBox(height: 28),                        // Attendees Section
-                        GestureDetector(
-                          onTap: shouldHideIdentity ? null : _showParticipantsSheet,
-                          child: Container(
-                            color: Colors.transparent,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text('Attendees', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                                    if (_loadingParticipants)
-                                      const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54))
-                                    else
-                                      Text('View List', style: GoogleFonts.inter(color: isRush ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00), fontSize: 12, fontWeight: FontWeight.w600)),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(children: [
-                                  if (shouldHideIdentity) ...[
-                                    ...List.generate(
-                                      3,
-                                      (i) => Align(
-                                        widthFactor: 0.7,
-                                        child: Container(
-                                          width: 36, height: 36,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            border: Border.all(color: const Color(0xFF000000), width: 2.5),
-                                            gradient: const LinearGradient(colors: [Color(0xFF333333), Color(0xFF222222)]),
-                                          ),
-                                          alignment: Alignment.center,
-                                          child: const Icon(Icons.theater_comedy, color: Colors.white, size: 14),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF1C1C24),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-                                      ),
-                                      child: Text('+??', style: GoogleFonts.inter(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ] else if (_attendees.isEmpty) ...[
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.02),
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(color: Colors.white10),
-                                      ),
-                                      child: Text(
-                                        'No approved attendees yet.',
-                                        style: GoogleFonts.inter(color: Colors.white38, fontSize: 13),
-                                      ),
-                                    ),
-                                  ] else ...[
-                                    ..._attendees.take(5).map(
-                                      (member) => Align(
-                                        widthFactor: 0.7,
-                                        child: Container(
-                                          width: 36, height: 36,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            border: Border.all(color: const Color(0xFF000000), width: 2.5),
-                                          ),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(18),
-                                            child: member['avatar'] != null && member['avatar'].toString().isNotEmpty
-                                                ? Image.network(member['avatar'], fit: BoxFit.cover)
-                                                : Container(
-                                                    color: (isRush ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00)).withValues(alpha: 0.2),
-                                                    alignment: Alignment.center,
-                                                    child: Text(
-                                                      member['name'].isNotEmpty ? member['name'][0].toUpperCase() : '?',
-                                                      style: GoogleFonts.inter(color: isRush ? const Color(0xFFFF6B00) : const Color(0xFFFF3D00), fontWeight: FontWeight.bold, fontSize: 14),
-                                                    ),
-                                                  ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    if (_attendees.length > 5) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF1C1C24),
-                                          borderRadius: BorderRadius.circular(12),
-                                          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-                                        ),
-                                        child: Text('+${_attendees.length - 5}', style: GoogleFonts.inter(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-                                      ),
-                                    ],
-                                  ],
-                                  const SizedBox(width: 8),
-                                  if (!shouldHideIdentity && _waitlist.isNotEmpty) ...[
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFF3D5A).withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: const Color(0xFFFF3D5A).withValues(alpha: 0.3)),
-                                      ),
-                                      child: Text(
-                                        '${_waitlist.length} Pending',
-                                        style: GoogleFonts.inter(color: const Color(0xFFFF3D5A), fontSize: 11, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
-                                  ],
-                                ]),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-
-                        // About
-                        Text('About', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 10),
-                         Text(
-                          _cleanDescription(item.desc).isNotEmpty ? _cleanDescription(item.desc) : 'Join us for an unforgettable experience! This event brings together like-minded people for an evening of great vibes, meaningful connections, and memorable moments.',
-                          style: GoogleFonts.inter(color: const Color(0xFF9E9E9E), fontSize: 14, height: 1.6),
-                        ),
-                        const SizedBox(height: 120),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-          // ── Sticky Join Button ──
-          Positioned(
-            bottom: 20, left: 20, right: 20,
-            child: _buildStickyActionButton(isApproved: isApproved, hasRequested: hasRequested),
-          ),
-        ],
-      ),
-    );
+        );
       },
     );
   }
 
-  Widget _buildStickyActionButton({required bool isApproved, required bool hasRequested}) {
+  Widget _buildStickyActionButton(
+      {required bool isApproved, required bool hasRequested}) {
     final item = widget.item;
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     final bool isHost = currentUserId != null && item.hostId == currentUserId;
@@ -867,8 +1315,7 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
       return StreamBuilder<List<Map<String, dynamic>>>(
         stream: Supabase.instance.client
             .from('rush_in_chat_status')
-            .stream(primaryKey: ['id'])
-            .eq('activity_id', item.id),
+            .stream(primaryKey: ['id']).eq('activity_id', item.id),
         builder: (context, snapshot) {
           final rows = snapshot.data ?? [];
           final myRow = rows.firstWhere(
@@ -886,7 +1333,8 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                     backgroundColor: const Color(0xFF0D0B14),
                     title: Text(
                       'Removed from Chat',
-                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: GoogleFonts.plusJakartaSans(
+                          color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                     content: Text(
                       'You have been removed from this chat room by the host. Would you like to request re-entry?',
@@ -897,7 +1345,8 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                         onPressed: () => Navigator.pop(ctx),
                         child: Text(
                           'Cancel',
-                          style: GoogleFonts.plusJakartaSans(color: Colors.white38),
+                          style: GoogleFonts.plusJakartaSans(
+                              color: Colors.white38),
                         ),
                       ),
                       ElevatedButton(
@@ -910,15 +1359,17 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                             await Supabase.instance.client
                                 .from('rush_in_chat_status')
                                 .upsert({
-                                  'activity_id': item.id,
-                                  'user_id': currentUserId,
-                                  'status': 'requested',
-                                  'updated_at': DateTime.now().toUtc().toIso8601String(),
-                                }, onConflict: 'activity_id,user_id');
+                              'activity_id': item.id,
+                              'user_id': currentUserId,
+                              'status': 'requested',
+                              'updated_at':
+                                  DateTime.now().toUtc().toIso8601String(),
+                            }, onConflict: 'activity_id,user_id');
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Re-entry request sent to the host.'),
+                                  content: Text(
+                                      'Re-entry request sent to the host.'),
                                   backgroundColor: Colors.green,
                                 ),
                               );
@@ -936,7 +1387,8 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                         },
                         child: Text(
                           'Request Re-entry',
-                          style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+                          style: GoogleFonts.plusJakartaSans(
+                              color: Colors.white, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ],
@@ -949,7 +1401,8 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                     backgroundColor: const Color(0xFF0D0B14),
                     title: Text(
                       'Request Pending',
-                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: GoogleFonts.plusJakartaSans(
+                          color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                     content: Text(
                       'Your request to re-join the chat room is pending host approval.',
@@ -960,7 +1413,8 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                         onPressed: () => Navigator.pop(ctx),
                         child: Text(
                           'OK',
-                          style: GoogleFonts.plusJakartaSans(color: const Color(0xFFFF7A00)),
+                          style: GoogleFonts.plusJakartaSans(
+                              color: const Color(0xFFFF7A00)),
                         ),
                       ),
                     ],
@@ -982,16 +1436,23 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
             child: Container(
               height: 56,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFFFF5C00), Color(0xFFFF8A00)]),
+                gradient: const LinearGradient(
+                    colors: [Color(0xFFFF5C00), Color(0xFFFF8A00)]),
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: [
-                  BoxShadow(color: const Color(0xFFFF5C00).withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 6)),
+                  BoxShadow(
+                      color: const Color(0xFFFF5C00).withValues(alpha: 0.4),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6)),
                 ],
               ),
               alignment: Alignment.center,
               child: Text(
                 'ENTER CHATROOM',
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800),
               ),
             ),
           );
@@ -1005,14 +1466,16 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
               if (isApproved) {
                 _showCustomDialog(
                   title: 'Already Joined!',
-                  message: 'You are already a participant in "${item.title}". You can access the chat and details inside this Rush-In.',
+                  message:
+                      'You are already a participant in "${item.title}". You can access the chat and details inside this Rush-In.',
                   icon: Icons.check_circle,
                   color: const Color(0xFF10B981),
                 );
               } else {
                 _showCustomDialog(
                   title: 'Request Pending',
-                  message: 'Your request to join "${item.title}" is currently pending approval from the host.',
+                  message:
+                      'Your request to join "${item.title}" is currently pending approval from the host.',
                   icon: Icons.hourglass_empty,
                   color: const Color(0xFFFF9F0A),
                 );
@@ -1027,17 +1490,30 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
       child: Container(
         height: 56,
         decoration: BoxDecoration(
-          gradient: (isApproved || hasRequested) ? null : const LinearGradient(colors: [Color(0xFFFF5C00), Color(0xFFFF8A00)]),
-          color: isApproved ? const Color(0xFF10B981) : (hasRequested ? Colors.white.withValues(alpha: 0.1) : null),
+          gradient: (isApproved || hasRequested)
+              ? null
+              : const LinearGradient(
+                  colors: [Color(0xFFFF5C00), Color(0xFFFF8A00)]),
+          color: isApproved
+              ? const Color(0xFF10B981)
+              : (hasRequested ? Colors.white.withValues(alpha: 0.1) : null),
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
-            if (!hasRequested && !isApproved) BoxShadow(color: const Color(0xFFFF5C00).withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 6)),
+            if (!hasRequested && !isApproved)
+              BoxShadow(
+                  color: const Color(0xFFFF5C00).withValues(alpha: 0.4),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6)),
           ],
         ),
         alignment: Alignment.center,
         child: Text(
           isApproved ? 'Joined ✓' : (hasRequested ? 'Requested' : 'Join Event'),
-          style: GoogleFonts.inter(color: hasRequested && !isApproved ? Colors.white30 : Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+          style: GoogleFonts.inter(
+              color:
+                  hasRequested && !isApproved ? Colors.white30 : Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w800),
         ),
       ),
     );
@@ -1066,7 +1542,8 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
               backgroundColor: const Color(0xFF151821),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1),
+                side: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1), width: 1),
               ),
               title: Row(
                 children: [
@@ -1104,7 +1581,8 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                   onPressed: () => Navigator.pop(context),
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFFFF6B00),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   ),
                   child: Text(
                     'OK',
@@ -1121,11 +1599,13 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
     );
   }
 
-  Widget _circleBtn(IconData icon, VoidCallback onTap, {Color iconColor = Colors.white}) {
+  Widget _circleBtn(IconData icon, VoidCallback onTap,
+      {Color iconColor = Colors.white}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 40, height: 40,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.5),
           shape: BoxShape.circle,
@@ -1141,9 +1621,16 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(children: [
-        Icon(icon, color: isAccent ? const Color(0xFFFF5C00) : const Color(0xFF9E9E9E), size: 20),
+        Icon(icon,
+            color: isAccent ? const Color(0xFFFF5C00) : const Color(0xFF9E9E9E),
+            size: 20),
         const SizedBox(width: 12),
-        Expanded(child: Text(text, style: GoogleFonts.inter(color: isAccent ? const Color(0xFFFF5C00) : Colors.white, fontSize: 14, fontWeight: isAccent ? FontWeight.bold : FontWeight.w500))),
+        Expanded(
+            child: Text(text,
+                style: GoogleFonts.inter(
+                    color: isAccent ? const Color(0xFFFF5C00) : Colors.white,
+                    fontSize: 14,
+                    fontWeight: isAccent ? FontWeight.bold : FontWeight.w500))),
       ]),
     );
   }

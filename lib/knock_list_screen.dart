@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:ui';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'messages_screen.dart';
+import 'services/notification_service.dart';
 
 class KnockListScreen extends StatefulWidget {
   final int initialTabIndex; // 0 = Received, 1 = Sent
@@ -46,54 +48,73 @@ class _KnockListScreenState extends State<KnockListScreen>
       return;
     }
     try {
+      // Fetch received knocks — no target_type filter to catch all request rows
       final receivedData = await Supabase.instance.client
           .from('requests')
-          .select('id, status, created_at, sender_id, answers')
+          .select('id, status, created_at, sender_id, knock_answers')
           .eq('target_id', _uid!)
-          .eq('target_type', 'profile')
           .order('created_at', ascending: false);
 
+      // Fetch sent knocks
       final sentData = await Supabase.instance.client
           .from('requests')
-          .select('id, status, created_at, target_id, answers')
+          .select('id, status, created_at, target_id, knock_answers')
           .eq('sender_id', _uid!)
-          .eq('target_type', 'profile')
           .order('created_at', ascending: false);
 
-      final Set<String> profileIds = {};
-      for (final r in receivedData)
-        if (r['sender_id'] != null) profileIds.add(r['sender_id'].toString());
-      for (final r in sentData)
-        if (r['target_id'] != null) profileIds.add(r['target_id'].toString());
+      debugPrint(
+          '[Knocks] received raw: ${receivedData.length}, sent raw: ${sentData.length}');
 
+      // Collect all unique profile IDs we need
+      final Set<String> profileIds = {};
+      for (final r in receivedData) {
+        if (r['sender_id'] != null) profileIds.add(r['sender_id'].toString());
+      }
+      for (final r in sentData) {
+        if (r['target_id'] != null) profileIds.add(r['target_id'].toString());
+      }
+
+      // Bulk-fetch profiles
       Map<String, dynamic> profilesMap = {};
       if (profileIds.isNotEmpty) {
-        final List profilesList = await Supabase.instance.client
-            .from('profiles')
-            .select('id, name, full_name, age, city, avatar_url, visibility')
-            .inFilter('id', profileIds.toList());
-        for (final p in profilesList) {
-          profilesMap[p['id'].toString()] = p;
+        try {
+          final List profilesList = await Supabase.instance.client
+              .from('profiles')
+              .select('id, name, full_name, avatar_url, city, age')
+              .inFilter('id', profileIds.toList());
+          for (final p in profilesList) {
+            profilesMap[p['id'].toString()] = p;
+          }
+          debugPrint('[Knocks] profiles fetched: ${profilesMap.length}');
+        } catch (e) {
+          debugPrint('[Knocks] profile fetch error: $e');
         }
       }
 
+      // Build received list — always include the knock, fallback to placeholder if no profile
       List<Map<String, dynamic>> recList = [];
       for (final r in receivedData) {
-        if (r['sender_id'] == null) continue;
-        final p = profilesMap[r['sender_id'].toString()];
-        if (p != null) {
-          recList.add({'request': r, 'profile': p});
-        }
+        final sid = r['sender_id']?.toString();
+        if (sid == null) continue;
+        r['answers'] = r['knock_answers'];
+        final p =
+            profilesMap[sid] ?? {'id': sid, 'name': 'User', 'avatar_url': null};
+        recList.add({'request': r, 'profile': p});
       }
 
+      // Build sent list — always include the knock, fallback to placeholder if no profile
       List<Map<String, dynamic>> sentList = [];
       for (final r in sentData) {
-        if (r['target_id'] == null) continue;
-        final p = profilesMap[r['target_id'].toString()];
-        if (p != null) {
-          sentList.add({'request': r, 'profile': p});
-        }
+        final tid = r['target_id']?.toString();
+        if (tid == null) continue;
+        r['answers'] = r['knock_answers'];
+        final p =
+            profilesMap[tid] ?? {'id': tid, 'name': 'User', 'avatar_url': null};
+        sentList.add({'request': r, 'profile': p});
       }
+
+      debugPrint(
+          '[Knocks] recList: ${recList.length}, sentList: ${sentList.length}');
 
       if (mounted) {
         setState(() {
@@ -110,16 +131,42 @@ class _KnockListScreenState extends State<KnockListScreen>
         });
       }
     } catch (e) {
-      debugPrint('Error fetching knock lists: $e');
+      debugPrint('[Knocks] Error fetching knock lists: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _updateStatus(String reqId, String newStatus) async {
+  Future<void> _updateStatus(String reqId, String newStatus,
+      {String? targetId}) async {
     try {
       await Supabase.instance.client
           .from('requests')
           .update({'status': newStatus}).eq('id', reqId);
+
+      if (newStatus == 'approved' && targetId != null) {
+        final mId = Supabase.instance.client.auth.currentUser?.id ?? '';
+        if (mId.isNotEmpty) {
+          final mProf = await Supabase.instance.client
+              .from('profiles')
+              .select('name, avatar_url')
+              .eq('id', mId)
+              .maybeSingle();
+          final myName = mProf?['name']?.toString() ?? 'Someone';
+          final myAvatar = mProf?['avatar_url']?.toString() ?? '';
+
+          await NotificationService.sendNotification(
+            userId: targetId,
+            type: NotificationType.knock,
+            title: 'Knock Accepted! 🚪',
+            body: '$myName has opened the door. You can now chat!',
+            payload: {
+              'sender_id': mId,
+              'sender_name': myName,
+              'sender_avatar_url': myAvatar,
+            },
+          );
+        }
+      }
 
       if (mounted) {
         setState(() {
@@ -319,6 +366,38 @@ class _KnockListScreenState extends State<KnockListScreen>
                           fontSize: 18,
                           fontWeight: FontWeight.bold),
                     ),
+                    if (status == 'approved' || status == 'connected')
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatDetailScreen(
+                                targetUserId: isReceived
+                                    ? req['sender_id'].toString()
+                                    : req['target_id'].toString(),
+                                name: name,
+                                avatarUrl: avatar,
+                                isUnlocked: true,
+                                isReadOnly: false,
+                                isGroupChat: false,
+                                isClosed: false,
+                                isHost: false,
+                                memberChatEnabled: false,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.chat_bubble_rounded,
+                              size: 20, color: Colors.white),
+                        ),
+                      ),
                   ],
                 ),
                 if (city.isNotEmpty)
@@ -377,8 +456,9 @@ class _KnockListScreenState extends State<KnockListScreen>
                     children: [
                       Expanded(
                         child: GestureDetector(
-                          onTap: () =>
-                              _updateStatus(req['id'].toString(), 'declined'),
+                          onTap: () => _updateStatus(
+                              req['id'].toString(), 'declined',
+                              targetId: req['sender_id']?.toString()),
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
@@ -401,8 +481,9 @@ class _KnockListScreenState extends State<KnockListScreen>
                       const SizedBox(width: 8),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () =>
-                              _updateStatus(req['id'].toString(), 'approved'),
+                          onTap: () => _updateStatus(
+                              req['id'].toString(), 'approved',
+                              targetId: req['sender_id']?.toString()),
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(

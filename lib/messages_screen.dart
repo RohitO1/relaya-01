@@ -1028,8 +1028,14 @@ class _ChatsViewState extends State<ChatsView> {
                             Expanded(
                               child: Text(
                                 preview,
-                                style: const TextStyle(
-                                    color: Color(0xFF8B95A5), fontSize: 14),
+                                style: TextStyle(
+                                    color: unreadCount > 0
+                                        ? Colors.white
+                                        : const Color(0xFF8B95A5),
+                                    fontSize: 14,
+                                    fontWeight: unreadCount > 0
+                                        ? FontWeight.bold
+                                        : FontWeight.normal),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -2281,6 +2287,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   String? _hangoutRequestSenderId;
   bool _showEmojiPicker = false;
   bool _isTyping = false;
+  bool _isCurrentlyTyping = false;
+  String _lastKnownText = '';
+  Timer? _typingTimer;
+  RealtimeChannel? _dmChannel;
 
   // @mention system
   List<Map<String, dynamic>> _mentionSuggestions = [];
@@ -2535,24 +2545,45 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         });
   }
 
+  void _initDmChannel() {
+    if (_myUid.isEmpty || widget.targetUserId.isEmpty) return;
+    final ids = [_myUid, widget.targetUserId]..sort();
+    final channelName = 'dm_${ids[0]}_${ids[1]}';
+    _dmChannel = Supabase.instance.client.channel(channelName);
+    _dmChannel!
+        .onBroadcast(
+            event: 'typing',
+            callback: (payload) {
+              if (payload['user_id'] != _myUid && mounted) {
+                setState(() => _isTyping = payload['is_typing'] ?? false);
+              }
+            })
+        .subscribe();
+  }
+
   @override
   void initState() {
     super.initState();
     _memberChatEnabled = widget.memberChatEnabled;
     _myUid = Supabase.instance.client.auth.currentUser?.id ?? '';
 
-    // Simulate typing for demo purposes
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _isTyping = true);
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted) setState(() => _isTyping = false);
-      });
-    });
+    _initDmChannel();
 
     _msgController.addListener(() {
       if (mounted) {
+        final currentText = _msgController.text;
+        bool hasText = currentText
+            .isNotEmpty; // not using trim() so spaces still trigger typing if they want
+
+        if (hasText != _isCurrentlyTyping) {
+          _isCurrentlyTyping = hasText;
+          _dmChannel?.sendBroadcastMessage(
+              event: 'typing',
+              payload: {'user_id': _myUid, 'is_typing': _isCurrentlyTyping});
+        }
+
         setState(() {
-          _isComposerEmpty = _msgController.text.trim().isEmpty;
+          _isComposerEmpty = !hasText;
         });
         _checkForMentionTrigger();
       }
@@ -2977,11 +3008,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _typingTimer?.cancel();
     _msgController.dispose();
     _scrollController.dispose();
-    if (_presenceChannel != null) {
-      Supabase.instance.client.removeChannel(_presenceChannel!);
+    if (_dmChannel != null) {
+      Supabase.instance.client.removeChannel(_dmChannel!);
     }
+    // Note: intentionally avoided removing _presenceChannel here so global app presence remains intact when user backs out of DM chat.
     super.dispose();
   }
 
@@ -3030,7 +3063,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       'receiver_id': widget.targetUserId,
       'text': text,
       'is_image': false,
-      'created_at': DateTime.now().toIso8601String(),
+      'created_at': DateTime.now().toUtc().toIso8601String(),
       if (_replyingTo != null) ...{
         'reply_to_id': _replyingTo!['id'].toString(),
         'reply_to_text': _replyingTo!['text'].toString(),
@@ -3084,7 +3117,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         'receiver_id': widget.targetUserId,
         'text': url,
         'is_image': true,
-        'created_at': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().toUtc().toIso8601String(),
       };
 
       setState(() => _messages.add(tempMsg));
@@ -3233,55 +3266,63 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             child: const Icon(Icons.arrow_back, color: Colors.white, size: 18),
           ),
         ),
-        title: Row(
-          children: [
-            Stack(
-              children: [
-                CircleAvatar(
-                    radius: 20,
-                    backgroundImage: _safeImageProvider(widget.avatarUrl),
-                    backgroundColor: const Color(0xFF1A1A2E)),
-                if (widget.isGroupChat || _isOnline)
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF00FF66),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                            color: const Color(0xFF0D0F14), width: 2),
+        title: GestureDetector(
+          onTap: () {
+            if (!widget.isGroupChat) {
+              Navigator.pushNamed(context, '/profile',
+                  arguments: widget.targetUserId);
+            }
+          },
+          child: Row(
+            children: [
+              Stack(
+                children: [
+                  CircleAvatar(
+                      radius: 20,
+                      backgroundImage: _safeImageProvider(widget.avatarUrl),
+                      backgroundColor: const Color(0xFF1A1A2E)),
+                  if (widget.isGroupChat || _isOnline)
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00FF66),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: const Color(0xFF0D0F14), width: 2),
+                        ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(widget.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16)),
-                  Text(
-                      widget.isGroupChat
-                          ? 'Group Chat'
-                          : (_isOnline ? 'online' : 'offline'),
-                      style: TextStyle(
-                          color: widget.isGroupChat
-                              ? Colors.white54
-                              : (_isOnline
-                                  ? const Color(0xFF00FF66)
-                                  : const Color(0xFF8B95A5)),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600)),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 16)),
+                    Text(
+                        widget.isGroupChat
+                            ? 'Group Chat'
+                            : (_isOnline ? 'online' : 'offline'),
+                        style: TextStyle(
+                            color: widget.isGroupChat
+                                ? Colors.white54
+                                : (_isOnline
+                                    ? const Color(0xFF00FF66)
+                                    : const Color(0xFF8B95A5)),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           Container(
@@ -3418,8 +3459,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           if (index == 0 ||
                               _shouldShowDateSeparator(_messages, index)) {
                             try {
-                              final dt =
-                                  DateTime.parse(msg['created_at']).toLocal();
+                              String rawIso = msg['created_at'];
+                              if (!rawIso.endsWith('Z') &&
+                                  !rawIso.contains('+')) {
+                                rawIso = '${rawIso}Z';
+                              }
+                              final dt = DateTime.parse(rawIso).toLocal();
                               dateSeparator = Center(
                                 child: Container(
                                   margin:
@@ -3440,11 +3485,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                             } catch (_) {}
                           }
 
-                          // Time label
                           String timeStr = '';
                           try {
-                            final dt =
-                                DateTime.parse(msg['created_at']).toLocal();
+                            String rawIso = msg['created_at'];
+                            if (!rawIso.endsWith('Z') &&
+                                !rawIso.contains('+')) {
+                              rawIso = '${rawIso}Z';
+                            }
+                            final dt = DateTime.parse(rawIso).toLocal();
                             timeStr =
                                 '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
                           } catch (_) {}
@@ -4214,10 +4262,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _shouldShowDateSeparator(List<Map<String, dynamic>> msgs, int index) {
     if (index == 0) return true; // oldest message gets a badge
     try {
-      final current = DateTime.parse(msgs[index]['created_at']).toLocal();
-      // In a normal list (oldest at index 0), the previous index is older chronologically.
-      final temporallyOlder =
-          DateTime.parse(msgs[index - 1]['created_at']).toLocal();
+      String rawCurrent = msgs[index]['created_at'];
+      if (!rawCurrent.endsWith('Z') && !rawCurrent.contains('+')) {
+        rawCurrent = '${rawCurrent}Z';
+      }
+      final current = DateTime.parse(rawCurrent).toLocal();
+
+      String rawOlder = msgs[index - 1]['created_at'];
+      if (!rawOlder.endsWith('Z') && !rawOlder.contains('+')) {
+        rawOlder = '${rawOlder}Z';
+      }
+      final temporallyOlder = DateTime.parse(rawOlder).toLocal();
       return current.day != temporallyOlder.day ||
           current.month != temporallyOlder.month ||
           current.year != temporallyOlder.year;

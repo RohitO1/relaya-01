@@ -53,23 +53,22 @@ class _ChatScreenState extends State<ChatScreen> {
   int _currentIndex = 0;
 
   // Source tags for conversations (simulated based on index)
-  static const _sourceTags = ['Explore', 'Rush-in', 'General', 'Activity', 'Explore', 'General'];
+  static const _sourceTags = [
+    'Explore',
+    'Rush-in',
+    'General',
+    'Activity',
+    'Explore',
+    'General'
+  ];
 
   @override
   void initState() {
     super.initState();
     _loadDeletedChats();
     _fetchConversations();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) => _fetchConversations());
-  }
-
-  void _toggleTab() {
-    final nextIndex = _currentIndex == 0 ? 1 : 0;
-    _pageController.animateToPage(
-      nextIndex,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
+    _pollingTimer = Timer.periodic(
+        const Duration(seconds: 5), (_) => _fetchConversations());
   }
 
   Future<void> _loadDeletedChats() async {
@@ -89,7 +88,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-    Future<void> _fetchConversations() async {
+  Future<void> _fetchConversations() async {
     if (_myUid.isEmpty) {
       if (mounted) setState(() => _isLoading = false);
       return;
@@ -113,8 +112,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final Map<String, Map<String, dynamic>> convos = {};
       final Map<String, int> unreads = {};
       for (final m in (allMsgs as List)) {
-        final partnerId = m['sender_id'] == _myUid ? m['receiver_id'] : m['sender_id'];
-        if (partnerId == null || _locallyDeletedChats.contains(partnerId)) continue;
+        final partnerId =
+            m['sender_id'] == _myUid ? m['receiver_id'] : m['sender_id'];
+        if (partnerId == null || _locallyDeletedChats.contains(partnerId))
+          continue;
 
         if (m['sender_id'] != _myUid && m['is_read'] == false) {
           unreads[partnerId] = (unreads[partnerId] ?? 0) + 1;
@@ -140,7 +141,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   : 'https://picsum.photos/seed/$partnerId/100',
             };
           } catch (_) {
-            _profileCache[partnerId] = {'name': 'User', 'avatar': 'https://picsum.photos/seed/$partnerId/100'};
+            _profileCache[partnerId] = {
+              'name': 'User',
+              'avatar': 'https://picsum.photos/seed/$partnerId/100'
+            };
           }
         }
       }
@@ -150,7 +154,8 @@ class _ChatScreenState extends State<ChatScreen> {
           .from('text_camp_members')
           .select('camp_id')
           .eq('user_id', _myUid);
-      final joinedIds = (membersRes as List).map((m) => m['camp_id'].toString()).toSet();
+      final joinedIds =
+          (membersRes as List).map((m) => m['camp_id'].toString()).toSet();
 
       List<Community> communities = [];
       if (joinedIds.isNotEmpty) {
@@ -159,7 +164,8 @@ class _ChatScreenState extends State<ChatScreen> {
             .select('*, text_camp_messages(user_id, text, created_at)')
             .inFilter('id', joinedIds.toList())
             .order('created_at', ascending: false)
-            .order('created_at', referencedTable: 'text_camp_messages', ascending: false)
+            .order('created_at',
+                referencedTable: 'text_camp_messages', ascending: false)
             .limit(1, referencedTable: 'text_camp_messages');
 
         final prefs = await SharedPreferences.getInstance();
@@ -168,7 +174,8 @@ class _ChatScreenState extends State<ChatScreen> {
           String lastMsg = "Welcome to ${row['name']}!";
           String lastMsgTime = "Just now";
           int unreadCount = 0;
-          DateTime lastMsgDt = DateTime.parse(row['created_at']?.toString() ?? DateTime.now().toIso8601String());
+          DateTime lastMsgDt = DateTime.parse(row['created_at']?.toString() ??
+              DateTime.now().toIso8601String());
 
           if (messagesList != null && messagesList.isNotEmpty) {
             final first = messagesList.first;
@@ -189,7 +196,8 @@ class _ChatScreenState extends State<ChatScreen> {
             }
             final senderId = first['user_id'] as String? ?? '';
             if (senderId != _myUid) {
-              final lastReadStr = prefs.getString('community_last_read_${row['id']}');
+              final lastReadStr =
+                  prefs.getString('community_last_read_${row['id']}');
               if (lastReadStr != null && createdAtStr != null) {
                 try {
                   final lastRead = DateTime.parse(lastReadStr);
@@ -209,7 +217,8 @@ class _ChatScreenState extends State<ChatScreen> {
             category: row['category'] ?? 'General',
             creatorId: row['creator_id'] ?? '',
             memberCount: row['member_count'] ?? 1,
-            avatar: row['avatar_url'] ?? 'https://images.unsplash.com/photo-1516862523118-a3724eb136d7?auto=format&fit=crop&w=150&q=80',
+            avatar: row['avatar_url'] ??
+                'https://images.unsplash.com/photo-1516862523118-a3724eb136d7?auto=format&fit=crop&w=150&q=80',
             lastMessage: lastMsg,
             lastMessageTime: lastMsgTime,
             unreadCount: unreadCount,
@@ -223,12 +232,14 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       final List<ChatListItem> items = [];
-      
+
       // Add DMs
       for (final kv in convos.entries) {
         items.add(ChatListItem(
           type: ChatItemType.dm,
-          lastActivity: DateTime.tryParse(kv.value['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
+          lastActivity:
+              DateTime.tryParse(kv.value['created_at']?.toString() ?? '') ??
+                  DateTime.fromMillisecondsSinceEpoch(0),
           partnerId: kv.key,
           dmLastMessage: kv.value,
           unreadCount: unreads[kv.key] ?? 0,
@@ -238,8 +249,11 @@ class _ChatScreenState extends State<ChatScreen> {
       // Add Communities
       for (final c in communities) {
         items.add(ChatListItem(
-          type: c.chatType == 'channel' ? ChatItemType.channel : ChatItemType.group,
-          lastActivity: DateTime.tryParse(c.lastMessageTime) ?? DateTime.now(), // approximation, we need actual dt
+          type: c.chatType == 'channel'
+              ? ChatItemType.channel
+              : ChatItemType.group,
+          lastActivity: DateTime.tryParse(c.lastMessageTime) ??
+              DateTime.now(), // approximation, we need actual dt
           community: c,
           unreadCount: c.unreadCount,
         ));
@@ -265,6 +279,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String _formatTimestamp(String? isoString) {
     if (isoString == null) return '';
     try {
+      if (!isoString.endsWith('Z') && !isoString.contains('+')) {
+        isoString = '${isoString}Z';
+      }
       final dt = DateTime.parse(isoString).toLocal();
       final now = DateTime.now();
       final diff = now.difference(dt);
@@ -278,11 +295,12 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-    void _showCreateOptions() {
+  void _showCreateOptions() {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1B202D),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         return SafeArea(
           child: Column(
@@ -290,20 +308,28 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text('Create New', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                child: Text('Create New',
+                    style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold)),
               ),
               const Divider(color: Colors.white10, height: 1),
               ListTile(
-                leading: const Icon(Icons.person_add_outlined, color: Colors.white),
-                title: Text('New Direct Message', style: GoogleFonts.inter(color: Colors.white)),
+                leading:
+                    const Icon(Icons.person_add_outlined, color: Colors.white),
+                title: Text('New Direct Message',
+                    style: GoogleFonts.inter(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _showComposeSheet();
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.people_alt_outlined, color: Colors.white),
-                title: Text('New Group', style: GoogleFonts.inter(color: Colors.white)),
+                leading:
+                    const Icon(Icons.people_alt_outlined, color: Colors.white),
+                title: Text('New Group',
+                    style: GoogleFonts.inter(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(ctx);
                   // Trigger group creation
@@ -315,85 +341,102 @@ class _ChatScreenState extends State<ChatScreen> {
       },
     );
   }
-  
+
   void _showComposeSheet() {
     showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF000000),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.8,
-          maxChildSize: 0.95,
-          minChildSize: 0.5,
-          expand: false,
-          builder: (context, scrollController) {
-            return Column(
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(top: 12, bottom: 8),
-                  width: 40, height: 4,
-                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-                ),
-                Text('New Message', style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: TextField(
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Search people...',
-                      hintStyle: const TextStyle(color: Colors.white38),
-                      prefixIcon: const Icon(Icons.search, color: Colors.white54),
-                      filled: true,
-                      fillColor: const Color(0xFF1A1A1A),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      contentPadding: EdgeInsets.zero,
+        context: context,
+        backgroundColor: const Color(0xFF000000),
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        builder: (ctx) {
+          return DraggableScrollableSheet(
+            initialChildSize: 0.8,
+            maxChildSize: 0.95,
+            minChildSize: 0.5,
+            expand: false,
+            builder: (context, scrollController) {
+              return Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2)),
+                  ),
+                  Text('New Message',
+                      style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: TextField(
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Search people...',
+                        hintStyle: const TextStyle(color: Colors.white38),
+                        prefixIcon:
+                            const Icon(Icons.search, color: Colors.white54),
+                        filled: true,
+                        fillColor: const Color(0xFF1A1A1A),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none),
+                        contentPadding: EdgeInsets.zero,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: Center(child: Text('Followers list will appear here', style: TextStyle(color: Colors.white38))),
-                ),
-              ],
-            );
-          },
-        );
-      }
-    );
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Center(
+                        child: Text('Followers list will appear here',
+                            style: TextStyle(color: Colors.white38))),
+                  ),
+                ],
+              );
+            },
+          );
+        });
   }
 
   Future<void> _handleDelete(String partnerId) async {
     setState(() {
-      _unifiedItems.removeWhere((c) => c.type == ChatItemType.dm && c.partnerId == partnerId);
+      _unifiedItems.removeWhere(
+          (c) => c.type == ChatItemType.dm && c.partnerId == partnerId);
       _locallyDeletedChats.add(partnerId);
     });
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       prefs.setStringList('deleted_chats', _locallyDeletedChats.toList());
-      
-      await Supabase.instance.client
-          .from('messages')
-          .delete()
-          .or('and(sender_id.eq.$_myUid,receiver_id.eq.$partnerId),and(sender_id.eq.$partnerId,receiver_id.eq.$_myUid)');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chat deleted')));
+
+      await Supabase.instance.client.from('messages').delete().or(
+          'and(sender_id.eq.$_myUid,receiver_id.eq.$partnerId),and(sender_id.eq.$partnerId,receiver_id.eq.$_myUid)');
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Chat deleted')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete chat: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Failed to delete chat: $e')));
     }
   }
 
   Future<void> _handleMute(String partnerId) async {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chat muted')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Chat muted')));
   }
 
   void _showChatOptions(String partnerId, String name) {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1B202D),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         return SafeArea(
           child: Column(
@@ -401,20 +444,28 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text('Options for $name', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                child: Text('Options for $name',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold)),
               ),
               const Divider(color: Colors.white10, height: 1),
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                title: const Text('Delete Chat', style: TextStyle(color: Colors.redAccent)),
+                leading:
+                    const Icon(Icons.delete_outline, color: Colors.redAccent),
+                title: const Text('Delete Chat',
+                    style: TextStyle(color: Colors.redAccent)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _handleDelete(partnerId);
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.notifications_off_outlined, color: Colors.white),
-                title: const Text('Mute Chat', style: TextStyle(color: Colors.white)),
+                leading: const Icon(Icons.notifications_off_outlined,
+                    color: Colors.white),
+                title: const Text('Mute Chat',
+                    style: TextStyle(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _handleMute(partnerId);
@@ -438,16 +489,21 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Stack(
         children: [
           // Doodle background
-          if (doodle) Positioned.fill(
-            child: IgnorePointer(
-              child: Stack(
-                children: [
-                  Container(decoration: DoodleDecorations.parchmentBg()),
-                  CustomPaint(painter: ScatteredDoodlesPainter(seed: 55, density: 0.3, color: const Color(0x18B8956E))),
-                ],
+          if (doodle)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Stack(
+                  children: [
+                    Container(decoration: DoodleDecorations.parchmentBg()),
+                    CustomPaint(
+                        painter: ScatteredDoodlesPainter(
+                            seed: 55,
+                            density: 0.3,
+                            color: const Color(0x18B8956E))),
+                  ],
+                ),
               ),
             ),
-          ),
           SafeArea(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -477,7 +533,8 @@ class _ChatScreenState extends State<ChatScreen> {
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white12),
                           ),
-                          child: const Icon(Icons.search, color: Colors.white, size: 20),
+                          child: const Icon(Icons.search,
+                              color: Colors.white, size: 20),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -489,7 +546,8 @@ class _ChatScreenState extends State<ChatScreen> {
                             shape: BoxShape.circle,
                             border: Border.all(color: const Color(0xFFFF6B00)),
                           ),
-                          child: const Icon(Icons.add, color: Color(0xFFFF6B00), size: 20),
+                          child: const Icon(Icons.add,
+                              color: Color(0xFFFF6B00), size: 20),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -499,23 +557,88 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 // ── Section Title (Direct Messages or Groups) ──
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Row(
                     children: [
-                      Text(
-                        _currentIndex == 0 ? 'Direct Messages' : 'Groups',
-                        style: GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: doodle ? DoodleColors.textPrimary : Colors.white,
+                      GestureDetector(
+                        onTap: () {
+                          if (_pageController.hasClients) {
+                            _pageController.animateToPage(0,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut);
+                          }
+                          setState(() => _currentIndex = 0);
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Direct Messages',
+                              style: GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: _currentIndex == 0
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: _currentIndex == 0
+                                    ? (doodle
+                                        ? DoodleColors.textPrimary
+                                        : Colors.white)
+                                    : (doodle
+                                        ? DoodleColors.textSecondary
+                                        : Colors.white54),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            if (_currentIndex == 0)
+                              Container(
+                                  width: 32,
+                                  height: 2,
+                                  color: const Color(0xFFFF6B00))
+                            else
+                              const SizedBox(height: 2),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Container(
-                        width: 32,
-                        height: 2,
-                        color: const Color(0xFFFF6B00),
+                      const SizedBox(width: 24),
+                      GestureDetector(
+                        onTap: () {
+                          if (_pageController.hasClients) {
+                            _pageController.animateToPage(1,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut);
+                          }
+                          setState(() => _currentIndex = 1);
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Communities',
+                              style: GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: _currentIndex == 1
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: _currentIndex == 1
+                                    ? (doodle
+                                        ? DoodleColors.textPrimary
+                                        : Colors.white)
+                                    : (doodle
+                                        ? DoodleColors.textSecondary
+                                        : Colors.white54),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            if (_currentIndex == 1)
+                              Container(
+                                  width: 32,
+                                  height: 2,
+                                  color: const Color(0xFFFF6B00))
+                            else
+                              const SizedBox(height: 2),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -525,40 +648,32 @@ class _ChatScreenState extends State<ChatScreen> {
                 // ── Content area ──
                 Expanded(
                   child: _myUid.isEmpty
-                    ? Center(child: Text('Please sign in to see messages', style: TextStyle(color: doodle ? DoodleColors.textMuted : Colors.white54)))
-                    : _isLoading
-                      ? SkeletonLoaders.chatListSkeleton(doodle: isDoodleMode(context))
-                      : PageView(
-                          controller: _pageController,
-                          onPageChanged: (index) {
-                            setState(() => _currentIndex = index);
-                          },
-                          children: [
-                            _buildListView(ChatItemType.dm),
-                            _buildListView(ChatItemType.group),
-                          ],
-                        ),
+                      ? Center(
+                          child: Text('Please sign in to see messages',
+                              style: TextStyle(
+                                  color: doodle
+                                      ? DoodleColors.textMuted
+                                      : Colors.white54)))
+                      : _isLoading
+                          ? SkeletonLoaders.chatListSkeleton(
+                              doodle: isDoodleMode(context))
+                          : PageView(
+                              controller: _pageController,
+                              onPageChanged: (index) {
+                                setState(() => _currentIndex = index);
+                              },
+                              children: [
+                                _buildListView(ChatItemType.dm),
+                                _buildListView(ChatItemType.group),
+                              ],
+                            ),
                 ),
               ],
             ),
           ),
         ],
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 84.0), // Padding to avoid nav bar
-        child: FloatingActionButton(
-          onPressed: () {
-            HapticFeedback.lightImpact();
-            _toggleTab();
-          },
-          backgroundColor: const Color(0xFFFF6B00),
-          elevation: 4,
-          child: Icon(
-            _currentIndex == 0 ? Icons.groups : Icons.chat_bubble_outline,
-            color: Colors.white,
-          ),
-        ),
-      ),
+// Removed FloatingActionButton because tabs were added to the header
     );
   }
 
@@ -576,14 +691,14 @@ class _ChatScreenState extends State<ChatScreen> {
       itemBuilder: (context, index) {
         final item = filtered[index];
         if (item.type == ChatItemType.dm) {
-          return _buildConversationRow(item.partnerId!, item.dmLastMessage!, index);
+          return _buildConversationRow(
+              item.partnerId!, item.dmLastMessage!, index);
         } else {
           return _buildCommunityCard(item.community!);
         }
       },
     );
   }
-
 
   // ── Empty state ──
   Widget _buildEmptyState() {
@@ -597,38 +712,49 @@ class _ChatScreenState extends State<ChatScreen> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: doodle ? DoodleColors.paper : Colors.transparent,
-              border: Border.all(color: doodle ? DoodleColors.cardBorder : Colors.white12, width: doodle ? 2 : 2),
+              border: Border.all(
+                  color: doodle ? DoodleColors.cardBorder : Colors.white12,
+                  width: doodle ? 2 : 2),
             ),
-            child: Icon(Icons.near_me_outlined, size: 60, color: doodle ? DoodleColors.orange : Colors.white),
+            child: Icon(Icons.near_me_outlined,
+                size: 60, color: doodle ? DoodleColors.orange : Colors.white),
           ),
           const SizedBox(height: 24),
-          Text(
-            'No messages yet', 
-            style: doodle 
-              ? DoodleFonts.subheading(fontSize: 24, fontWeight: FontWeight.w700)
-              : GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)
-          ),
+          Text('No messages yet',
+              style: doodle
+                  ? DoodleFonts.subheading(
+                      fontSize: 24, fontWeight: FontWeight.w700)
+                  : GoogleFonts.inter(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white)),
           const SizedBox(height: 12),
-          Text(
-            'Start a conversation with your connections.', 
-            style: doodle
-              ? DoodleFonts.body(fontSize: 14, color: DoodleColors.textSecondary)
-              : GoogleFonts.inter(fontSize: 14, color: Colors.white54)
-          ),
+          Text('Start a conversation with your connections.',
+              style: doodle
+                  ? DoodleFonts.body(
+                      fontSize: 14, color: DoodleColors.textSecondary)
+                  : GoogleFonts.inter(fontSize: 14, color: Colors.white54)),
           const SizedBox(height: 32),
           if (doodle)
-            DoodleButton(text: 'Start a chat', onTap: _showComposeSheet, icon: Icons.chat_bubble_outline)
+            DoodleButton(
+                text: 'Start a chat',
+                onTap: _showComposeSheet,
+                icon: Icons.chat_bubble_outline)
           else
             ElevatedButton(
               onPressed: _showComposeSheet,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF6B00),
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 elevation: 0,
               ),
-              child: Text('Start a chat', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
+              child: Text('Start a chat',
+                  style: GoogleFonts.inter(
+                      fontWeight: FontWeight.bold, fontSize: 14)),
             ),
         ],
       ),
@@ -639,7 +765,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildKnocksRow() {
     return InkWell(
       onTap: () async {
-        await Navigator.push(context, MaterialPageRoute(builder: (_) => const KnocksListScreen()));
+        await Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const KnocksListScreen()));
         _fetchConversations(); // Refresh knocks count when returning
       },
       child: Padding(
@@ -657,13 +784,15 @@ class _ChatScreenState extends State<ChatScreen> {
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white10),
                   ),
-                  child: const Icon(Icons.person_add_outlined, color: Colors.white70),
+                  child: const Icon(Icons.person_add_outlined,
+                      color: Colors.white70),
                 ),
                 Positioned(
                   top: -2,
                   right: -2,
                   child: Container(
-                    width: 20, height: 20,
+                    width: 20,
+                    height: 20,
                     decoration: const BoxDecoration(
                       color: Color(0xFFFF6B00),
                       shape: BoxShape.circle,
@@ -671,7 +800,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Center(
                       child: Text(
                         '$_pendingKnocksCount',
-                        style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                        style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white),
                       ),
                     ),
                   ),
@@ -711,13 +843,15 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ── Conversation row matching reference exactly ──
-  Widget _buildConversationRow(String partnerId, Map<String, dynamic> lastMsg, int index) {
+  Widget _buildConversationRow(
+      String partnerId, Map<String, dynamic> lastMsg, int index) {
     final profile = _profileCache[partnerId] ?? {'name': 'User', 'avatar': ''};
     final name = profile['name']!;
     final avatar = profile['avatar']!;
 
     final isImage = lastMsg['is_image'] == true;
-    final msgText = isImage ? 'Sent an image' : (lastMsg['text'] as String? ?? '');
+    final msgText =
+        isImage ? 'Sent an image' : (lastMsg['text'] as String? ?? '');
     final unreadCount = _unreadCounts[partnerId] ?? 0;
     final timeStr = _formatTimestamp(lastMsg['created_at']);
     final isUnread = unreadCount > 0;
@@ -728,158 +862,186 @@ class _ChatScreenState extends State<ChatScreen> {
     final doodle = isDoodleMode(context);
 
     return InkWell(
-        onLongPress: () => _showChatOptions(partnerId, name),
-        onTap: () async {
-          if (isUnread) {
-            setState(() {
-              lastMsg['is_read'] = true;
-              _unreadCounts[partnerId] = 0;
-            });
-            Supabase.instance.client
-                .from('messages')
-                .update({'is_read': true})
-                .eq('sender_id', partnerId)
-                .eq('receiver_id', _myUid)
-                .eq('is_read', false)
-                .then((_) {});
-          }
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ChatDetailScreen(
-                targetUserId: partnerId,
-                name: name,
-                avatarUrl: avatar,
-              ),
+      onLongPress: () => _showChatOptions(partnerId, name),
+      onTap: () async {
+        if (isUnread) {
+          setState(() {
+            lastMsg['is_read'] = true;
+            _unreadCounts[partnerId] = 0;
+          });
+          Supabase.instance.client
+              .from('messages')
+              .update({'is_read': true})
+              .eq('sender_id', partnerId)
+              .eq('receiver_id', _myUid)
+              .eq('is_read', false)
+              .then((_) {});
+        }
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatDetailScreen(
+              targetUserId: partnerId,
+              name: name,
+              avatarUrl: avatar,
             ),
-          );
-          _fetchConversations();
-        },
-        child: Container(
-          margin: EdgeInsets.symmetric(horizontal: doodle ? 16 : 0, vertical: doodle ? 6 : 0),
-          decoration: doodle ? DoodleDecorations.card() : null,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Avatar with unread badge
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    doodle
-                      ? DoodleAvatar(url: avatar, size: 52, borderColor: isUnread ? DoodleColors.orange : DoodleColors.cardBorder)
-                      : CircleAvatar(
-                          radius: 26,
-                          backgroundColor: const Color(0xFF1A1A1A),
-                          backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
-                          child: avatar.isEmpty ? const Icon(Icons.person, color: Colors.white54) : null,
-                        ),
-                    if (isUnread)
-                      Positioned(
-                        top: doodle ? 0 : -2,
-                        left: doodle ? 0 : -2,
-                        child: Container(
-                          width: 20, height: 20,
-                          decoration: BoxDecoration(
-                            color: doodle ? DoodleColors.coral : const Color(0xFFFF6B00),
-                            shape: BoxShape.circle,
-                            border: doodle ? Border.all(color: DoodleColors.cream, width: 2) : null,
-                          ),
-                          child: Center(
-                            child: Text(
-                              '$unreadCount',
-                              style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(width: 14),
+          ),
+        );
+        _fetchConversations();
+      },
+      child: Container(
+        margin: EdgeInsets.symmetric(
+            horizontal: doodle ? 16 : 0, vertical: doodle ? 6 : 0),
+        decoration: doodle ? DoodleDecorations.card() : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Avatar
+              doodle
+                  ? DoodleAvatar(
+                      url: avatar,
+                      size: 52,
+                      borderColor: isUnread
+                          ? DoodleColors.orange
+                          : DoodleColors.cardBorder)
+                  : CircleAvatar(
+                      radius: 26,
+                      backgroundColor: const Color(0xFF1A1A1A),
+                      backgroundImage:
+                          avatar.isNotEmpty ? NetworkImage(avatar) : null,
+                      child: avatar.isEmpty
+                          ? const Icon(Icons.person, color: Colors.white54)
+                          : null,
+                    ),
+              const SizedBox(width: 14),
 
-                // Name, message, source tag
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: doodle
+              // Name, message, source tag
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: doodle
                           ? DoodleFonts.subheading(
-                              fontWeight: isUnread ? FontWeight.w700 : FontWeight.w600,
+                              fontWeight:
+                                  isUnread ? FontWeight.w700 : FontWeight.w600,
                               color: DoodleColors.textPrimary,
                               fontSize: 18,
                             )
                           : GoogleFonts.inter(
-                              fontWeight: isUnread ? FontWeight.w700 : FontWeight.w600,
+                              fontWeight:
+                                  isUnread ? FontWeight.w700 : FontWeight.w600,
                               color: Colors.white,
                               fontSize: 15,
                             ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        msgText,
-                        style: doodle
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      msgText,
+                      style: doodle
                           ? DoodleFonts.body(
-                              color: isUnread ? DoodleColors.textPrimary : DoodleColors.textSecondary,
+                              color: isUnread
+                                  ? DoodleColors.textPrimary
+                                  : DoodleColors.textSecondary,
                               fontSize: 14,
-                              fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
+                              fontWeight: isUnread
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
                             )
                           : GoogleFonts.inter(
-                              color: isUnread ? Colors.white70 : const Color(0xFF7A7A7A),
+                              color: isUnread
+                                  ? Colors.white70
+                                  : const Color(0xFF7A7A7A),
                               fontSize: 13,
-                              fontWeight: isUnread ? FontWeight.w500 : FontWeight.normal,
+                              fontWeight: isUnread
+                                  ? FontWeight.w500
+                                  : FontWeight.normal,
                             ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      // Source tag chip
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: doodle
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    // Source tag chip
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: doodle
                           ? DoodleDecorations.chip()
                           : BoxDecoration(
                               color: tagColor.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                        child: Text(
-                          sourceTag,
-                          style: doodle
-                            ? DoodleFonts.label(color: DoodleColors.textMuted, fontSize: 10)
+                      child: Text(
+                        sourceTag,
+                        style: doodle
+                            ? DoodleFonts.label(
+                                color: DoodleColors.textMuted, fontSize: 10)
                             : GoogleFonts.inter(
                                 color: tagColor,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
                               ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Timestamp and Unread Badge Column
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      timeStr,
+                      style: doodle
+                          ? DoodleFonts.caption(
+                              color: DoodleColors.textHint, fontSize: 12)
+                          : GoogleFonts.inter(
+                              color: const Color(0xFF7A7A7A),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                    ),
+                  ),
+                  if (isUnread) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: doodle
+                            ? DoodleColors.coral
+                            : const Color(0xFFFF6B00),
+                        shape: BoxShape.circle,
+                        border: doodle
+                            ? Border.all(color: DoodleColors.cream, width: 2)
+                            : null,
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$unreadCount',
+                          style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-
-                // Timestamp
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    timeStr,
-                    style: doodle
-                      ? DoodleFonts.caption(color: DoodleColors.textHint, fontSize: 12)
-                      : GoogleFonts.inter(
-                          color: const Color(0xFF7A7A7A),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                  ),
-                ),
-              ],
-            ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
   }
 
   Color _getTagColor(String tag) {
@@ -900,7 +1062,7 @@ class _ChatScreenState extends State<ChatScreen> {
   // ── Community / Group Card ──
   Widget _buildCommunityCard(Community c) {
     final bool isUnread = c.unreadCount > 0;
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -912,7 +1074,8 @@ class _ChatScreenState extends State<ChatScreen> {
         onTap: () async {
           await Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => CommunityChatRoomScreen(community: c)),
+            MaterialPageRoute(
+                builder: (_) => CommunityChatRoomScreen(community: c)),
           );
           _fetchConversations();
         },
@@ -951,9 +1114,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     Text(
                       c.lastMessage,
                       style: GoogleFonts.inter(
-                        color: isUnread ? const Color(0xFFFF6B00) : Colors.white54,
+                        color:
+                            isUnread ? const Color(0xFFFF6B00) : Colors.white54,
                         fontSize: 13,
-                        fontWeight: isUnread ? FontWeight.w600 : FontWeight.w400,
+                        fontWeight:
+                            isUnread ? FontWeight.w600 : FontWeight.w400,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -965,10 +1130,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 8),
                   padding: const EdgeInsets.all(6),
-                  decoration: const BoxDecoration(color: Color(0xFFFF6B00), shape: BoxShape.circle),
+                  decoration: const BoxDecoration(
+                      color: Color(0xFFFF6B00), shape: BoxShape.circle),
                   child: Text(
                     '${c.unreadCount}',
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold),
                   ),
                 ),
               const Icon(Icons.chevron_right, color: Colors.white38),
@@ -979,4 +1148,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-

@@ -3083,29 +3083,33 @@ class _GridView extends StatelessWidget {
 
           // ── Settings Icon ──
           Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
-            right: 16,
+            top: MediaQuery.of(context).padding.top + 4,
+            right: 4,
             child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: onSettings,
-              child: doodle
-                  ? CustomPaint(
-                      painter: SketchCirclePainter(
-                          color: DoodleColors.brown.withValues(alpha: 0.5),
-                          strokeWidth: 1.5),
-                      child: Container(
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: doodle
+                    ? CustomPaint(
+                        painter: SketchCirclePainter(
+                            color: DoodleColors.brown.withValues(alpha: 0.5),
+                            strokeWidth: 1.5),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          child: const Icon(Icons.settings_outlined,
+                              color: DoodleColors.brown, size: 24),
+                        ),
+                      )
+                    : Container(
                         padding: const EdgeInsets.all(10),
-                        child: const Icon(Icons.settings_outlined,
-                            color: DoodleColors.brown, size: 24),
+                        decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.05),
+                            shape: BoxShape.circle),
+                        child: const Icon(Icons.settings_suggest_rounded,
+                            color: Colors.white70, size: 24),
                       ),
-                    )
-                  : Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
-                          shape: BoxShape.circle),
-                      child: const Icon(Icons.settings_suggest_rounded,
-                          color: Colors.white70, size: 24),
-                    ),
+              ),
             ),
           ),
 
