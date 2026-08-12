@@ -642,6 +642,9 @@ class ExploreCache {
   static bool quickSetupDone = false;
   static bool hasCheckedSetup = false;
 
+  // Track which user's data is cached — invalidate if the logged-in user changes
+  static String? cachedUserId;
+
   static Map<String, dynamic>? myProfile;
   static bool hasLoadedMyProfile = false;
 
@@ -656,6 +659,16 @@ class ExploreCache {
   static Timer? _pollTimer;
   static final StreamController<void> updateStream =
       StreamController<void>.broadcast();
+
+  /// Call this whenever the logged-in user changes to wipe per-user cached data.
+  static void clearUserData() {
+    myProfile = null;
+    hasLoadedMyProfile = false;
+    hasLoadedKnocks = false;
+    acceptedProfileIds = {};
+    sentKnockProfileIds = {};
+    cachedUserId = null;
+  }
 
   static void initStream() {
     if (profilesSub != null) return;
@@ -736,9 +749,16 @@ class _ExploreScreenState extends State<ExploreScreen>
       _checkSetupDone();
     }
 
-    if (ExploreCache.hasLoadedMyProfile) {
+    // ── Critical: if the cached profile belongs to a DIFFERENT user (e.g. after
+    // account switch), discard it and reload for the current user. ──
+    final currentUid = _uid;
+    if (ExploreCache.hasLoadedMyProfile &&
+        ExploreCache.cachedUserId == currentUid &&
+        currentUid != null) {
       _myProfile = ExploreCache.myProfile;
     } else {
+      // Stale / wrong user's cache — clear and reload
+      ExploreCache.clearUserData();
       _loadMyProfile();
     }
 
@@ -822,6 +842,7 @@ class _ExploreScreenState extends State<ExploreScreen>
       if (r != null) {
         ExploreCache.myProfile = r;
         ExploreCache.hasLoadedMyProfile = true;
+        ExploreCache.cachedUserId = _uid; // mark which user this belongs to
         if (mounted) setState(() => _myProfile = r);
       }
     } catch (e) {
