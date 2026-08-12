@@ -5918,7 +5918,7 @@ class ActivityHubScreen extends StatefulWidget {
 }
 
   // Google Maps dark mode style JSON
-  static const String _darkMapStyle = '''
+  const String _darkMapStyle = '''
 [
   {"elementType":"geometry","stylers":[{"color":"#1d2c4d"}]},
   {"elementType":"labels.text.fill","stylers":[{"color":"#8ec3b9"}]},
