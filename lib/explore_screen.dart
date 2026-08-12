@@ -696,7 +696,8 @@ class ExploreCache {
 
 class _ExploreScreenState extends State<ExploreScreen>
     with TickerProviderStateMixin {
-  final _uid = Supabase.instance.client.auth.currentUser?.id;
+  // Always read fresh so it never gets stale after a hot restart / auth refresh
+  String? get _uid => Supabase.instance.client.auth.currentUser?.id;
   bool _isLoading = true;
 
   List<Map<String, dynamic>> _activeUsers = [];
@@ -1300,6 +1301,22 @@ class _ExploreScreenState extends State<ExploreScreen>
     if (!_checkAndPromptCompleteness()) return;
 
     HapticFeedback.mediumImpact();
+
+    // Ensure the logged-in user's own profile is always loaded before navigating
+    if (_myProfile == null) {
+      _loadMyProfile().then((_) {
+        if (!mounted) return;
+        setState(() {
+          _selected = profile;
+          _view = _XView.split;
+          _isSpinning = false;
+          _seenProfileIds.add(profile['id']?.toString() ?? '');
+        });
+        _splitCtrl.forward(from: 0);
+      });
+      return;
+    }
+
     setState(() {
       _selected = profile;
       _view = _XView.split;
@@ -1309,8 +1326,14 @@ class _ExploreScreenState extends State<ExploreScreen>
     _splitCtrl.forward(from: 0);
   }
 
-  void _goRandom() {
+  Future<void> _goRandom() async {
     if (!_checkAndPromptCompleteness()) return;
+
+    // Ensure own profile is loaded before showing comparison
+    if (_myProfile == null) {
+      await _loadMyProfile();
+      if (!mounted) return;
+    }
 
     final all = [..._activeUsers, ..._inactiveUsers];
     if (all.isEmpty) return;
