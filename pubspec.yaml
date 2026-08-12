@@ -15,6 +15,7 @@ dependencies:
   # We use google_fonts to give the app a premium, modern typography look easily.
   google_fonts: ^8.1.0
   google_maps_flutter: ^2.6.0
+  google_maps_flutter_web: ^0.5.10
   http: ^1.6.0
   geolocator: ^14.0.2
   supabase_flutter: "<2.15.0"
