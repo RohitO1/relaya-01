@@ -3103,7 +3103,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       );
 
       _fetchMessages(); // Background sync
-    } catch (_) {}
+    } catch (e) {
+      try {
+        await Supabase.instance.client.from('debug_logs').insert({'message': 'Error sending message in _sendMessage: $e'});
+      } catch (_) {}
+    }
   }
 
   Future<void> _sendImage() async {

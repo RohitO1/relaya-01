@@ -53,31 +53,35 @@ class NotificationService {
   }) async {
     try {
       // 1. Check user preferences before sending
-      final profile = await _supabase
-          .from('profiles')
-          .select('notification_settings')
-          .eq('id', userId)
-          .maybeSingle();
+      try {
+        final profile = await _supabase
+            .from('profiles')
+            .select('notification_settings')
+            .eq('id', userId)
+            .maybeSingle();
 
-      if (profile != null && profile['notification_settings'] != null) {
-        final settings = profile['notification_settings'] as Map<String, dynamic>;
-        bool shouldNotify = true;
+        if (profile != null && profile['notification_settings'] != null) {
+          final settings = profile['notification_settings'] as Map<String, dynamic>;
+          bool shouldNotify = true;
 
-        if (type == NotificationType.match) shouldNotify = settings['matches'] ?? true;
-        if (type == NotificationType.nearbyActivity) shouldNotify = settings['nearby_activities'] ?? true;
-        if (type == NotificationType.approval || type == NotificationType.rejection) {
-          shouldNotify = settings['approvals'] ?? true;
+          if (type == NotificationType.match) shouldNotify = settings['matches'] ?? true;
+          if (type == NotificationType.nearbyActivity) shouldNotify = settings['nearby_activities'] ?? true;
+          if (type == NotificationType.approval || type == NotificationType.rejection) {
+            shouldNotify = settings['approvals'] ?? true;
+          }
+          if (type == NotificationType.message || type == NotificationType.compliment) shouldNotify = settings['messages'] ?? true;
+
+          if (!shouldNotify) {
+            debugPrint('Notification suppressed user preferences: $type');
+            return;
+          }
         }
-        if (type == NotificationType.message || type == NotificationType.compliment) shouldNotify = settings['messages'] ?? true;
-
-        if (!shouldNotify) {
-          debugPrint('Notification suppressed user preferences: $type');
-          return;
-        }
+      } catch (e) {
+        debugPrint('Warning: Could not fetch notification_settings. Proceeding to send anyway. Error: $e');
       }
 
       // 2. Insert into notifications table
-      final inserted = await _supabase.from('notifications').insert({
+      await _supabase.from('notifications').insert({
         'user_id': userId,
         'type': type.value,
         'title': title,
@@ -85,27 +89,15 @@ class NotificationService {
         'payload': payload ?? {},
         'is_read': false,
         'created_at': DateTime.now().toIso8601String(),
-      }).select().maybeSingle();
-      
-      if (inserted != null) {
-        try {
-          await _supabase.functions.invoke(
-            'push-notification',
-            body: {
-              'type': 'INSERT',
-              'table': 'notifications',
-              'record': inserted,
-            },
-          );
-          debugPrint('Notification function invoked successfully for $userId');
-        } catch (e) {
-          debugPrint('Error invoking push-notification edge function: $e');
-        }
-      }
+      });
+
       
       debugPrint('Notification sent to $userId: $title');
     } catch (e) {
       debugPrint('Error sending notification: $e');
+      try {
+        await Supabase.instance.client.from('debug_logs').insert({'message': 'Error sending notification: $e'});
+      } catch (_) {}
     }
   }
 

@@ -18,7 +18,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'utils/mapbox_helpers.dart';
 import 'web_map_style.dart';
 
 import 'home_screen.dart';
@@ -76,6 +76,7 @@ void main() async {
   // Initialize services
   await themeService.init();
   await locationService.init();
+  await initMapbox();
 
   runApp(const MeetraApp());
 
@@ -698,68 +699,57 @@ class _MainDashboardState extends State<MainDashboard> {
             : const Color(0xFF000000),
         body: Stack(
           children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragEnd: (details) {
-                if (details.primaryVelocity! < -300) {
-                  // Swipe left -> Next tab
-                  if (_currentIndex < 4) _onSelectTab(_currentIndex + 1);
-                } else if (details.primaryVelocity! > 300) {
-                  // Swipe right -> Prev tab
-                  if (_currentIndex > 0) _onSelectTab(_currentIndex - 1);
-                }
-              },
-              child: Padding(
-                padding: EdgeInsets.only(
-                    bottom: (isDoodleMode(context) ? 84 : 80) + bottomSafeArea),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  transitionBuilder:
-                      (Widget child, Animation<double> animation) {
-                    switch (_navTransition) {
-                      case 'Fade':
-                        return FadeTransition(opacity: animation, child: child);
-                      case 'Scale':
-                        return ScaleTransition(scale: animation, child: child);
-                      case '3D Flip':
-                        final rotate =
-                            Tween(begin: 3.14, end: 0.0).animate(animation);
-                        return AnimatedBuilder(
-                          animation: rotate,
-                          builder: (context, ch) {
-                            // Ensure the old child fades out so they don't overlap weirdly
-                            final isUnder =
-                                (ValueKey(_currentIndex) != child.key);
-                            var tilt =
-                                ((animation.value - 0.5).abs() - 0.5) * 0.003;
-                            tilt *= isUnder ? -1.0 : 1.0;
-                            final value = isUnder
-                                ? math.min(rotate.value, 1.57)
-                                : rotate.value;
-                            return Transform(
-                              transform: Matrix4.rotationY(value)
-                                ..setEntry(3, 0, tilt),
-                              alignment: Alignment.center,
-                              child: ch,
-                            );
-                          },
-                          child: child,
-                        );
-                      case 'Slide':
-                      default:
-                        final slideOffset = _goingForward
-                            ? const Offset(1.0, 0.0)
-                            : const Offset(-1.0, 0.0);
-                        final slide =
-                            Tween(begin: slideOffset, end: Offset.zero)
-                                .animate(animation);
-                        return SlideTransition(position: slide, child: child);
-                    }
-                  },
-                  child: KeyedSubtree(
-                    key: ValueKey(_currentIndex),
-                    child: _getScreenByIndex(_currentIndex),
-                  ),
+            // Swiping disabled to allow Mapbox horizontal panning without switching tabs
+            Padding(
+              padding: EdgeInsets.only(
+                  bottom: (isDoodleMode(context) ? 84 : 80) + bottomSafeArea),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder:
+                    (Widget child, Animation<double> animation) {
+                  switch (_navTransition) {
+                    case 'Fade':
+                      return FadeTransition(opacity: animation, child: child);
+                    case 'Scale':
+                      return ScaleTransition(scale: animation, child: child);
+                    case '3D Flip':
+                      final rotate =
+                          Tween(begin: 3.14, end: 0.0).animate(animation);
+                      return AnimatedBuilder(
+                        animation: rotate,
+                        builder: (context, ch) {
+                          // Ensure the old child fades out so they don't overlap weirdly
+                          final isUnder =
+                              (ValueKey(_currentIndex) != child.key);
+                          var tilt =
+                              ((animation.value - 0.5).abs() - 0.5) * 0.003;
+                          tilt *= isUnder ? -1.0 : 1.0;
+                          final value = isUnder
+                              ? math.min(rotate.value, 1.57)
+                              : rotate.value;
+                          return Transform(
+                            transform: Matrix4.rotationY(value)
+                              ..setEntry(3, 0, tilt),
+                            alignment: Alignment.center,
+                            child: ch,
+                          );
+                        },
+                        child: child,
+                      );
+                    case 'Slide':
+                    default:
+                      final slideOffset = _goingForward
+                          ? const Offset(1.0, 0.0)
+                          : const Offset(-1.0, 0.0);
+                      final slide =
+                          Tween(begin: slideOffset, end: Offset.zero)
+                              .animate(animation);
+                      return SlideTransition(position: slide, child: child);
+                  }
+                },
+                child: KeyedSubtree(
+                  key: ValueKey(_currentIndex),
+                  child: _getScreenByIndex(_currentIndex),
                 ),
               ),
             ),
@@ -1090,7 +1080,7 @@ class _MainDashboardState extends State<MainDashboard> {
         builder: (context) {
           // Stable state for the bottom sheet
           bool isSheetMapDark = true;
-          GoogleMapController? mapSheetCtrl;
+          MapController? mapSheetCtrl;
           final sheetSearchCtrl = TextEditingController();
           List<dynamic> sheetSearchResults = [];
 
@@ -1323,17 +1313,11 @@ class _MainDashboardState extends State<MainDashboard> {
                                                   1.0,
                                                   0.0,
                                                 ]),
-                                      child: GoogleMap(
-                                        onMapCreated: (c) => mapSheetCtrl = c,
-                                        initialCameraPosition:
-                                            const CameraPosition(
-                                          target: LatLng(28.6139, 77.2090),
-                                          zoom: 14.0,
-                                        ),
-                                        mapType: MapType.normal,
+                                      child: AppMapView(
+                                        onMapReady: (c) => mapSheetCtrl = c,
+                                        initialCenter: const LatLng(28.6139, 77.2090),
+                                        initialZoom: 14.0,
                                         myLocationEnabled: true,
-                                        zoomControlsEnabled: false,
-                                        myLocationButtonEnabled: false,
                                       ),
                                     ),
 
@@ -1504,11 +1488,9 @@ class _MainDashboardState extends State<MainDashboard> {
                                                                     .high,
                                                             timeLimit: Duration(
                                                                 seconds: 15)));
-                                            mapSheetCtrl?.animateCamera(
-                                                CameraUpdate.newLatLngZoom(
-                                                    LatLng(pos.latitude,
-                                                        pos.longitude),
-                                                    15));
+                                            mapSheetCtrl?.animateToLatLng(
+                                                LatLng(pos.latitude, pos.longitude),
+                                                zoom: 15.0);
                                             if (context.mounted) {
                                               ScaffoldMessenger.of(context)
                                                   .showSnackBar(SnackBar(
@@ -1640,12 +1622,9 @@ class _MainDashboardState extends State<MainDashboard> {
                                                         color: Colors.white,
                                                         fontSize: 12)),
                                                 onTap: () {
-                                                  mapSheetCtrl?.animateCamera(
-                                                      CameraUpdate
-                                                          .newLatLngZoom(
-                                                              LatLng(r['lat'],
-                                                                  r['lon']),
-                                                              15));
+                                                  mapSheetCtrl?.animateToLatLng(
+                                                      LatLng(r['lat'], r['lon']),
+                                                      zoom: 15.0);
                                                   setSheetState(() {
                                                     sheetSearchResults = [];
                                                     sheetSearchCtrl.text =
@@ -5884,18 +5863,7 @@ extension _MapLayerX on _MapLayer {
         _MapLayer.hybrid: Color(0xFFFF9800),
       }[this]!;
 
-  MapType get googleMapType {
-    switch (this) {
-      case _MapLayer.normal:
-        return MapType.normal;
-      case _MapLayer.satellite:
-        return MapType.satellite;
-      case _MapLayer.terrain:
-        return MapType.terrain;
-      case _MapLayer.hybrid:
-        return MapType.hybrid;
-    }
-  }
+
 
   // Satellite and Hybrid imagery already look dark
   bool get allowsDarkMode => this == _MapLayer.normal || this == _MapLayer.terrain;
@@ -6087,7 +6055,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
   LatLng? _myLocation;
   double? _myHeading;
   StreamSubscription<Position>? _locationSubscription;
-  GoogleMapController? _mapController;
+  MapController? _mapController;
   final TextEditingController _searchController = TextEditingController();
   bool _showDropdown = false;
   Timer? _debounce;
@@ -6131,8 +6099,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           });
           // Move map after a short delay so the widget has been built
           try {
-            _mapController?.animateCamera(
-                CameraUpdate.newLatLngZoom(LatLng(lat, lng), 14.0));
+            _mapController?.animateToLatLng(
+                LatLng(lat, lng), zoom: 14.0);
           } catch (_) {}
         }
       }
@@ -6266,7 +6234,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     // Already tracking - just re-center the map
     if (_myLocation != null && _locationSubscription != null) {
       _mapController
-          ?.animateCamera(CameraUpdate.newLatLngZoom(_myLocation!, 15.0));
+          ?.animateToLatLng(_myLocation!, zoom: 15.0);
       return;
     }
 
@@ -6315,8 +6283,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         // Only fly to location on first fix
         if (firstFix) {
           firstFix = false;
-          _mapController?.animateCamera(
-              CameraUpdate.newLatLngZoom(LatLng(lat, lng), 15.0));
+          _mapController?.animateToLatLng(
+              LatLng(lat, lng), zoom: 15.0);
         }
       }
     }, onError: (error) {
@@ -6650,11 +6618,11 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     final activityMarkers =
         liveActivities.map((act) => _buildActivityMarker(act)).toList();
 
-    // Live-location marker and popup markers — google_maps_flutter API
+    // Live-location marker and popup markers
     final popupMarkers = _selectedMapActivity != null
         ? [
-            Marker(
-              markerId: const MarkerId('popup_activity'),
+            SimpleMarker(
+              id: 'popup_activity',
               position: LatLng(
                 _selectedMapActivity!['lat'] as double? ??
                     _selectedMapActivity!['latitude'] as double? ??
@@ -6663,47 +6631,40 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                     _selectedMapActivity!['longitude'] as double? ??
                     -74.0060,
               ),
-              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+              color: Colors.orange,
             )
           ]
-        : <Marker>[];
+        : <SimpleMarker>[];
 
     final locationMarkers = _myLocation != null
         ? [
-            Marker(
-              markerId: const MarkerId('my_location_dot'),
+            SimpleMarker(
+              id: 'my_location_dot',
               position: _myLocation!,
-              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+              color: Colors.blue,
             )
           ]
-        : <Marker>[];
+        : <SimpleMarker>[];
 
-    return GoogleMap(
+    return AppMapView(
       key: ValueKey('map-$_isMapDarkMode-$_mapLayer'),
-      onMapCreated: (c) {
+      onMapReady: (c) {
         _mapController = c;
       },
-      style: _isMapDarkMode ? _darkMapStyle : '[]',
-      initialCameraPosition: CameraPosition(
-        target: _myLocation ?? const LatLng(40.7128, -74.0060),
-        zoom: 14.0,
-      ),
-      mapType: _mapLayer.googleMapType,
+      initialCenter: _myLocation ?? const LatLng(40.7128, -74.0060),
+      initialZoom: 14.0,
       myLocationEnabled: true,
-      zoomControlsEnabled: false,
-      myLocationButtonEnabled: false,
-      markers: {
+      markers: [
         ...activityMarkers,
         if (_myLocation != null)
-          Marker(
-            markerId: const MarkerId('my_location'),
+          SimpleMarker(
+            id: 'my_location',
             position: _myLocation!,
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            color: Colors.blue,
           ),
         if (_selectedMapActivity != null)
-          Marker(
-            markerId: const MarkerId('popup'),
+          SimpleMarker(
+            id: 'popup',
             position: LatLng(
               _selectedMapActivity!['lat'] as double? ??
                   _selectedMapActivity!['latitude'] as double? ??
@@ -6712,10 +6673,9 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                   _selectedMapActivity!['longitude'] as double? ??
                   -74.0060,
             ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            color: Colors.red,
           ),
-      },
+      ],
     );
   }
 
@@ -6918,8 +6878,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                 _searchResults.clear();
                 _showDropdown = false;
               });
-              _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
-                  LatLng(loc['lat'], loc['lng']), 14.0));
+              _mapController?.animateToLatLng(
+                  LatLng(loc['lat'], loc['lng']), zoom: 14.0);
             },
           );
         },
@@ -6927,24 +6887,22 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     );
   }
 
-  Marker _buildActivityMarker(Map<String, dynamic> act) {
+  SimpleMarker _buildActivityMarker(Map<String, dynamic> act) {
     final isRushIn = act['is_rush_in'] == true;
     final lat = act['lat'] as double? ?? act['latitude'] as double? ?? 40.7128;
     final lng =
         act['lng'] as double? ?? act['longitude'] as double? ?? -74.0060;
 
-    return Marker(
-      markerId: MarkerId(act['id']?.toString() ?? '${lat}_$lng'),
+    return SimpleMarker(
+      id: act['id']?.toString() ?? '${lat}_$lng',
       position: LatLng(lat, lng),
-      icon: BitmapDescriptor.defaultMarkerWithHue(
-        isRushIn ? BitmapDescriptor.hueOrange : BitmapDescriptor.hueViolet,
-      ),
+      color: isRushIn ? Colors.orange : Colors.purple,
       onTap: () {
         setState(() {
           _selectedMapActivity = act;
         });
         _mapController
-            ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lng), 15.0));
+            ?.animateToLatLng(LatLng(lat, lng), zoom: 15.0);
       },
     );
   }
@@ -7483,24 +7441,18 @@ class _SinglePinMapScreen extends StatelessWidget {
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.pop(context)),
       ),
-      body: GoogleMap(
-          initialCameraPosition: CameraPosition(
-            target: LatLng(lat, lng),
-            zoom: 16.0,
-          ),
-          mapType: MapType.normal,
+      body: AppMapView(
+          initialCenter: LatLng(lat, lng),
+          initialZoom: 16.0,
           myLocationEnabled: false,
-          zoomControlsEnabled: false,
-          myLocationButtonEnabled: false,
-          markers: {
-            Marker(
-              markerId: const MarkerId('explore_pin'),
+          markers: [
+            SimpleMarker(
+              id: 'explore_pin',
               position: LatLng(lat, lng),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueAzure),
-              infoWindow: InfoWindow(title: label),
+              color: Colors.blue,
+              label: label,
             ),
-          }),
+          ]),
     );
   }
 }

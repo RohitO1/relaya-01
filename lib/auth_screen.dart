@@ -546,8 +546,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         }
       }
     } catch (e) {
+      debugPrint('OTP Verification Error: $e');
       if (mounted) {
-        _showError('Verification failed. Please try again.');
+        _showError('Verification failed: $e');
         for (final c in _otpCtrl) c.clear();
         _otpFoci[0].requestFocus();
       }
@@ -1711,8 +1712,9 @@ class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
         }
       }
     } catch (e) {
+      debugPrint('OTP Verification Error: $e');
       if (mounted) {
-        _showErr('Verification failed. Please try again.');
+        _showErr('Verification failed: $e');
         for (final c in _otpCtrl) c.clear();
         _otpFoci[0].requestFocus();
       }

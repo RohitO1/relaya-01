@@ -17,10 +17,10 @@ class BolRoomConfig {
   static const String livekitUrl = 'wss://meetra-qpnmu7vr.livekit.cloud';
 
   /// LiveKit API Key  (from same project's Settings → Keys page)
-  static const String livekitApiKey = 'APIC2MoanQqDdoE';
+  static const String livekitApiKey = 'APIM4Ch6rxJxN7W';
 
   /// LiveKit API Secret  (from same project's Settings → Keys page)
-  static const String livekitApiSecret = 'aa2N3fCi65FqflofwW5tc3VhOtHdKUBHqz27x1QPM3BB';
+  static const String livekitApiSecret = 'IpUilN5fZ3IHlV8Vjl4eprESPuSPigfH1VPeyAMVh8lB';
 
   /// Agora App ID for real-time voice and voice masking
   static const String agoraAppId = '8f70c498d9b644d8b80a9100b73f23d7';

@@ -544,22 +544,30 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.detached) {
+    if (state == AppLifecycleState.detached ||
+        state == AppLifecycleState.paused) {
+      // When app is killed OR sent to background:
+      // Remove this member. The DB trigger auto_close_empty_chatroom
+      // will delete the room if no members remain.
       if (_isHost) {
-        // App is being killed from background tabs. Try to destruct the room immediately.
+        // Host leaving: mark deleted first, then remove all members & delete room
         _sb
             .from('chatrooms')
             .update({'room_status': 'deleted'}).eq('id', widget.roomId);
         _sb.from('chatroom_members').delete().eq('room_id', widget.roomId);
         _sb.from('chatrooms').delete().eq('id', widget.roomId);
       } else {
-        // Participant is leaving. Remove them from the members list.
+        // Participant: just remove themselves. DB trigger handles room closure.
         _sb
             .from('chatroom_members')
             .delete()
             .eq('room_id', widget.roomId)
             .eq('user_id', _myId);
       }
+    } else if (state == AppLifecycleState.resumed) {
+      // Came back — refresh member list and re-sync host state
+      _loadMembers();
+      syncHostState();
     }
   }
 
@@ -1511,9 +1519,21 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
     _loadMessages();
     _initLiveKit(); // init voice AFTER profile is loaded so token has correct identity
 
-    // Start host heartbeat monitor
+    // Start host heartbeat monitor + presence tracker
     _hostHeartbeatTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
+
+      // PRESENCE HEARTBEAT: Update last_seen for this member every tick.
+      // The DB will evict any member whose last_seen is > 2 minutes old.
+      // This auto-closes rooms when apps are force-killed.
+      _sb
+          .from('chatroom_members')
+          .update({'last_seen': DateTime.now().toUtc().toIso8601String()})
+          .eq('room_id', widget.roomId)
+          .eq('user_id', _myId)
+          .then((_) {})
+          .catchError((_) {});
+
       if (_isHost) {
         _sendSystemCommand('HEARTBEAT', '');
         // Periodically check inactivity for the host

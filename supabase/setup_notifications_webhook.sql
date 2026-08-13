@@ -22,7 +22,7 @@ CREATE OR REPLACE FUNCTION public.notify_insert_webhook()
 RETURNS TRIGGER AS $$
 BEGIN
   PERFORM extensions.http_post(
-    'https://tkcdzuthjrxpfczqathy.functions.supabase.co/push-notification',
+    'https://zlljvualqfjhbifhgabw.functions.supabase.co/push-notification',
     json_build_object(
       'type', 'INSERT',
       'table', 'notifications',

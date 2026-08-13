@@ -1,7 +1,9 @@
 {
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "jimp": "^0.16.2",
     "livekit-server-sdk": "^2.15.2",
+    "pg": "^8.23.0",
     "pngjs": "^7.0.0"
   }
 }

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:ui'; // For ImageFilter and BackdropFilter
 
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'utils/mapbox_helpers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
@@ -68,7 +68,7 @@ class _HostActivityScreenState extends State<HostActivityScreen>
   final _hookCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   final _pageCtrl = PageController();
-  GoogleMapController? _googleMapController;
+  MapController? _googleMapController;
 
   // ── ANIMATION ──
   late AnimationController _pulseCtrl;
@@ -538,7 +538,7 @@ class _HostActivityScreenState extends State<HostActivityScreen>
           _fetchingGps = false;
         });
         _googleMapController
-            ?.animateCamera(CameraUpdate.newLatLngZoom(_pinLocation, 16.0));
+            ?.animateToLatLng(_pinLocation, zoom: 16.0);
         _reverseGeocode(_pinLocation);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Row(children: [
@@ -658,7 +658,7 @@ class _HostActivityScreenState extends State<HostActivityScreen>
     });
     FocusScope.of(context).unfocus();
     _googleMapController
-        ?.animateCamera(CameraUpdate.newLatLngZoom(_pinLocation, 16.0));
+        ?.animateToLatLng(_pinLocation, zoom: 16.0);
   }
 
   Future<void> _pickTime() async {
@@ -2402,26 +2402,15 @@ class _HostActivityScreenState extends State<HostActivityScreen>
   }
 
   Widget _buildFlutterMapWidget(Color accent, String baseUrl) {
-    return GoogleMap(
-      onMapCreated: (c) => _googleMapController = c,
-      initialCameraPosition: CameraPosition(
-        target: _pinLocation,
-        zoom: 15.0,
-      ),
-      mapType: MapType.normal,
+    return AppMapView(
+      onMapReady: (c) => _googleMapController = c,
+      initialCenter: _pinLocation,
+      initialZoom: 15.0,
       myLocationEnabled: true,
-      zoomControlsEnabled: false,
-      myLocationButtonEnabled: false,
       onTap: (pt) {
-        _googleMapController?.animateCamera(CameraUpdate.newLatLng(pt));
+        _googleMapController?.animateToLatLng(pt);
         setState(() => _pinLocation = pt);
         _debounceReverseGeocode(pt);
-      },
-      onCameraMove: (pos) {
-        _pinLocation = pos.target; // Update coordinate in memory
-      },
-      onCameraIdle: () {
-        _debounceReverseGeocode(_pinLocation);
       },
     );
   }
