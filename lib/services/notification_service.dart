@@ -101,8 +101,7 @@ class NotificationService {
     }
   }
 
-  /// Notifies multiple users about a nearby activity
-  /// Simple implementation: notifies users in the same city or broad proximity
+  /// Notifies multiple users about a nearby activity using coordinate-based radius check
   static Future<void> notifyNearbyActivity({
     required String creatorId,
     required String activityId,
@@ -117,68 +116,98 @@ class NotificationService {
     bool isAnonymous = false,
   }) async {
     try {
-      // Resolve the location name: use the provided name, or reverse-geocode the pin
-      final resolvedLocation = await _resolveLocationName(locationName, lat, lng);
+      debugPrint('[NotifBlast] Starting notification blast. isRushIn=$isRushIn radius=${radiusKm}km lat=$lat lng=$lng');
 
-      // Fetch users who are NOT the creator and have nearby_activities enabled
+      final resolvedLocation = await _resolveLocationName(locationName, lat, lng);
+      debugPrint('[NotifBlast] Resolved location: $resolvedLocation');
+
+      // Fetch all users except creator — get their coordinates
       final List<dynamic> users = await _supabase
           .from('profiles')
-          .select('id, notification_settings, lat, lng, city')
+          .select('id, notification_settings, lat, lng, city, district')
           .neq('id', creatorId);
 
+      debugPrint('[NotifBlast] Found ${users.length} potential users to notify');
+
+      int notifiedCount = 0;
+      int skippedCount = 0;
+
       for (var user in users) {
-        final userId = user['id'];
-        final settings = user['notification_settings'] as Map<String, dynamic>?;
-        
-        if (settings != null && settings['nearby_activities'] == false) continue;
+        try {
+          final userId = user['id']?.toString();
+          if (userId == null) continue;
 
-        // Check distance if lat/lng available
-        final userLat = user['lat'];
-        final userLng = user['lng'];
-        final userCity = user['city']?.toString();
-        
-        bool shouldNotify = false;
+          // Respect notification settings
+          final settings = user['notification_settings'];
+          if (settings is Map && settings['nearby_activities'] == false) {
+            skippedCount++;
+            continue;
+          }
 
-        if (isRushIn) {
-          // Strict radius check for Rush-ins
+          final userLatRaw = user['lat'];
+          final userLngRaw = user['lng'];
+          final double? userLat = userLatRaw != null
+              ? (userLatRaw is num ? userLatRaw.toDouble() : double.tryParse(userLatRaw.toString()))
+              : null;
+          final double? userLng = userLngRaw != null
+              ? (userLngRaw is num ? userLngRaw.toDouble() : double.tryParse(userLngRaw.toString()))
+              : null;
+
+          bool shouldNotify = false;
+
           if (userLat != null && userLng != null) {
             final distance = _calculateDistance(lat, lng, userLat, userLng);
+            debugPrint('[NotifBlast] User $userId distance: ${distance.toStringAsFixed(2)}km (threshold: ${radiusKm}km)');
             if (distance <= radiusKm) {
               shouldNotify = true;
             }
-          }
-        } else {
-          // City-wide check for Activities
-          if (userCity != null && userCity.toLowerCase() == activityCity.toLowerCase()) {
-            shouldNotify = true;
-          } else if (userLat != null && userLng != null) {
-            // Fallback: Check if they are physically within a 50km radius of the activity
-            final distance = _calculateDistance(lat, lng, userLat, userLng);
-            if (distance <= 50.0) {
+          } else {
+            // No coordinates: for Rush-ins notify anyway (user hasn't shared location)
+            if (isRushIn) {
+              debugPrint('[NotifBlast] User $userId has no coords, notifying by default for Rush-in');
               shouldNotify = true;
             }
           }
-        }
 
-        if (shouldNotify) {
-          final notificationTitle = isAnonymous 
-              ? 'New Activity Nearby! 📍' 
-              : '$hostName created a Rush-in! ⚡';
-          final notificationBody = isAnonymous 
-              ? 'Someone created a rush-in near $resolvedLocation' 
-              : '$title near $resolvedLocation';
+          if (shouldNotify) {
+            final String notificationTitle;
+            final String notificationBody;
+            if (isRushIn) {
+              notificationTitle = isAnonymous
+                  ? 'New Rush-in Nearby! ⚡'
+                  : '$hostName created a Rush-in! ⚡';
+              notificationBody = isAnonymous
+                  ? 'Someone created a rush-in near $resolvedLocation'
+                  : '$title near $resolvedLocation';
+            } else {
+              notificationTitle = isAnonymous
+                  ? 'New Activity Nearby! 📍'
+                  : '$hostName created an Activity! 📅';
+              notificationBody = isAnonymous
+                  ? 'Someone created an activity near $resolvedLocation'
+                  : '$title near $resolvedLocation';
+            }
 
-          await sendNotification(
-            userId: userId,
-            type: NotificationType.nearbyActivity,
-            title: notificationTitle,
-            body: notificationBody,
-            payload: {'activity_id': activityId},
-          );
+            await sendNotification(
+              userId: userId,
+              type: NotificationType.nearbyActivity,
+              title: notificationTitle,
+              body: notificationBody,
+              payload: {'activity_id': activityId},
+            );
+            notifiedCount++;
+            debugPrint('[NotifBlast] ✅ Notified user $userId');
+          } else {
+            skippedCount++;
+          }
+        } catch (innerError) {
+          debugPrint('[NotifBlast] Error processing user ${user['id']}: $innerError');
         }
       }
+
+      debugPrint('[NotifBlast] Done. Notified: $notifiedCount, Skipped: $skippedCount');
     } catch (e) {
-      debugPrint('Error notifying nearby users: $e');
+      debugPrint('[NotifBlast] Fatal error: $e');
     }
   }
 

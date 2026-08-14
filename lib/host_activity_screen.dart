@@ -747,7 +747,6 @@ class _HostActivityScreenState extends State<HostActivityScreen>
         'state': locationService.activeState,
         'is_active': true,
         'is_rush_in': _isRushIn,
-        'activity_type': _isRushIn ? 'rush_in' : 'event',
         'vibes': _isRushIn ? _selectedVibes : [],
         'hook': _isRushIn ? _hookCtrl.text.trim() : null,
         'participant_limit': _isRushIn ? _participantLimit : 100,
@@ -777,7 +776,20 @@ class _HostActivityScreenState extends State<HostActivityScreen>
         'location_name',
         'district',
         'state',
-        'is_active'
+        'is_active',
+        'is_rush_in',
+        'radius_km',
+        'is_anonymous',
+        'participant_limit',
+        'expires_at',
+        'duration_hours',
+        'created_at',
+        'is_ghost_mode',
+        'auto_accept',
+        'invite_only',
+        'entry_type',
+        'vibes',
+        'hook'
       ];
       final safePayload = <String, dynamic>{};
       String extraData = '';

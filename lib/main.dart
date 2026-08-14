@@ -702,7 +702,7 @@ class _MainDashboardState extends State<MainDashboard> {
             // Swiping disabled to allow Mapbox horizontal panning without switching tabs
             Padding(
               padding: EdgeInsets.only(
-                  bottom: (isDoodleMode(context) ? 84 : 80) + bottomSafeArea),
+                  bottom: _currentIndex == 2 ? 0 : ((isDoodleMode(context) ? 84 : 80) + bottomSafeArea)),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
                 transitionBuilder:

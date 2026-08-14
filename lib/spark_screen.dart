@@ -906,11 +906,14 @@ class _SparkScreenState extends State<SparkScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
+      extendBodyBehindAppBar: false,
       extendBody: true,
       backgroundColor:
           isDoodleMode(context) ? DoodleColors.cream : SparkColors.bg,
-      body: Stack(
+      body: SafeArea(
+        top: true,
+        bottom: false,
+        child: Stack(
         fit: StackFit.expand,
         children: [
           // 1. Map View (Full Screen Background)
@@ -939,7 +942,7 @@ class _SparkScreenState extends State<SparkScreen>
           // Progress Bar (Mock at top)
           _buildScrollProgress(),
         ],
-      ),
+      )),
       floatingActionButton: null,
     );
   }
@@ -3860,6 +3863,9 @@ class _SparkMapViewState extends State<_SparkMapView> {
   // Filter state
   String _mapFilter = 'all'; // 'all', 'rush', 'activity', 'joined'
 
+  // Zoom tracking for dynamic markers
+  double _currentZoom = 13.0;
+
   // People nearby
   int _nearbyPeople = 0;
   Timer? _nearbyTimer;
@@ -3956,16 +3962,33 @@ class _SparkMapViewState extends State<_SparkMapView> {
       }
 
       final memberCount = item.joinedMembers;
-      final label = memberCount > 0 ? '${item.title.length > 10 ? item.title.substring(0, 10) + '…' : item.title} · $memberCount 👥' : item.title;
+      final label = _currentZoom >= 14.0 ? '' : (memberCount > 0 ? '${item.title.length > 10 ? item.title.substring(0, 10) + '…' : item.title} · $memberCount 👥' : item.title);
 
       return SimpleMarker(
         id: item.id,
         position: LatLng(item.lat, item.lng),
         color: pinColor,
         label: label,
+        imageUrl: item.imageUrl,
+        emoji: _getEmojiForTags(item.tags),
         onTap: () => widget.onItemTap(item),
       );
     }).toList();
+  }
+
+  String _getEmojiForTags(List<String> tags) {
+    if (tags.isEmpty) return '🔥';
+    final tagStr = tags.join(' ').toLowerCase();
+    if (tagStr.contains('sport') || tagStr.contains('soccer') || tagStr.contains('cricket')) return '⚽';
+    if (tagStr.contains('music') || tagStr.contains('concert')) return '🎵';
+    if (tagStr.contains('food') || tagStr.contains('dinner') || tagStr.contains('cafe')) return '🍔';
+    if (tagStr.contains('outdoor') || tagStr.contains('hike') || tagStr.contains('nature')) return '🌲';
+    if (tagStr.contains('party') || tagStr.contains('club') || tagStr.contains('dance')) return '🎉';
+    if (tagStr.contains('study') || tagStr.contains('book')) return '📚';
+    if (tagStr.contains('game') || tagStr.contains('esport')) return '🎮';
+    if (tagStr.contains('movie') || tagStr.contains('film')) return '🍿';
+    if (tagStr.contains('art') || tagStr.contains('paint')) return '🎨';
+    return '🔥';
   }
 
   // ── Search ───────────────────────────────────────────────────────────────
@@ -4029,7 +4052,8 @@ class _SparkMapViewState extends State<_SparkMapView> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom + 80; // 80 = nav bar height
+    // Set base offset exactly to navbar height (approx 80) for rock bottom alignment
+    final bottomPad = (isDoodleMode(context) ? 84 : 80).toDouble();
 
     return Stack(
       fit: StackFit.expand,
@@ -4039,6 +4063,14 @@ class _SparkMapViewState extends State<_SparkMapView> {
           onMapReady: (c) {
             _mapController = c;
             _updateMapMarkers();
+          },
+          onZoomChanged: (zoom) {
+            // Re-render markers if zooming across the 14.0 boundary
+            final crossed = (_currentZoom < 14.0 && zoom >= 14.0) || (_currentZoom >= 14.0 && zoom < 14.0);
+            _currentZoom = zoom;
+            if (crossed) {
+              _updateMapMarkers();
+            }
           },
           initialCenter: _actualLocation ??
               LatLng(locationService.activeLat ?? 20.5937,
@@ -4067,46 +4099,55 @@ class _SparkMapViewState extends State<_SparkMapView> {
             ),
           ),
 
-        // ── 3. People Nearby Pill (top right below header) ──
-        if (_nearbyPeople > 0)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 72,
-            right: 16,
-            child: _buildPeopleNearbyPill(),
-          ),
-
-        // ── 4. Filter Chips — above See List ──
+        // ── 3. Filter Chips — at the top below header ──
         Positioned(
-          bottom: bottomPad + 55,
+          top: MediaQuery.of(context).padding.top + 72,
           left: 0,
           right: 0,
           child: _buildFilterChips(),
         ),
 
-        // ── 5. Bottom row: Search icon (left) | See List (center) | Nav arrow (right) ──
+        // ── 5. People Nearby Pill ──
+        if (_nearbyPeople > 0)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 124,
+            right: 16,
+            child: _buildPeopleNearbyPill(),
+          ),
+
+        // ── 6. Bottom row (Search, See List, Add, Go To) perfectly aligned ──
         Positioned(
-          bottom: bottomPad + 8,
+          bottom: bottomPad,
           left: 16,
           right: 16,
-          child: Row(
+          child: Stack(
+            alignment: Alignment.bottomCenter,
+            clipBehavior: Clip.none,
             children: [
-              // Search icon button
-              _buildSearchIconButton(),
-              const Spacer(),
-              // See list button (center)
-              _buildSeeListPill(),
-              const Spacer(),
-              // Recenter / Navigation Arrow (right)
-              _buildNavigationArrowButton(),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Left: Search
+                  _buildSearchIconButton(),
+                  // Right: Add & Go to
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildCreateFab(),
+                      const SizedBox(width: 16),
+                      _buildNavigationArrowButton(),
+                    ],
+                  ),
+                ],
+              ),
+              // Center: See list
+              Positioned(
+                bottom: 8, // slight lift to optically align center with circles
+                child: _buildSeeListPill(),
+              ),
             ],
           ),
-        ),
-
-        // ── 6. Create Rush-In FAB + right side buttons (above bottom row) ──
-        Positioned(
-          bottom: bottomPad + 66,
-          right: 16,
-          child: _buildCreateFab(),
         ),
       ],
     );
@@ -4116,47 +4157,54 @@ class _SparkMapViewState extends State<_SparkMapView> {
 
   /// Search icon button — tapping toggles the floating search bar
   Widget _buildSearchIconButton() {
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _searchVisible = !_searchVisible;
-          if (!_searchVisible) {
-            _searchCtrl.clear();
-            _searchResults = [];
-            _showDropdown = false;
-          }
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          color: _searchVisible
-              ? const Color(0xFFFF6B00)
-              : const Color(0xCC0D1527),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: _searchVisible
-                ? const Color(0xFFFF6B00)
-                : Colors.white.withValues(alpha: 0.15),
-          ),
-          boxShadow: [
-            BoxShadow(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _searchVisible = !_searchVisible;
+              if (!_searchVisible) {
+                _searchCtrl.clear();
+                _searchResults = [];
+                _showDropdown = false;
+              }
+            });
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
               color: _searchVisible
-                  ? const Color(0xFFFF6B00).withValues(alpha: 0.5)
-                  : Colors.black.withValues(alpha: 0.4),
-              blurRadius: _searchVisible ? 16 : 12,
-              offset: const Offset(0, 4),
+                  ? const Color(0xFFFF6B00)
+                  : const Color(0xFF0D1527),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: _searchVisible
+                    ? const Color(0xFFFF6B00)
+                    : Colors.white.withValues(alpha: 0.15),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _searchVisible
+                      ? const Color(0xFFFF6B00).withValues(alpha: 0.5)
+                      : Colors.black.withValues(alpha: 0.4),
+                  blurRadius: _searchVisible ? 16 : 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ],
+            child: Icon(
+              _searchVisible ? Icons.close_rounded : Icons.search_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
         ),
-        child: Icon(
-          _searchVisible ? Icons.close_rounded : Icons.search_rounded,
-          color: Colors.white,
-          size: 22,
-        ),
-      ),
+        const SizedBox(height: 6),
+        Text('Search', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
+      ],
     );
   }
 
@@ -4351,41 +4399,50 @@ class _SparkMapViewState extends State<_SparkMapView> {
   }
 
   Widget _buildNavigationArrowButton() {
-    return GestureDetector(
-      onTap: _recenterToLocation,
-      child: Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          color: const Color(0xFF0D1527),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: _recenterToLocation,
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D1527),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
+            ),
+            child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 22),
+          ),
         ),
-        child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 22),
-      ),
+        const SizedBox(height: 6),
+        Text('Go to', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
+      ],
     );
   }
 
   Widget _buildCreateFab() {
-    return GestureDetector(
-      onTap: widget.onCreateTap,
-      child: Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFF5C00), Color(0xFFFF6B00)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: widget.onCreateTap,
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D1527),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
+            ),
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
           ),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.5), blurRadius: 16, spreadRadius: 2, offset: const Offset(0, 4)),
-          ],
         ),
-        child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
-      ),
+        const SizedBox(height: 6),
+        Text('Add', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
+      ],
     );
   }
 
@@ -5023,9 +5080,9 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'participant_limit': int.tryParse(_rushSlots.text) ?? 4,
           'is_active': true,
           'is_rush_in': true,
-          'activity_type': 'rush_in',
           'category': 'rush_in',
           'location_name': pinLocationName,
+          'city': locationService.activeLocation.split(',').first.trim(),
           'district': locationService.activeLocation.split(',').first.trim(),
           'state': locationService.activeLocation.split(',').length > 1
               ? locationService.activeLocation.split(',')[1].trim()
@@ -5053,8 +5110,12 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'district',
           'state',
           'is_active',
+          'is_rush_in',
+          'radius_km',
+          'is_anonymous',
           'participant_limit',
-          'activity_type',
+          'expires_at',
+          'duration_hours',
           'created_at'
         ];
         final safePayload = <String, dynamic>{};
@@ -5084,21 +5145,22 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
         final activityId = response['id'].toString();
 
         // 3. Trigger notification blast with resolved landmark
-        try {
-          NotificationService.notifyNearbyActivity(
-            creatorId: uid,
-            activityId: activityId,
-            title: _rushTitle.text.trim(),
-            locationName: pinLocationName,
-            hostName: hostName,
-            lat: _pinLocation.latitude,
-            lng: _pinLocation.longitude,
-            isRushIn: true,
-            activityCity: city.split(',').first.trim(),
-            radiusKm: _radius,
-            isAnonymous: _isAnonymous,
-          );
-        } catch (_) {}
+        // Note: intentionally not awaited so UI doesn't block
+        NotificationService.notifyNearbyActivity(
+          creatorId: uid,
+          activityId: activityId,
+          title: _rushTitle.text.trim(),
+          locationName: pinLocationName,
+          hostName: hostName,
+          lat: _pinLocation.latitude,
+          lng: _pinLocation.longitude,
+          isRushIn: true,
+          activityCity: city.split(',').first.trim(),
+          radiusKm: _radius,
+          isAnonymous: _isAnonymous,
+        ).catchError((e) {
+          debugPrint('Rush-in notification blast error: $e');
+        });
         if (mounted) {
           Navigator.pop(context, {
             'title': '⚡ Rush-in Created!',
@@ -5135,7 +5197,6 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'participant_limit': int.tryParse(_actSlots.text) ?? 8,
           'is_active': true,
           'is_rush_in': false,
-          'activity_type': 'activity',
           'category': _actCategory.text.trim().isNotEmpty
               ? _actCategory.text.trim()
               : 'General',
@@ -5162,8 +5223,8 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'district',
           'state',
           'is_active',
+          'is_rush_in',
           'participant_limit',
-          'activity_type',
           'created_at'
         ];
         final safePayload = <String, dynamic>{};
@@ -5320,7 +5381,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text('Radius',
+                    Text('Broadcast Radius (Push Notifications)',
                         style: GoogleFonts.inter(
                             color: SparkColors.txt2,
                             fontSize: 12,

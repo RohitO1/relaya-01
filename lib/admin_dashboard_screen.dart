@@ -84,7 +84,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _initAdminClient(String key) {
     try {
-      _adminClient = SupabaseClient('https://tkcdzuthjrxpfczqathy.supabase.co', key);
+      _adminClient = SupabaseClient('https://zlljvualqfjhbifhgabw.supabase.co', key);
       _fetchAllData();
     } catch (e) {
       if (mounted) _showSnack('Failed to initialize admin client.', isError: true);
