@@ -94,9 +94,9 @@ Deno.serve(async (req) => {
 
     if (signUpError) {
       // Check if user already exists
-      const isAlreadyRegistered = signUpError.message.toLowerCase().includes("already registered") || 
-                                  signUpError.message.toLowerCase().includes("already been registered") ||
-                                  signUpError.status === 422;
+      const isAlreadyRegistered = signUpError.message.toLowerCase().includes("already registered") ||
+        signUpError.message.toLowerCase().includes("already been registered") ||
+        signUpError.status === 422;
 
       if (!isAlreadyRegistered) {
         console.error("Supabase Admin Auth error:", signUpError.message);
@@ -110,10 +110,10 @@ Deno.serve(async (req) => {
 
     // 6. Return the synthetic credentials to client
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        email: syntheticEmail, 
-        password: syntheticPassword 
+      JSON.stringify({
+        success: true,
+        email: syntheticEmail,
+        password: syntheticPassword
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
