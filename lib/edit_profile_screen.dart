@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'image_upload_service.dart';
 import 'dart:async';
 import 'package:http/http.dart' as http;
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'utils/mapbox_helpers.dart';
 import 'package:geolocator/geolocator.dart';
 import 'services/location_service.dart';
 import 'utils/constants.dart';
@@ -34,7 +34,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   double? _lat;
   double? _lng;
-  GoogleMapController? _googleMapCtrl;
+  MapController? _googleMapCtrl;
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _searchDebounce;
 
@@ -638,7 +638,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _searchResults = [];
     });
     _googleMapCtrl
-        ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lng), 14.0));
+        ?.animateToLatLng(LatLng(lat, lng), zoom: 14.0);
   }
 
   Future<void> _reverseGeocode(double lat, double lng) async {
@@ -703,8 +703,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _lat = position.latitude;
         _lng = position.longitude;
       });
-      _googleMapCtrl?.animateCamera(CameraUpdate.newLatLngZoom(
-          LatLng(position.latitude, position.longitude), 14.0));
+      _googleMapCtrl?.animateToLatLng(
+          LatLng(position.latitude, position.longitude), zoom: 14.0);
       await _reverseGeocode(position.latitude, position.longitude);
     } catch (e) {
       if (mounted) {
@@ -1047,17 +1047,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 borderRadius: BorderRadius.circular(16),
                 child: Stack(
                   children: [
-                    GoogleMap(
-                      onMapCreated: (c) => _googleMapCtrl = c,
-                      initialCameraPosition: CameraPosition(
-                        target: _lat != null && _lng != null
-                            ? LatLng(_lat!, _lng!)
-                            : const LatLng(20.5937, 78.9629),
-                        zoom: _lat != null && _lng != null ? 14.0 : 4.0,
-                      ),
-                      mapType: MapType.normal,
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: false,
+                    AppMapView(
+                      onMapReady: (c) => _googleMapCtrl = c,
+                      initialCenter: _lat != null && _lng != null
+                          ? LatLng(_lat!, _lng!)
+                          : const LatLng(20.5937, 78.9629),
+                      initialZoom: _lat != null && _lng != null ? 14.0 : 4.0,
                       onTap: (point) {
                         setState(() {
                           _lat = point.latitude;
@@ -1066,15 +1061,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         _reverseGeocode(point.latitude, point.longitude);
                       },
                       markers: _lat != null && _lng != null
-                          ? {
-                              Marker(
-                                markerId: const MarkerId('selected'),
+                          ? [
+                              SimpleMarker(
+                                id: 'selected',
                                 position: LatLng(_lat!, _lng!),
-                                icon: BitmapDescriptor.defaultMarkerWithHue(
-                                    BitmapDescriptor.hueOrange),
+                                color: Colors.orange,
                               ),
-                            }
-                          : {},
+                            ]
+                          : [],
                     ),
                     Positioned(
                       right: 12,

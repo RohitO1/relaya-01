@@ -120,6 +120,16 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   void _startLobbySweepTimer() {
     _lobbySweepTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       try {
+        // STEP 1: Evict stale members (force-killed apps stop sending last_seen heartbeats).
+        // The DB trigger auto_close_empty_chatroom fires after each DELETE and
+        // removes the room if it becomes empty.
+        await _sb
+            .from('chatroom_members')
+            .delete()
+            .lt('last_seen',
+                DateTime.now().subtract(const Duration(minutes: 2)).toUtc().toIso8601String());
+
+        // STEP 2: Final safety net - delete rooms with no members at all
         final roomsRes = await _sb.from('chatrooms').select('id, created_at');
         if (roomsRes.isEmpty) return;
 
@@ -148,6 +158,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
       }
     });
   }
+
 
   Future<void> _loadRooms() async {
     try {

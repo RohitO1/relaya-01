@@ -130,18 +130,19 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
 
-      // Reverse geocode to get a human-readable name
+      // Reverse geocode to get a city/district name instead of POI
       String locationName = 'My Location';
       String? gpsDistrict;
       String? gpsState;
       try {
-        final results = await locationService.searchLocations(
-          '${position.latitude},${position.longitude}',
-        );
-        if (results.isNotEmpty) {
-          locationName = results.first['name'] ?? 'My Location';
-          gpsDistrict = results.first['district'];
-          gpsState = results.first['state'];
+        final geocoded = await locationService.reverseGeocode(position.latitude, position.longitude);
+        if (geocoded != null && geocoded.isNotEmpty) {
+          final parts = geocoded.split(',');
+          gpsDistrict = parts.first.trim();
+          if (parts.length > 1) {
+            gpsState = parts[1].trim();
+          }
+          locationName = gpsDistrict;
         }
       } catch (_) {}
 

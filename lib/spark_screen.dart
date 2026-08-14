@@ -6,7 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'utils/mapbox_helpers.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -906,28 +906,43 @@ class _SparkScreenState extends State<SparkScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: false,
+      extendBody: true,
       backgroundColor:
           isDoodleMode(context) ? DoodleColors.cream : SparkColors.bg,
-      body: Stack(
+      body: SafeArea(
+        top: true,
+        bottom: false,
+        child: Stack(
+        fit: StackFit.expand,
         children: [
           // 1. Map View (Full Screen Background)
-          if (_activeView == 'map') Positioned.fill(child: _buildMapView()),
+          if (_activeView == 'map') _buildMapView(),
 
           // 2. Foreground Content
-          SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                _buildHeader(),
-                if (_activeView == 'list') Expanded(child: _buildListView()),
-              ],
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: _activeView == 'list' ? 0 : null,
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                mainAxisSize: _activeView == 'map'
+                    ? MainAxisSize.min
+                    : MainAxisSize.max,
+                children: [
+                  _buildHeader(),
+                  if (_activeView == 'list') Expanded(child: _buildListView()),
+                ],
+              ),
             ),
           ),
 
           // Progress Bar (Mock at top)
           _buildScrollProgress(),
         ],
-      ),
+      )),
       floatingActionButton: null,
     );
   }
@@ -1030,40 +1045,37 @@ class _SparkScreenState extends State<SparkScreen>
               ],
             ),
           ),
-          GestureDetector(
-            onTap: () => setState(
-                () => _activeView = _activeView == 'list' ? 'map' : 'list'),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: bgBoxColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                    color: borderBoxColor, width: doodle ? 1.5 : 1.0),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                      _activeView == 'list'
-                          ? Icons.map_outlined
-                          : Icons.list_rounded,
-                      color: iconColor,
-                      size: 16),
-                  const SizedBox(width: 6),
-                  Text(_activeView == 'list' ? 'Map View' : 'List View',
-                      style: doodle
-                          ? DoodleFonts.body(
-                              color: iconColor,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700)
-                          : GoogleFonts.inter(
-                              color: iconColor,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
-                ],
+          // Only show the List View toggle when on the list view
+          if (_activeView == 'list')
+            GestureDetector(
+              onTap: () => setState(
+                  () => _activeView = _activeView == 'list' ? 'map' : 'list'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: bgBoxColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: borderBoxColor, width: doodle ? 1.5 : 1.0),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.map_outlined, color: iconColor, size: 16),
+                    const SizedBox(width: 6),
+                    Text('Map View',
+                        style: doodle
+                            ? DoodleFonts.body(
+                                color: iconColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700)
+                            : GoogleFonts.inter(
+                                color: iconColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600)),
+                  ],
+                ),
               ),
             ),
-          )
         ],
       ),
     );
@@ -2761,6 +2773,11 @@ class _SparkScreenState extends State<SparkScreen>
     return _SparkMapView(
       isDark: _isMapDark,
       onThemeToggle: (val) => setState(() => _isMapDark = val),
+      rushIns: _rushIns,
+      onItemTap: _showDetailSheet,
+      onJoin: _handleJoin,
+      onCreateTap: _showCreateModal,
+      onSwitchToList: () => setState(() => _activeView = 'list'),
     );
   }
 
@@ -3809,317 +3826,172 @@ class _Orb extends StatelessWidget {
 }
 
 // ==========================================
-// MAP VIEW
+// MAP VIEW  — migoMaps style
 // ==========================================
 class _SparkMapView extends StatefulWidget {
   final bool isDark;
   final ValueChanged<bool> onThemeToggle;
+  final List<SparkItem> rushIns;
+  final void Function(SparkItem) onItemTap;
+  final void Function(SparkItem) onJoin;
+  final VoidCallback onCreateTap;
+  final VoidCallback onSwitchToList;
 
-  const _SparkMapView({required this.isDark, required this.onThemeToggle});
+  const _SparkMapView({
+    required this.isDark,
+    required this.onThemeToggle,
+    required this.rushIns,
+    required this.onItemTap,
+    required this.onJoin,
+    required this.onCreateTap,
+    required this.onSwitchToList,
+  });
+
   @override
   State<_SparkMapView> createState() => _SparkMapViewState();
 }
 
 class _SparkMapViewState extends State<_SparkMapView> {
-  GoogleMapController? _mapController;
-  String _layer = 'street';
-  bool _showLayersBox = false;
+  MapController? _mapController;
   LatLng? _actualLocation;
-
   bool _showDropdown = false;
+  bool _searchVisible = false; // toggles the floating search bar
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _debounce;
+  final TextEditingController _searchCtrl = TextEditingController();
+
+  // Filter state
+  String _mapFilter = 'all'; // 'all', 'rush', 'activity', 'joined'
+
+  // Zoom tracking for dynamic markers
+  double _currentZoom = 13.0;
+
+  // People nearby
+  int _nearbyPeople = 0;
+  Timer? _nearbyTimer;
 
   @override
   void initState() {
     super.initState();
     _fetchActualLocation();
+    _fetchNearbyPeople();
+    _nearbyTimer = Timer.periodic(const Duration(minutes: 2), (_) => _fetchNearbyPeople());
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _nearbyTimer?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SparkMapView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Refresh markers when rush-in data changes
+    if (oldWidget.rushIns != widget.rushIns) {
+      _updateMapMarkers();
+    }
   }
 
   Future<void> _fetchActualLocation() async {
     try {
       final pos = await Geolocator.getCurrentPosition(
-          locationSettings:
-              const LocationSettings(accuracy: LocationAccuracy.high));
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
       if (mounted) {
         setState(() => _actualLocation = LatLng(pos.latitude, pos.longitude));
-        _mapController
-            ?.animateCamera(CameraUpdate.newLatLngZoom(_actualLocation!, 14.0));
+        _mapController?.animateToLatLng(_actualLocation!, zoom: 14.0);
+        _updateMapMarkers();
       }
     } catch (_) {
-      // Fallback to active location if GPS fails or permission denied
-      if (mounted) {
-        final lat = locationService.activeLat;
-        final lng = locationService.activeLng;
-        if (lat != null && lng != null) {
-          setState(() => _actualLocation = LatLng(lat, lng));
-          _mapController?.animateCamera(
-              CameraUpdate.newLatLngZoom(_actualLocation!, 14.0));
-        }
+      final lat = locationService.activeLat;
+      final lng = locationService.activeLng;
+      if (lat != null && lng != null && mounted) {
+        setState(() => _actualLocation = LatLng(lat, lng));
+        _mapController?.animateToLatLng(_actualLocation!, zoom: 14.0);
+        _updateMapMarkers();
       }
     }
   }
 
-  String _getTileUrl() {
-    switch (_layer) {
-      case 'satellite':
-        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      case 'terrain':
-        return 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
-      case 'cycling':
-        return 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png';
-      default:
-        return 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
-    }
+  Future<void> _fetchNearbyPeople() async {
+    try {
+      final sb = Supabase.instance.client;
+      final uid = sb.auth.currentUser?.id;
+      if (uid == null) return;
+      // Count profiles active in last 15 minutes, excluding self
+      final cutoff = DateTime.now().subtract(const Duration(minutes: 15)).toIso8601String();
+      final result = await sb
+          .from('profiles')
+          .select('id')
+          .neq('id', uid)
+          .gte('updated_at', cutoff);
+      if (mounted) setState(() => _nearbyPeople = (result as List).length);
+    } catch (_) {}
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        ColorFiltered(
-          colorFilter: _layer == 'street' && widget.isDark
-              ? const ColorFilter.matrix([
-                  -1,
-                  0,
-                  0,
-                  0,
-                  255,
-                  0,
-                  -1,
-                  0,
-                  0,
-                  255,
-                  0,
-                  0,
-                  -1,
-                  0,
-                  255,
-                  0,
-                  0,
-                  0,
-                  1,
-                  0
-                ])
-              : const ColorFilter.matrix(
-                  [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]),
-          child: GoogleMap(
-            onMapCreated: (c) => _mapController = c,
-            initialCameraPosition: CameraPosition(
-              target: _actualLocation ??
-                  LatLng(locationService.activeLat ?? 20.5937,
-                      locationService.activeLng ?? 78.9629),
-              zoom: 13,
-            ),
-            mapType: MapType.normal,
-            myLocationEnabled: true,
-            zoomControlsEnabled: false,
-            myLocationButtonEnabled: false,
-            markers: {
-              if (_actualLocation != null)
-                Marker(
-                  markerId: const MarkerId('me'),
-                  position: _actualLocation!,
-                  icon: BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueAzure),
-                ),
-              ...sparkDataStore.values
-                  .where((v) => !(v.isAnonymous && !v.isApproved))
-                  .map((v) => Marker(
-                        markerId: MarkerId(v.id),
-                        position: LatLng(v.lat, v.lng),
-                        icon: BitmapDescriptor.defaultMarkerWithHue(
-                          v.isApproved
-                              ? BitmapDescriptor.hueGreen
-                              : BitmapDescriptor.hueOrange,
-                        ),
-                        onTap: () {
-                          final parent = context
-                              .findAncestorStateOfType<_SparkScreenState>();
-                          if (parent != null) parent._showDetailSheet(v);
-                        },
-                      )),
-            },
-          ),
-        ),
-
-        // Search & Mode
-        Positioned(top: 100, left: 16, right: 16, child: _buildMapSearch()),
-        if (_showDropdown)
-          Positioned(
-            top: 150,
-            left: 16,
-            right: 66,
-            child: _buildSearchResults(),
-          ),
-
-        // Layer button
-        Positioned(
-            bottom: 120,
-            left: 16,
-            child: _buildMapControlBtn(Icons.layers,
-                () => setState(() => _showLayersBox = !_showLayersBox))),
-        if (_showLayersBox)
-          Positioned(bottom: 170, left: 16, child: _buildLayerBox()),
-
-        // My loc button
-        Positioned(
-            bottom: 120,
-            right: 16,
-            child: _buildMapControlBtn(Icons.my_location, () async {
-              try {
-                bool serviceEnabled =
-                    await Geolocator.isLocationServiceEnabled();
-                if (!serviceEnabled) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: const Row(children: [
-                        Icon(Icons.location_off, color: Colors.white, size: 18),
-                        SizedBox(width: 8),
-                        Expanded(child: Text('Please enable location services'))
-                      ]),
-                      backgroundColor: Colors.red.shade700,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ));
-                  }
-                  return;
-                }
-                LocationPermission permission =
-                    await Geolocator.checkPermission();
-                if (permission == LocationPermission.denied) {
-                  permission = await Geolocator.requestPermission();
-                  if (permission == LocationPermission.denied) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: const Row(children: [
-                          Icon(Icons.not_listed_location,
-                              color: Colors.white, size: 18),
-                          SizedBox(width: 8),
-                          Expanded(child: Text('Location permission denied'))
-                        ]),
-                        backgroundColor: Colors.orange.shade800,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ));
-                    }
-                    return;
-                  }
-                }
-                if (permission == LocationPermission.deniedForever) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: const Row(children: [
-                        Icon(Icons.settings, color: Colors.white, size: 18),
-                        SizedBox(width: 8),
-                        Expanded(
-                            child: Text(
-                                'Location permanently denied. Enable in settings.'))
-                      ]),
-                      backgroundColor: Colors.red.shade700,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      action: SnackBarAction(
-                          label: 'Settings',
-                          textColor: Colors.white,
-                          onPressed: () => Geolocator.openAppSettings()),
-                    ));
-                  }
-                  return;
-                }
-                final pos = await Geolocator.getCurrentPosition(
-                    locationSettings: const LocationSettings(
-                        accuracy: LocationAccuracy.high,
-                        timeLimit: Duration(seconds: 15)));
-                _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
-                    LatLng(pos.latitude, pos.longitude), 15.0));
-
-                String locationText =
-                    'Location: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
-                try {
-                  final reverseUrl =
-                      'https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.latitude}&lon=${pos.longitude}&addressdetails=1';
-                  final res = await http.get(Uri.parse(reverseUrl),
-                      headers: {'User-Agent': 'RelayaApp/1.0'});
-                  if (res.statusCode == 200) {
-                    final data = jsonDecode(res.body);
-                    final address = data['address'];
-                    if (address != null) {
-                      final local = address['hospital'] ??
-                          address['amenity'] ??
-                          address['mall'] ??
-                          address['building'] ??
-                          address['neighbourhood'] ??
-                          address['suburb'] ??
-                          address['village'] ??
-                          address['city_district'] ??
-                          '';
-                      final district = address['state_district'] ??
-                          address['county'] ??
-                          address['city'] ??
-                          '';
-                      final state = address['state'] ?? '';
-
-                      List<String> parts = [];
-                      if (local.toString().isNotEmpty) parts.add('Near $local');
-                      if (district.toString().isNotEmpty) parts.add(district);
-                      if (state.toString().isNotEmpty) parts.add(state);
-
-                      if (parts.isNotEmpty) {
-                        locationText = parts.join(', ');
-                      } else if (data['display_name'] != null) {
-                        locationText = data['display_name']
-                            .toString()
-                            .split(',')
-                            .take(2)
-                            .join(',');
-                      }
-                    }
-                  }
-                } catch (_) {}
-
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Row(children: [
-                      const Icon(Icons.check_circle,
-                          color: Colors.white, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child: Text(locationText,
-                              maxLines: 2, overflow: TextOverflow.ellipsis))
-                    ]),
-                    backgroundColor: SparkColors.cyan,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    duration: const Duration(seconds: 3),
-                  ));
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Row(children: [
-                      const Icon(Icons.error_outline,
-                          color: Colors.white, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text('Could not get location: $e'))
-                    ]),
-                    backgroundColor: Colors.red.shade700,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ));
-                }
-              }
-            })),
-      ],
-    );
+  void _updateMapMarkers() {
+    if (_mapController == null) return;
+    _mapController!.setMarkers(_buildMarkers());
   }
 
-  final TextEditingController _searchCtrl = TextEditingController();
+  List<SimpleMarker> _buildMarkers() {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    final filtered = widget.rushIns.where((item) {
+      switch (_mapFilter) {
+        case 'rush':
+          return item.type == 'rush';
+        case 'activity':
+          return item.type == 'act';
+        case 'joined':
+          return item.isApproved;
+        default:
+          return true;
+      }
+    }).toList();
+
+    return filtered.map((item) {
+      Color pinColor;
+      if (item.isApproved) {
+        pinColor = const Color(0xFF4ADE80); // green for joined
+      } else if (item.type == 'rush') {
+        pinColor = const Color(0xFFFF6B00); // orange for rush-in
+      } else {
+        pinColor = const Color(0xFF4E8BFF); // blue for activity
+      }
+
+      final memberCount = item.joinedMembers;
+      final label = _currentZoom >= 14.0 ? '' : (memberCount > 0 ? '${item.title.length > 10 ? item.title.substring(0, 10) + '…' : item.title} · $memberCount 👥' : item.title);
+
+      return SimpleMarker(
+        id: item.id,
+        position: LatLng(item.lat, item.lng),
+        color: pinColor,
+        label: label,
+        imageUrl: item.imageUrl,
+        emoji: _getEmojiForTags(item.tags),
+        onTap: () => widget.onItemTap(item),
+      );
+    }).toList();
+  }
+
+  String _getEmojiForTags(List<String> tags) {
+    if (tags.isEmpty) return '🔥';
+    final tagStr = tags.join(' ').toLowerCase();
+    if (tagStr.contains('sport') || tagStr.contains('soccer') || tagStr.contains('cricket')) return '⚽';
+    if (tagStr.contains('music') || tagStr.contains('concert')) return '🎵';
+    if (tagStr.contains('food') || tagStr.contains('dinner') || tagStr.contains('cafe')) return '🍔';
+    if (tagStr.contains('outdoor') || tagStr.contains('hike') || tagStr.contains('nature')) return '🌲';
+    if (tagStr.contains('party') || tagStr.contains('club') || tagStr.contains('dance')) return '🎉';
+    if (tagStr.contains('study') || tagStr.contains('book')) return '📚';
+    if (tagStr.contains('game') || tagStr.contains('esport')) return '🎮';
+    if (tagStr.contains('movie') || tagStr.contains('film')) return '🍿';
+    if (tagStr.contains('art') || tagStr.contains('paint')) return '🎨';
+    return '🔥';
+  }
+
+  // ── Search ───────────────────────────────────────────────────────────────
 
   void _onSearchChanged(String val) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
@@ -4127,39 +3999,30 @@ class _SparkMapViewState extends State<_SparkMapView> {
       if (val.trim().isNotEmpty) {
         _performSearch(val.trim());
       } else {
-        setState(() => _searchResults = []);
+        if (mounted) setState(() => _searchResults = []);
       }
     });
   }
 
   Future<void> _performSearch(String query) async {
     if (query.trim().length < 2) {
-      setState(() {
-        _searchResults.clear();
-        _showDropdown = false;
-      });
+      if (mounted) setState(() { _searchResults.clear(); _showDropdown = false; });
       return;
     }
     try {
       final encoded = Uri.encodeComponent(query);
-      final url =
-          'https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=5&addressdetails=1';
-
-      final res = await http
-          .get(Uri.parse(url), headers: {'User-Agent': 'RelayaApp/1.0'});
+      final url = 'https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=5&addressdetails=1';
+      final res = await http.get(Uri.parse(url), headers: {'User-Agent': 'RelayaApp/1.0'});
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as List;
         if (mounted) {
           setState(() {
-            _searchResults = data
-                .map((it) => {
-                      'display_name':
-                          it['display_name'].toString().split(',').first.trim(),
-                      'full_name': it['display_name'].toString(),
-                      'lat': double.parse(it['lat'].toString()),
-                      'lon': double.parse(it['lon'].toString()),
-                    })
-                .toList();
+            _searchResults = data.map((it) => {
+              'display_name': it['display_name'].toString().split(',').first.trim(),
+              'full_name': it['display_name'].toString(),
+              'lat': double.parse(it['lat'].toString()),
+              'lon': double.parse(it['lon'].toString()),
+            }).toList();
             _showDropdown = _searchResults.isNotEmpty;
           });
         }
@@ -4168,224 +4031,434 @@ class _SparkMapViewState extends State<_SparkMapView> {
   }
 
   void _selectResult(Map<String, dynamic> res) {
-    final lat = res['lat'] as double;
-    final lon = res['lon'] as double;
-
-    setState(() {
-      _searchResults = [];
-      _showDropdown = false;
-      _searchCtrl.text = res['display_name'];
-    });
+    setState(() { _searchResults = []; _showDropdown = false; _searchCtrl.text = res['display_name']; });
     FocusScope.of(context).unfocus();
-    _mapController
-        ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lon), 15.0));
+    _mapController?.animateToLatLng(LatLng(res['lat'] as double, res['lon'] as double), zoom: 15.0);
   }
 
-  Future<void> _searchAndMove(String query) async {
-    if (query.isEmpty) return;
+  Future<void> _recenterToLocation() async {
     try {
-      final encoded = Uri.encodeComponent(query);
-      final url =
-          'https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=1';
-      final res = await http
-          .get(Uri.parse(url), headers: {'User-Agent': 'RelayaApp/1.0'});
-      final List data = jsonDecode(res.body);
-      if (data.isNotEmpty) {
-        final lat = double.parse(data[0]['lat'].toString());
-        final lon = double.parse(data[0]['lon'].toString());
-        _mapController
-            ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lon), 14.0));
-        setState(() {
-          _searchResults = [];
-          _showDropdown = false;
-        });
+      final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 10)));
+      _mapController?.animateToLatLng(LatLng(pos.latitude, pos.longitude), zoom: 15.0);
+    } catch (_) {
+      if (_actualLocation != null) {
+        _mapController?.animateToLatLng(_actualLocation!, zoom: 15.0);
       }
-    } catch (_) {}
+    }
   }
 
-  Widget _buildMapSearch() {
-    return Row(
+  // ── Build ─────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    // Set base offset exactly to navbar height (approx 80) for rock bottom alignment
+    final bottomPad = (isDoodleMode(context) ? 84 : 80).toDouble();
+
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        Expanded(
-          child: Container(
-            height: 42,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-                color: widget.isDark
-                    ? const Color(0xEB111827)
-                    : Colors.white.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color:
-                        widget.isDark ? SparkColors.gborder : Colors.black12)),
-            child: Row(
-              children: [
-                Icon(Icons.search,
-                    color: widget.isDark ? SparkColors.muted : Colors.black54,
-                    size: 16),
-                const SizedBox(width: 10),
-                Expanded(
-                    child: TextField(
-                        controller: _searchCtrl,
-                        onChanged: _onSearchChanged,
-                        onSubmitted: _searchAndMove,
-                        style: TextStyle(
-                            color:
-                                widget.isDark ? Colors.white : Colors.black87,
-                            fontSize: 13),
-                        decoration: InputDecoration(
-                            hintText: 'Search places...',
-                            hintStyle: TextStyle(
-                                color: widget.isDark
-                                    ? SparkColors.muted
-                                    : Colors.black54),
-                            border: InputBorder.none,
-                            isDense: true))),
-              ],
+        // ── 1. Mapbox Map ──
+        AppMapView(
+          onMapReady: (c) {
+            _mapController = c;
+            _updateMapMarkers();
+          },
+          onZoomChanged: (zoom) {
+            // Re-render markers if zooming across the 14.0 boundary
+            final crossed = (_currentZoom < 14.0 && zoom >= 14.0) || (_currentZoom >= 14.0 && zoom < 14.0);
+            _currentZoom = zoom;
+            if (crossed) {
+              _updateMapMarkers();
+            }
+          },
+          initialCenter: _actualLocation ??
+              LatLng(locationService.activeLat ?? 20.5937,
+                  locationService.activeLng ?? 78.9629),
+          initialZoom: 13,
+          myLocationEnabled: true,
+          markers: _buildMarkers(),
+        ),
+
+        // ── 2. Floating search bar (slides in when _searchVisible) ──
+        if (_searchVisible)
+          Positioned(
+            bottom: bottomPad + 170,
+            left: 16,
+            right: 16,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: _searchVisible ? 1.0 : 0.0,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSearchBar(),
+                  if (_showDropdown) ...[const SizedBox(height: 6), _buildSearchDropdown()],
+                ],
+              ),
             ),
           ),
+
+        // ── 3. Filter Chips — at the top below header ──
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 72,
+          left: 0,
+          right: 0,
+          child: _buildFilterChips(),
         ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () => widget.onThemeToggle(!widget.isDark),
-          child: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-                color: widget.isDark
-                    ? const Color(0xEB111827)
-                    : Colors.white.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color:
-                        widget.isDark ? SparkColors.gborder : Colors.black12)),
-            child: Icon(widget.isDark ? Icons.dark_mode : Icons.wb_sunny,
-                color: widget.isDark ? SparkColors.yellow : Colors.orange,
-                size: 16),
+
+        // ── 5. People Nearby Pill ──
+        if (_nearbyPeople > 0)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 124,
+            right: 16,
+            child: _buildPeopleNearbyPill(),
           ),
-        )
+
+        // ── 6. Bottom row (Search, See List, Add, Go To) perfectly aligned ──
+        Positioned(
+          bottom: bottomPad,
+          left: 16,
+          right: 16,
+          child: Stack(
+            alignment: Alignment.bottomCenter,
+            clipBehavior: Clip.none,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Left: Search
+                  _buildSearchIconButton(),
+                  // Right: Add & Go to
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildCreateFab(),
+                      const SizedBox(width: 16),
+                      _buildNavigationArrowButton(),
+                    ],
+                  ),
+                ],
+              ),
+              // Center: See list
+              Positioned(
+                bottom: 8, // slight lift to optically align center with circles
+                child: _buildSeeListPill(),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildSearchResults() {
-    return Container(
-      constraints: const BoxConstraints(maxHeight: 220),
-      decoration: BoxDecoration(
-        color: widget.isDark
-            ? const Color(0xEB111827)
-            : Colors.white.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: widget.isDark ? SparkColors.gborder : Colors.black12),
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))
-        ],
-      ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        itemCount: _searchResults.length,
-        separatorBuilder: (_, __) => Divider(
-            color: widget.isDark ? Colors.white10 : Colors.black12, height: 1),
-        itemBuilder: (ctx, i) {
-          final res = _searchResults[i];
-          return ListTile(
-            dense: true,
-            leading: Icon(Icons.location_on,
-                color: widget.isDark ? SparkColors.muted : Colors.black54,
-                size: 18),
-            title: Text(res['display_name'],
-                style: TextStyle(
-                    color: widget.isDark ? Colors.white : Colors.black87,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold)),
-            subtitle: Text(res['full_name'],
-                style: TextStyle(
-                    color: widget.isDark ? Colors.white38 : Colors.black54,
-                    fontSize: 10),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-            onTap: () => _selectResult(res),
-          );
-        },
+  // ── Widgets ───────────────────────────────────────────────────────────────
+
+  /// Search icon button — tapping toggles the floating search bar
+  Widget _buildSearchIconButton() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _searchVisible = !_searchVisible;
+              if (!_searchVisible) {
+                _searchCtrl.clear();
+                _searchResults = [];
+                _showDropdown = false;
+              }
+            });
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: _searchVisible
+                  ? const Color(0xFFFF6B00)
+                  : const Color(0xFF0D1527),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: _searchVisible
+                    ? const Color(0xFFFF6B00)
+                    : Colors.white.withValues(alpha: 0.15),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _searchVisible
+                      ? const Color(0xFFFF6B00).withValues(alpha: 0.5)
+                      : Colors.black.withValues(alpha: 0.4),
+                  blurRadius: _searchVisible ? 16 : 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(
+              _searchVisible ? Icons.close_rounded : Icons.search_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text('Search', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          height: 46,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xCC0D1527),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.search, color: Color(0xFF6B7280), size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  autofocus: _searchVisible,
+                  controller: _searchCtrl,
+                  onChanged: _onSearchChanged,
+                  onSubmitted: (q) => _performSearch(q),
+                  style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Search places, areas...',
+                    hintStyle: GoogleFonts.inter(color: const Color(0xFF6B7280), fontSize: 14),
+                    border: InputBorder.none,
+                    isDense: true,
+                  ),
+                ),
+              ),
+              if (_searchCtrl.text.isNotEmpty)
+                GestureDetector(
+                  onTap: () {
+                    _searchCtrl.clear();
+                    setState(() { _searchResults = []; _showDropdown = false; });
+                  },
+                  child: const Icon(Icons.close, color: Color(0xFF6B7280), size: 16),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildMapControlBtn(IconData icon, VoidCallback onTap) {
+  Widget _buildSearchDropdown() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          constraints: const BoxConstraints(maxHeight: 240),
+          decoration: BoxDecoration(
+            color: const Color(0xF00D1527),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+          child: ListView.separated(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: _searchResults.length,
+            separatorBuilder: (_, __) => Container(height: 1, color: Colors.white.withValues(alpha: 0.06)),
+            itemBuilder: (_, i) {
+              final res = _searchResults[i];
+              return ListTile(
+                dense: true,
+                leading: const Icon(Icons.place_outlined, color: Color(0xFF6B7280), size: 18),
+                title: Text(res['display_name'], style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                subtitle: Text(res['full_name'], style: GoogleFonts.inter(color: const Color(0xFF6B7280), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: () => _selectResult(res),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPeopleNearbyPill() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xCC0D1527),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Tiny avatar stack indicator
+              Stack(
+                children: [
+                  Container(width: 20, height: 20, decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF3B82F6))),
+                  Positioned(left: 10, child: Container(width: 20, height: 20, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF8B5CF6), border: Border.all(color: const Color(0xFF0D1527), width: 1.5)))),
+                ],
+              ),
+              const SizedBox(width: 8),
+              Text('$_nearbyPeople people',
+                  style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChips() {
+    final filters = [
+      ('all', '🔥 All'),
+      ('rush', '⚡ Rush-Ins'),
+      ('activity', '📅 Activities'),
+      ('joined', '✅ Joined'),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: filters.map((f) {
+          final isActive = _mapFilter == f.$1;
+          return GestureDetector(
+            onTap: () {
+              setState(() => _mapFilter = f.$1);
+              _updateMapMarkers();
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? const Color(0xFFFF6B00)
+                    : const Color(0xCC0D1527),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isActive ? const Color(0xFFFF6B00) : Colors.white.withValues(alpha: 0.12),
+                ),
+                boxShadow: isActive
+                    ? [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.4), blurRadius: 10, spreadRadius: 1)]
+                    : [],
+              ),
+              child: Text(
+                f.$2,
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildSeeListPill() {
+    return GestureDetector(
+      onTap: widget.onSwitchToList,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xCC0D1527),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.format_list_bulleted_rounded, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Text('See list', style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavigationArrowButton() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: _recenterToLocation,
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D1527),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
+            ),
+            child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 22),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text('Go to', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  Widget _buildCreateFab() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: widget.onCreateTap,
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D1527),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
+            ),
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text('Add', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  Widget _buildCircleButton({required IconData icon, required VoidCallback onTap, String? tooltip}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 42,
-        height: 42,
+        width: 44,
+        height: 44,
         decoration: BoxDecoration(
-            color: widget.isDark
-                ? const Color(0xEB111827)
-                : Colors.white.withValues(alpha: 0.9),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: widget.isDark ? SparkColors.gborder : Colors.black12)),
-        child: Icon(icon,
-            color: widget.isDark ? SparkColors.txt2 : Colors.black87, size: 16),
-      ),
-    );
-  }
-
-  Widget _buildLayerBox() {
-    return Container(
-      width: 140,
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-          color: widget.isDark
-              ? const Color(0xF2111827)
-              : Colors.white.withValues(alpha: 0.95),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-              color: widget.isDark ? SparkColors.gborder : Colors.black12)),
-      child: Column(
-        children: [
-          _layerOpt('street', 'Street', Icons.add_road),
-          _layerOpt('terrain', 'Terrain', Icons.terrain),
-          _layerOpt('satellite', 'Satellite', Icons.satellite_alt),
-          _layerOpt('cycling', 'Cycling', Icons.pedal_bike),
-        ],
-      ),
-    );
-  }
-
-  Widget _layerOpt(String key, String label, IconData icon) {
-    bool active = _layer == key;
-    return GestureDetector(
-      onTap: () => setState(() {
-        _layer = key;
-        _showLayersBox = false;
-      }),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-            color: active
-                ? SparkColors.orange
-                    .withValues(alpha: widget.isDark ? 0.1 : 0.2)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10)),
-        child: Row(
-          children: [
-            Icon(icon,
-                color: active
-                    ? SparkColors.orange
-                    : (widget.isDark ? SparkColors.txt2 : Colors.black87),
-                size: 14),
-            const SizedBox(width: 8),
-            Text(label,
-                style: TextStyle(
-                    color: active
-                        ? SparkColors.orange
-                        : (widget.isDark ? SparkColors.txt2 : Colors.black87),
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
-          ],
+          color: const Color(0xCC0D1527),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 2))],
         ),
+        child: Icon(icon, color: Colors.white70, size: 18),
       ),
     );
   }
@@ -4396,6 +4469,7 @@ class _SparkMapViewState extends State<_SparkMapView> {
 // ==========================================
 class _SparkDetailSheet extends StatelessWidget {
   final SparkItem item;
+
   final Function(SparkItem) onJoin;
   final Function(SparkItem) onHide;
   const _SparkDetailSheet(
@@ -4860,7 +4934,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
     locationService.activeLat ?? 20.5937,
     locationService.activeLng ?? 78.9629,
   );
-  GoogleMapController? _mapController;
+  MapController? _mapController;
   bool _fetchingGps = false;
 
   @override
@@ -4890,7 +4964,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           _fetchingGps = false;
         });
         _mapController
-            ?.animateCamera(CameraUpdate.newLatLngZoom(_pinLocation, 16.0));
+            ?.animateToLatLng(_pinLocation, zoom: 16.0);
       } else {
         if (mounted) setState(() => _fetchingGps = false);
       }
@@ -4911,7 +4985,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           _fetchingGps = false;
         });
         _mapController
-            ?.animateCamera(CameraUpdate.newLatLngZoom(_pinLocation, 16.0));
+            ?.animateToLatLng(_pinLocation, zoom: 16.0);
       }
     } catch (_) {
       // Fall back to saved location from service
@@ -4924,7 +4998,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
             _fetchingGps = false;
           });
           _mapController
-              ?.animateCamera(CameraUpdate.newLatLngZoom(_pinLocation, 14.0));
+              ?.animateToLatLng(_pinLocation, zoom: 14.0);
         } else {
           setState(() => _fetchingGps = false);
         }
@@ -5006,9 +5080,9 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'participant_limit': int.tryParse(_rushSlots.text) ?? 4,
           'is_active': true,
           'is_rush_in': true,
-          'activity_type': 'rush_in',
           'category': 'rush_in',
           'location_name': pinLocationName,
+          'city': locationService.activeLocation.split(',').first.trim(),
           'district': locationService.activeLocation.split(',').first.trim(),
           'state': locationService.activeLocation.split(',').length > 1
               ? locationService.activeLocation.split(',')[1].trim()
@@ -5036,8 +5110,12 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'district',
           'state',
           'is_active',
+          'is_rush_in',
+          'radius_km',
+          'is_anonymous',
           'participant_limit',
-          'activity_type',
+          'expires_at',
+          'duration_hours',
           'created_at'
         ];
         final safePayload = <String, dynamic>{};
@@ -5067,21 +5145,22 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
         final activityId = response['id'].toString();
 
         // 3. Trigger notification blast with resolved landmark
-        try {
-          NotificationService.notifyNearbyActivity(
-            creatorId: uid,
-            activityId: activityId,
-            title: _rushTitle.text.trim(),
-            locationName: pinLocationName,
-            hostName: hostName,
-            lat: _pinLocation.latitude,
-            lng: _pinLocation.longitude,
-            isRushIn: true,
-            activityCity: city.split(',').first.trim(),
-            radiusKm: _radius,
-            isAnonymous: _isAnonymous,
-          );
-        } catch (_) {}
+        // Note: intentionally not awaited so UI doesn't block
+        NotificationService.notifyNearbyActivity(
+          creatorId: uid,
+          activityId: activityId,
+          title: _rushTitle.text.trim(),
+          locationName: pinLocationName,
+          hostName: hostName,
+          lat: _pinLocation.latitude,
+          lng: _pinLocation.longitude,
+          isRushIn: true,
+          activityCity: city.split(',').first.trim(),
+          radiusKm: _radius,
+          isAnonymous: _isAnonymous,
+        ).catchError((e) {
+          debugPrint('Rush-in notification blast error: $e');
+        });
         if (mounted) {
           Navigator.pop(context, {
             'title': '⚡ Rush-in Created!',
@@ -5118,7 +5197,6 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'participant_limit': int.tryParse(_actSlots.text) ?? 8,
           'is_active': true,
           'is_rush_in': false,
-          'activity_type': 'activity',
           'category': _actCategory.text.trim().isNotEmpty
               ? _actCategory.text.trim()
               : 'General',
@@ -5145,8 +5223,8 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           'district',
           'state',
           'is_active',
+          'is_rush_in',
           'participant_limit',
-          'activity_type',
           'created_at'
         ];
         final safePayload = <String, dynamic>{};
@@ -5303,7 +5381,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text('Radius',
+                    Text('Broadcast Radius (Push Notifications)',
                         style: GoogleFonts.inter(
                             color: SparkColors.txt2,
                             fontSize: 12,
@@ -5492,27 +5570,21 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
             borderRadius: BorderRadius.circular(12),
             child: Stack(
               children: [
-                GoogleMap(
-                  onMapCreated: (c) => _mapController = c,
-                  initialCameraPosition: CameraPosition(
-                    target: _pinLocation,
-                    zoom: 14.0,
-                  ),
-                  mapType: MapType.normal,
+                AppMapView(
+                  onMapReady: (c) => _mapController = c,
+                  initialCenter: _pinLocation,
+                  initialZoom: 14.0,
                   myLocationEnabled: true,
-                  zoomControlsEnabled: false,
-                  myLocationButtonEnabled: false,
                   onTap: (point) {
                     setState(() => _pinLocation = point);
                   },
-                  markers: {
-                    Marker(
-                      markerId: const MarkerId('pin'),
+                  markers: [
+                    SimpleMarker(
+                      id: 'pin',
                       position: _pinLocation,
-                      icon: BitmapDescriptor.defaultMarkerWithHue(
-                          BitmapDescriptor.hueRed),
+                      color: Colors.red,
                     ),
-                  },
+                  ],
                 ),
                 Positioned(
                   bottom: 12,

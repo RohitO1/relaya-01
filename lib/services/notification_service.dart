@@ -53,31 +53,35 @@ class NotificationService {
   }) async {
     try {
       // 1. Check user preferences before sending
-      final profile = await _supabase
-          .from('profiles')
-          .select('notification_settings')
-          .eq('id', userId)
-          .maybeSingle();
+      try {
+        final profile = await _supabase
+            .from('profiles')
+            .select('notification_settings')
+            .eq('id', userId)
+            .maybeSingle();
 
-      if (profile != null && profile['notification_settings'] != null) {
-        final settings = profile['notification_settings'] as Map<String, dynamic>;
-        bool shouldNotify = true;
+        if (profile != null && profile['notification_settings'] != null) {
+          final settings = profile['notification_settings'] as Map<String, dynamic>;
+          bool shouldNotify = true;
 
-        if (type == NotificationType.match) shouldNotify = settings['matches'] ?? true;
-        if (type == NotificationType.nearbyActivity) shouldNotify = settings['nearby_activities'] ?? true;
-        if (type == NotificationType.approval || type == NotificationType.rejection) {
-          shouldNotify = settings['approvals'] ?? true;
+          if (type == NotificationType.match) shouldNotify = settings['matches'] ?? true;
+          if (type == NotificationType.nearbyActivity) shouldNotify = settings['nearby_activities'] ?? true;
+          if (type == NotificationType.approval || type == NotificationType.rejection) {
+            shouldNotify = settings['approvals'] ?? true;
+          }
+          if (type == NotificationType.message || type == NotificationType.compliment) shouldNotify = settings['messages'] ?? true;
+
+          if (!shouldNotify) {
+            debugPrint('Notification suppressed user preferences: $type');
+            return;
+          }
         }
-        if (type == NotificationType.message || type == NotificationType.compliment) shouldNotify = settings['messages'] ?? true;
-
-        if (!shouldNotify) {
-          debugPrint('Notification suppressed user preferences: $type');
-          return;
-        }
+      } catch (e) {
+        debugPrint('Warning: Could not fetch notification_settings. Proceeding to send anyway. Error: $e');
       }
 
       // 2. Insert into notifications table
-      final inserted = await _supabase.from('notifications').insert({
+      await _supabase.from('notifications').insert({
         'user_id': userId,
         'type': type.value,
         'title': title,
@@ -85,32 +89,19 @@ class NotificationService {
         'payload': payload ?? {},
         'is_read': false,
         'created_at': DateTime.now().toIso8601String(),
-      }).select().maybeSingle();
-      
-      if (inserted != null) {
-        try {
-          await _supabase.functions.invoke(
-            'push-notification',
-            body: {
-              'type': 'INSERT',
-              'table': 'notifications',
-              'record': inserted,
-            },
-          );
-          debugPrint('Notification function invoked successfully for $userId');
-        } catch (e) {
-          debugPrint('Error invoking push-notification edge function: $e');
-        }
-      }
+      });
+
       
       debugPrint('Notification sent to $userId: $title');
     } catch (e) {
       debugPrint('Error sending notification: $e');
+      try {
+        await Supabase.instance.client.from('debug_logs').insert({'message': 'Error sending notification: $e'});
+      } catch (_) {}
     }
   }
 
-  /// Notifies multiple users about a nearby activity
-  /// Simple implementation: notifies users in the same city or broad proximity
+  /// Notifies multiple users about a nearby activity using coordinate-based radius check
   static Future<void> notifyNearbyActivity({
     required String creatorId,
     required String activityId,
@@ -125,68 +116,98 @@ class NotificationService {
     bool isAnonymous = false,
   }) async {
     try {
-      // Resolve the location name: use the provided name, or reverse-geocode the pin
-      final resolvedLocation = await _resolveLocationName(locationName, lat, lng);
+      debugPrint('[NotifBlast] Starting notification blast. isRushIn=$isRushIn radius=${radiusKm}km lat=$lat lng=$lng');
 
-      // Fetch users who are NOT the creator and have nearby_activities enabled
+      final resolvedLocation = await _resolveLocationName(locationName, lat, lng);
+      debugPrint('[NotifBlast] Resolved location: $resolvedLocation');
+
+      // Fetch all users except creator — get their coordinates
       final List<dynamic> users = await _supabase
           .from('profiles')
-          .select('id, notification_settings, lat, lng, city')
+          .select('id, notification_settings, lat, lng, city, district')
           .neq('id', creatorId);
 
+      debugPrint('[NotifBlast] Found ${users.length} potential users to notify');
+
+      int notifiedCount = 0;
+      int skippedCount = 0;
+
       for (var user in users) {
-        final userId = user['id'];
-        final settings = user['notification_settings'] as Map<String, dynamic>?;
-        
-        if (settings != null && settings['nearby_activities'] == false) continue;
+        try {
+          final userId = user['id']?.toString();
+          if (userId == null) continue;
 
-        // Check distance if lat/lng available
-        final userLat = user['lat'];
-        final userLng = user['lng'];
-        final userCity = user['city']?.toString();
-        
-        bool shouldNotify = false;
+          // Respect notification settings
+          final settings = user['notification_settings'];
+          if (settings is Map && settings['nearby_activities'] == false) {
+            skippedCount++;
+            continue;
+          }
 
-        if (isRushIn) {
-          // Strict radius check for Rush-ins
+          final userLatRaw = user['lat'];
+          final userLngRaw = user['lng'];
+          final double? userLat = userLatRaw != null
+              ? (userLatRaw is num ? userLatRaw.toDouble() : double.tryParse(userLatRaw.toString()))
+              : null;
+          final double? userLng = userLngRaw != null
+              ? (userLngRaw is num ? userLngRaw.toDouble() : double.tryParse(userLngRaw.toString()))
+              : null;
+
+          bool shouldNotify = false;
+
           if (userLat != null && userLng != null) {
             final distance = _calculateDistance(lat, lng, userLat, userLng);
+            debugPrint('[NotifBlast] User $userId distance: ${distance.toStringAsFixed(2)}km (threshold: ${radiusKm}km)');
             if (distance <= radiusKm) {
               shouldNotify = true;
             }
-          }
-        } else {
-          // City-wide check for Activities
-          if (userCity != null && userCity.toLowerCase() == activityCity.toLowerCase()) {
-            shouldNotify = true;
-          } else if (userLat != null && userLng != null) {
-            // Fallback: Check if they are physically within a 50km radius of the activity
-            final distance = _calculateDistance(lat, lng, userLat, userLng);
-            if (distance <= 50.0) {
+          } else {
+            // No coordinates: for Rush-ins notify anyway (user hasn't shared location)
+            if (isRushIn) {
+              debugPrint('[NotifBlast] User $userId has no coords, notifying by default for Rush-in');
               shouldNotify = true;
             }
           }
-        }
 
-        if (shouldNotify) {
-          final notificationTitle = isAnonymous 
-              ? 'New Activity Nearby! 📍' 
-              : '$hostName created a Rush-in! ⚡';
-          final notificationBody = isAnonymous 
-              ? 'Someone created a rush-in near $resolvedLocation' 
-              : '$title near $resolvedLocation';
+          if (shouldNotify) {
+            final String notificationTitle;
+            final String notificationBody;
+            if (isRushIn) {
+              notificationTitle = isAnonymous
+                  ? 'New Rush-in Nearby! ⚡'
+                  : '$hostName created a Rush-in! ⚡';
+              notificationBody = isAnonymous
+                  ? 'Someone created a rush-in near $resolvedLocation'
+                  : '$title near $resolvedLocation';
+            } else {
+              notificationTitle = isAnonymous
+                  ? 'New Activity Nearby! 📍'
+                  : '$hostName created an Activity! 📅';
+              notificationBody = isAnonymous
+                  ? 'Someone created an activity near $resolvedLocation'
+                  : '$title near $resolvedLocation';
+            }
 
-          await sendNotification(
-            userId: userId,
-            type: NotificationType.nearbyActivity,
-            title: notificationTitle,
-            body: notificationBody,
-            payload: {'activity_id': activityId},
-          );
+            await sendNotification(
+              userId: userId,
+              type: NotificationType.nearbyActivity,
+              title: notificationTitle,
+              body: notificationBody,
+              payload: {'activity_id': activityId},
+            );
+            notifiedCount++;
+            debugPrint('[NotifBlast] ✅ Notified user $userId');
+          } else {
+            skippedCount++;
+          }
+        } catch (innerError) {
+          debugPrint('[NotifBlast] Error processing user ${user['id']}: $innerError');
         }
       }
+
+      debugPrint('[NotifBlast] Done. Notified: $notifiedCount, Skipped: $skippedCount');
     } catch (e) {
-      debugPrint('Error notifying nearby users: $e');
+      debugPrint('[NotifBlast] Fatal error: $e');
     }
   }
 

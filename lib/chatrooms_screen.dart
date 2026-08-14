@@ -118,6 +118,15 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
   void _startLobbySweepTimer() {
     _lobbySweepTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       try {
+        // STEP 1: Evict stale members (force-killed apps stop heartbeating).
+        // DB trigger fires on each DELETE and auto-closes empty rooms.
+        await _sb
+            .from('chatroom_members')
+            .delete()
+            .lt('last_seen',
+                DateTime.now().subtract(const Duration(minutes: 2)).toUtc().toIso8601String());
+
+        // STEP 2: Safety net - delete rooms with no members at all
         final roomsRes = await _sb.from('chatrooms').select('id, created_at');
         if (roomsRes.isEmpty) return;
 
@@ -147,6 +156,7 @@ class _ChatroomsScreenState extends State<ChatroomsScreen> {
       }
     });
   }
+
 
   Future<void> _loadRooms() async {
     try {

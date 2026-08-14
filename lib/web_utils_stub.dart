@@ -1,0 +1,1 @@
+void toggleWebMapDarkMode(bool isDark) {}

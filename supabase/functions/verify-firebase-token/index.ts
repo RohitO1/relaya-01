@@ -19,12 +19,12 @@ Deno.serve(async (req) => {
     if (!idToken) {
       return new Response(
         JSON.stringify({ success: false, error: "Firebase ID token is required." }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
 
     // 1. Fetch Firebase API Key
-    const firebaseApiKey = Deno.env.get("FIREBASE_API_KEY") || "AIzaSyDWD5TXC2wetAqhULay7ziB8eJ0pufFWw4";
+    const firebaseApiKey = Deno.env.get("FIREBASE_API_KEY") || "AIzaSyBpg1lVeQoWwrNZs71yqaGAQDtmm6c4uLI";
 
     // 2. Verify token via Google Identity REST API
     console.log("Verifying ID token with Firebase Auth API...");
@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
       console.error("Firebase token verification failed:", errMsg);
       return new Response(
         JSON.stringify({ success: false, error: errMsg }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
 
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     if (!rawPhone) {
       return new Response(
         JSON.stringify({ success: false, error: "No verified phone number found in the token." }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
 
@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
     console.error("Error in verify-firebase-token:", err.message);
     return new Response(
       JSON.stringify({ success: false, error: err.message }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   }
 });

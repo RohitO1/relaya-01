@@ -9,7 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'utils/mapbox_helpers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'image_upload_service.dart';
@@ -203,7 +203,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   double? _lat, _lng;
   final _cityCtrl = TextEditingController();
   final _stateCtrl = TextEditingController();
-  GoogleMapController? _googleMapCtrl;
+  MapController? _googleMapCtrl;
   final _locSearchCtrl = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _searchDebounce;
@@ -402,7 +402,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       _searchResults = [];
     });
     _googleMapCtrl
-        ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lng), 14.0));
+        ?.animateToLatLng(LatLng(lat, lng), zoom: 14.0);
   }
 
   Future<void> _reverseGeocode(double lat, double lng) async {
@@ -445,8 +445,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         _lat = pos.latitude;
         _lng = pos.longitude;
       });
-      _googleMapCtrl?.animateCamera(CameraUpdate.newLatLngZoom(
-          LatLng(pos.latitude, pos.longitude), 14.0));
+      _googleMapCtrl?.animateToLatLng(
+          LatLng(pos.latitude, pos.longitude), zoom: 14.0);
       await _reverseGeocode(pos.latitude, pos.longitude);
     } catch (e) {
       if (mounted)
@@ -1624,15 +1624,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   border: Border.all(color: _orange.withValues(alpha: 0.25))),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(17),
-                child: GoogleMap(
-                  onMapCreated: (c) => _googleMapCtrl = c,
-                  initialCameraPosition: CameraPosition(
-                    target: LatLng(pinLat, pinLng),
-                    zoom: hasPin ? 13.0 : 4.0,
-                  ),
-                  mapType: MapType.normal,
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: false,
+                child: AppMapView(
+                  onMapReady: (c) => _googleMapCtrl = c,
+                  initialCenter: LatLng(pinLat, pinLng),
+                  initialZoom: hasPin ? 13.0 : 4.0,
                   onTap: (point) {
                     setState(() {
                       _lat = point.latitude;
@@ -1641,15 +1636,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     _reverseGeocode(point.latitude, point.longitude);
                   },
                   markers: hasPin
-                      ? {
-                          Marker(
-                            markerId: const MarkerId('pin'),
+                      ? [
+                          SimpleMarker(
+                            id: 'pin',
                             position: LatLng(pinLat, pinLng),
-                            icon: BitmapDescriptor.defaultMarkerWithHue(
-                                BitmapDescriptor.hueOrange),
+                            color: Colors.orange,
                           ),
-                        }
-                      : {},
+                        ]
+                      : [],
                 ),
               ),
             ),

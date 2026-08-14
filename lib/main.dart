@@ -18,6 +18,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'utils/mapbox_helpers.dart';
+import 'web_map_style.dart';
 
 import 'home_screen.dart';
 import 'profile_screen.dart';
@@ -74,6 +76,7 @@ void main() async {
   // Initialize services
   await themeService.init();
   await locationService.init();
+  await initMapbox();
 
   runApp(const MeetraApp());
 
@@ -696,68 +699,57 @@ class _MainDashboardState extends State<MainDashboard> {
             : const Color(0xFF000000),
         body: Stack(
           children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragEnd: (details) {
-                if (details.primaryVelocity! < -300) {
-                  // Swipe left -> Next tab
-                  if (_currentIndex < 4) _onSelectTab(_currentIndex + 1);
-                } else if (details.primaryVelocity! > 300) {
-                  // Swipe right -> Prev tab
-                  if (_currentIndex > 0) _onSelectTab(_currentIndex - 1);
-                }
-              },
-              child: Padding(
-                padding: EdgeInsets.only(
-                    bottom: (isDoodleMode(context) ? 84 : 80) + bottomSafeArea),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  transitionBuilder:
-                      (Widget child, Animation<double> animation) {
-                    switch (_navTransition) {
-                      case 'Fade':
-                        return FadeTransition(opacity: animation, child: child);
-                      case 'Scale':
-                        return ScaleTransition(scale: animation, child: child);
-                      case '3D Flip':
-                        final rotate =
-                            Tween(begin: 3.14, end: 0.0).animate(animation);
-                        return AnimatedBuilder(
-                          animation: rotate,
-                          builder: (context, ch) {
-                            // Ensure the old child fades out so they don't overlap weirdly
-                            final isUnder =
-                                (ValueKey(_currentIndex) != child.key);
-                            var tilt =
-                                ((animation.value - 0.5).abs() - 0.5) * 0.003;
-                            tilt *= isUnder ? -1.0 : 1.0;
-                            final value = isUnder
-                                ? math.min(rotate.value, 1.57)
-                                : rotate.value;
-                            return Transform(
-                              transform: Matrix4.rotationY(value)
-                                ..setEntry(3, 0, tilt),
-                              alignment: Alignment.center,
-                              child: ch,
-                            );
-                          },
-                          child: child,
-                        );
-                      case 'Slide':
-                      default:
-                        final slideOffset = _goingForward
-                            ? const Offset(1.0, 0.0)
-                            : const Offset(-1.0, 0.0);
-                        final slide =
-                            Tween(begin: slideOffset, end: Offset.zero)
-                                .animate(animation);
-                        return SlideTransition(position: slide, child: child);
-                    }
-                  },
-                  child: KeyedSubtree(
-                    key: ValueKey(_currentIndex),
-                    child: _getScreenByIndex(_currentIndex),
-                  ),
+            // Swiping disabled to allow Mapbox horizontal panning without switching tabs
+            Padding(
+              padding: EdgeInsets.only(
+                  bottom: _currentIndex == 2 ? 0 : ((isDoodleMode(context) ? 84 : 80) + bottomSafeArea)),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder:
+                    (Widget child, Animation<double> animation) {
+                  switch (_navTransition) {
+                    case 'Fade':
+                      return FadeTransition(opacity: animation, child: child);
+                    case 'Scale':
+                      return ScaleTransition(scale: animation, child: child);
+                    case '3D Flip':
+                      final rotate =
+                          Tween(begin: 3.14, end: 0.0).animate(animation);
+                      return AnimatedBuilder(
+                        animation: rotate,
+                        builder: (context, ch) {
+                          // Ensure the old child fades out so they don't overlap weirdly
+                          final isUnder =
+                              (ValueKey(_currentIndex) != child.key);
+                          var tilt =
+                              ((animation.value - 0.5).abs() - 0.5) * 0.003;
+                          tilt *= isUnder ? -1.0 : 1.0;
+                          final value = isUnder
+                              ? math.min(rotate.value, 1.57)
+                              : rotate.value;
+                          return Transform(
+                            transform: Matrix4.rotationY(value)
+                              ..setEntry(3, 0, tilt),
+                            alignment: Alignment.center,
+                            child: ch,
+                          );
+                        },
+                        child: child,
+                      );
+                    case 'Slide':
+                    default:
+                      final slideOffset = _goingForward
+                          ? const Offset(1.0, 0.0)
+                          : const Offset(-1.0, 0.0);
+                      final slide =
+                          Tween(begin: slideOffset, end: Offset.zero)
+                              .animate(animation);
+                      return SlideTransition(position: slide, child: child);
+                  }
+                },
+                child: KeyedSubtree(
+                  key: ValueKey(_currentIndex),
+                  child: _getScreenByIndex(_currentIndex),
                 ),
               ),
             ),
@@ -1088,7 +1080,7 @@ class _MainDashboardState extends State<MainDashboard> {
         builder: (context) {
           // Stable state for the bottom sheet
           bool isSheetMapDark = true;
-          GoogleMapController? mapSheetCtrl;
+          MapController? mapSheetCtrl;
           final sheetSearchCtrl = TextEditingController();
           List<dynamic> sheetSearchResults = [];
 
@@ -1317,20 +1309,15 @@ class _MainDashboardState extends State<MainDashboard> {
                                                   0.0,
                                                   0.0,
                                                   0.0,
+                                                  0.0,
                                                   1.0,
                                                   0.0,
                                                 ]),
-                                      child: GoogleMap(
-                                        onMapCreated: (c) => mapSheetCtrl = c,
-                                        initialCameraPosition:
-                                            const CameraPosition(
-                                          target: LatLng(28.6139, 77.2090),
-                                          zoom: 14.0,
-                                        ),
-                                        mapType: MapType.normal,
+                                      child: AppMapView(
+                                        onMapReady: (c) => mapSheetCtrl = c,
+                                        initialCenter: const LatLng(28.6139, 77.2090),
+                                        initialZoom: 14.0,
                                         myLocationEnabled: true,
-                                        zoomControlsEnabled: false,
-                                        myLocationButtonEnabled: false,
                                       ),
                                     ),
 
@@ -1501,11 +1488,9 @@ class _MainDashboardState extends State<MainDashboard> {
                                                                     .high,
                                                             timeLimit: Duration(
                                                                 seconds: 15)));
-                                            mapSheetCtrl?.animateCamera(
-                                                CameraUpdate.newLatLngZoom(
-                                                    LatLng(pos.latitude,
-                                                        pos.longitude),
-                                                    15));
+                                            mapSheetCtrl?.animateToLatLng(
+                                                LatLng(pos.latitude, pos.longitude),
+                                                zoom: 15.0);
                                             if (context.mounted) {
                                               ScaffoldMessenger.of(context)
                                                   .showSnackBar(SnackBar(
@@ -1637,12 +1622,9 @@ class _MainDashboardState extends State<MainDashboard> {
                                                         color: Colors.white,
                                                         fontSize: 12)),
                                                 onTap: () {
-                                                  mapSheetCtrl?.animateCamera(
-                                                      CameraUpdate
-                                                          .newLatLngZoom(
-                                                              LatLng(r['lat'],
-                                                                  r['lon']),
-                                                              15));
+                                                  mapSheetCtrl?.animateToLatLng(
+                                                      LatLng(r['lat'], r['lon']),
+                                                      zoom: 15.0);
                                                   setSheetState(() {
                                                     sheetSearchResults = [];
                                                     sheetSearchCtrl.text =
@@ -5857,52 +5839,34 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 // ----------------------------------------------------
 // MAP LAYER TYPES
 // ----------------------------------------------------
-enum _MapLayer { street, satellite, terrain, cycling, humanitarian }
+enum _MapLayer { normal, satellite, terrain, hybrid }
 
 extension _MapLayerX on _MapLayer {
   String get label => const {
-        _MapLayer.street: 'Street',
+        _MapLayer.normal: 'Standard',
         _MapLayer.satellite: 'Satellite',
         _MapLayer.terrain: 'Terrain',
-        _MapLayer.cycling: 'Cycling',
-        _MapLayer.humanitarian: 'Aid Map',
+        _MapLayer.hybrid: 'Hybrid',
       }[this]!;
 
   IconData get icon => const {
-        _MapLayer.street: Icons.map_outlined,
+        _MapLayer.normal: Icons.map_outlined,
         _MapLayer.satellite: Icons.satellite_alt,
         _MapLayer.terrain: Icons.terrain,
-        _MapLayer.cycling: Icons.directions_bike,
-        _MapLayer.humanitarian: Icons.volunteer_activism,
+        _MapLayer.hybrid: Icons.layers,
       }[this]!;
 
   Color get accent => const {
-        _MapLayer.street: Color(0xFFFF6B00),
+        _MapLayer.normal: Color(0xFFFF6B00),
         _MapLayer.satellite: Color(0xFF4CAF50),
         _MapLayer.terrain: Color(0xFF8BC34A),
-        _MapLayer.cycling: Color(0xFFFF9800),
-        _MapLayer.humanitarian: Color(0xFFE91E63),
+        _MapLayer.hybrid: Color(0xFFFF9800),
       }[this]!;
 
-  String get tileUrl {
-    switch (this) {
-      case _MapLayer.street:
-        return 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
-      case _MapLayer.satellite:
-        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      case _MapLayer.terrain:
-        return 'https://tile.opentopomap.org/{z}/{x}/{y}.png';
-      case _MapLayer.cycling:
-        return 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
-      case _MapLayer.humanitarian:
-        return 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
-    }
-  }
 
-  // String? get overlayUrl => null;
 
-  // Satellite imagery already looks dark ï¿½ no need to invert it
-  bool get allowsDarkMode => this == _MapLayer.street;
+  // Satellite and Hybrid imagery already look dark
+  bool get allowsDarkMode => this == _MapLayer.normal || this == _MapLayer.terrain;
 }
 
 // ----------------------------------------------------
@@ -5916,22 +5880,188 @@ class ActivityHubScreen extends StatefulWidget {
   State<ActivityHubScreen> createState() => _ActivityHubScreenState();
 }
 
+  // Google Maps native Dark Mode style JSON
+  const String _darkMapStyle = '''
+[
+  {
+    "elementType": "geometry",
+    "stylers": [
+      {
+        "color": "#242f3e"
+      }
+    ]
+  },
+  {
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#746855"
+      }
+    ]
+  },
+  {
+    "elementType": "labels.text.stroke",
+    "stylers": [
+      {
+        "color": "#242f3e"
+      }
+    ]
+  },
+  {
+    "featureType": "administrative.locality",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#d59563"
+      }
+    ]
+  },
+  {
+    "featureType": "poi",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#d59563"
+      }
+    ]
+  },
+  {
+    "featureType": "poi.park",
+    "elementType": "geometry",
+    "stylers": [
+      {
+        "color": "#263c3f"
+      }
+    ]
+  },
+  {
+    "featureType": "poi.park",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#6b9a76"
+      }
+    ]
+  },
+  {
+    "featureType": "road",
+    "elementType": "geometry",
+    "stylers": [
+      {
+        "color": "#38414e"
+      }
+    ]
+  },
+  {
+    "featureType": "road",
+    "elementType": "geometry.stroke",
+    "stylers": [
+      {
+        "color": "#212a37"
+      }
+    ]
+  },
+  {
+    "featureType": "road",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#9ca5b3"
+      }
+    ]
+  },
+  {
+    "featureType": "road.highway",
+    "elementType": "geometry",
+    "stylers": [
+      {
+        "color": "#746855"
+      }
+    ]
+  },
+  {
+    "featureType": "road.highway",
+    "elementType": "geometry.stroke",
+    "stylers": [
+      {
+        "color": "#1f2835"
+      }
+    ]
+  },
+  {
+    "featureType": "road.highway",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#f3d19c"
+      }
+    ]
+  },
+  {
+    "featureType": "transit",
+    "elementType": "geometry",
+    "stylers": [
+      {
+        "color": "#2f3948"
+      }
+    ]
+  },
+  {
+    "featureType": "transit.station",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#d59563"
+      }
+    ]
+  },
+  {
+    "featureType": "water",
+    "elementType": "geometry",
+    "stylers": [
+      {
+        "color": "#17263c"
+      }
+    ]
+  },
+  {
+    "featureType": "water",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#515c6d"
+      }
+    ]
+  },
+  {
+    "featureType": "water",
+    "elementType": "labels.text.stroke",
+    "stylers": [
+      {
+        "color": "#17263c"
+      }
+    ]
+  }
+]
+''';
+
 class _ActivityHubScreenState extends State<ActivityHubScreen> {
   bool _isMapView = false;
   bool _isMapDarkMode = true;
   bool _isFetchingLocation = false;
   bool _showLayerPicker = false;
-  Map<String, dynamic>? _selectedMapActivity; // ? controls the layer popup
-  _MapLayer _mapLayer = _MapLayer.street;
+  Map<String, dynamic>? _selectedMapActivity;
+  _MapLayer _mapLayer = _MapLayer.normal;
   LatLng? _myLocation;
   double? _myHeading;
   StreamSubscription<Position>? _locationSubscription;
-  GoogleMapController? _mapController;
+  MapController? _mapController;
   final TextEditingController _searchController = TextEditingController();
   bool _showDropdown = false;
   Timer? _debounce;
 
   final List<Map<String, dynamic>> _searchResults = [];
+
   late final Stream<List<Map<String, dynamic>>> _activityStream;
   List<dynamic> _hiddenRushIns = [];
   List<dynamic> _requestedRushInIds = [];
@@ -5945,6 +6075,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         .from('activities')
         .stream(primaryKey: ['id']).order('created_at', ascending: false);
 
+    setWebMapDarkMode(_isMapDarkMode);
     _refreshDiscoveryState();
     _loadInitialLocation();
   }
@@ -5968,8 +6099,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           });
           // Move map after a short delay so the widget has been built
           try {
-            _mapController?.animateCamera(
-                CameraUpdate.newLatLngZoom(LatLng(lat, lng), 14.0));
+            _mapController?.animateToLatLng(
+                LatLng(lat, lng), zoom: 14.0);
           } catch (_) {}
         }
       }
@@ -6051,7 +6182,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     if (_locationSubscription != null) {
       _locationSubscription!.cancel();
     }
-    _mapController.dispose();
+    _mapController?.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -6103,7 +6234,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     // Already tracking - just re-center the map
     if (_myLocation != null && _locationSubscription != null) {
       _mapController
-          ?.animateCamera(CameraUpdate.newLatLngZoom(_myLocation!, 15.0));
+          ?.animateToLatLng(_myLocation!, zoom: 15.0);
       return;
     }
 
@@ -6152,8 +6283,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         // Only fly to location on first fix
         if (firstFix) {
           firstFix = false;
-          _mapController?.animateCamera(
-              CameraUpdate.newLatLngZoom(LatLng(lat, lng), 15.0));
+          _mapController?.animateToLatLng(
+              LatLng(lat, lng), zoom: 15.0);
         }
       }
     }, onError: (error) {
@@ -6380,6 +6511,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     return Container(
       key: const ValueKey('map_view'),
       margin: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 90),
+      clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(25),
         border:
@@ -6390,135 +6522,108 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
               blurRadius: 20)
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(25),
-        child: Stack(children: [
-          // Dark mode overlay ï¿½ only when allowed by layer type
-          if (_isMapDarkMode && _mapLayer.allowsDarkMode)
-            ColorFiltered(
-              colorFilter: const ColorFilter.matrix([
-                -1.0,
-                0.0,
-                0.0,
-                0.0,
-                255.0,
-                0.0,
-                -1.0,
-                0.0,
-                0.0,
-                255.0,
-                0.0,
-                0.0,
-                -1.0,
-                0.0,
-                255.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-              ]),
-              child: _buildFlutterMap(liveActivities),
-            )
-          else
-            _buildFlutterMap(liveActivities),
+      child: Stack(children: [
+        // Map rendered directly — ClipRRect/ColorFiltered break HTML platform views on web
+        _buildFlutterMap(liveActivities),
 
-          // Neon hue wash ï¿½ dark street mode only
-          if (_isMapDarkMode && _mapLayer.allowsDarkMode)
-            IgnorePointer(
-                child: Container(
-                    color: const Color(0xFFFF5C00).withValues(alpha: 0.2))),
+        // Search Bar Overlay
+        Positioned(
+          top: 16,
+          left: 16,
+          right: 64,
+          child: _buildSearchBar(),
+        ),
 
-          // Search Bar Overlay
+        // Dropdown Overlay
+        if (_showDropdown)
           Positioned(
-            top: 16,
+            top: 66,
             left: 16,
             right: 64,
-            child: _buildSearchBar(),
+            child: _buildSearchDropdown(),
           ),
 
-          // Dropdown Overlay
-          if (_showDropdown)
-            Positioned(
-              top: 66,
-              left: 16,
-              right: 64,
-              child: _buildSearchDropdown(),
+        // Light/Dark Theme Toggle
+        Positioned(
+          top: 16,
+          right: 16,
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _isMapDarkMode = !_isMapDarkMode;
+                setWebMapDarkMode(_isMapDarkMode);
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                  color: Colors.black54, shape: BoxShape.circle),
+              child: Icon(
+                  _isMapDarkMode
+                      ? Icons.wb_sunny
+                      : Icons.nightlight_round,
+                  color: _isMapDarkMode ? Colors.yellow : Colors.blueGrey,
+                  size: 20),
             ),
+          ),
+        ),
 
-          // Light/Dark Theme Toggle
-          Positioned(
-              top: 16,
-              right: 16,
-              child: GestureDetector(
-                  onTap: () => setState(() => _isMapDarkMode = !_isMapDarkMode),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                        color: Colors.black54, shape: BoxShape.circle),
-                    child: Icon(
-                        _isMapDarkMode
-                            ? Icons.wb_sunny
-                            : Icons.nightlight_round,
-                        color: _isMapDarkMode ? Colors.yellow : Colors.blueGrey,
-                        size: 20),
-                  ))),
-
-          // My Location Button ï¿½ bottom-right, mirrors layer FAB on bottom-left
-          Positioned(
-            bottom: 16,
-            right: 16,
-            child: GestureDetector(
-              onTap: _startLocationTracking,
-              child: Container(
-                width: 45,
-                height: 45,
-                decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.5),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white30, width: 1),
-                ),
-                child: _isFetchingLocation
-                    ? const Padding(
-                        padding: EdgeInsets.all(10),
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.my_location,
-                        color: Colors.white, size: 24),
+        // My Location Button — bottom-right
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: GestureDetector(
+            onTap: _startLocationTracking,
+            child: Container(
+              width: 45,
+              height: 45,
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.5),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white30, width: 1),
               ),
+              child: _isFetchingLocation
+                  ? const Padding(
+                      padding: EdgeInsets.all(10),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.my_location,
+                      color: Colors.white, size: 24),
             ),
           ),
+        ),
 
-          // Layer picker popup (appears above the FAB when open)
-          if (_showLayerPicker)
-            Positioned(
-              bottom: 72,
-              left: 16,
-              child: _buildLayerPickerPopup(),
-            ),
-
-          // Layer FAB ï¿½ always visible in bottom-left
+        // Layer picker popup
+        if (_showLayerPicker)
           Positioned(
-            bottom: 16,
+            bottom: 72,
             left: 16,
-            child: _buildLayerFab(),
+            child: _buildLayerPickerPopup(),
           ),
-        ]),
-      ),
+
+        // Layer FAB — bottom-left
+        Positioned(
+          bottom: 16,
+          left: 16,
+          child: _buildLayerFab(),
+        ),
+      ]),
     );
   }
+
 
   Widget _buildFlutterMap(List<Map<String, dynamic>> liveActivities) {
     // Build markers ONLY for Standard Activities on the map
     final activityMarkers =
         liveActivities.map((act) => _buildActivityMarker(act)).toList();
 
-    // Live-location marker (pulsing dot ? arrow)
+    // Live-location marker and popup markers
     final popupMarkers = _selectedMapActivity != null
         ? [
-            Marker(
-              point: LatLng(
+            SimpleMarker(
+              id: 'popup_activity',
+              position: LatLng(
                 _selectedMapActivity!['lat'] as double? ??
                     _selectedMapActivity!['latitude'] as double? ??
                     40.7128,
@@ -6526,47 +6631,40 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                     _selectedMapActivity!['longitude'] as double? ??
                     -74.0060,
               ),
-              width: 250,
-              height: 250,
-              alignment: Alignment.topCenter,
-              child: _buildMapPopupCard(_selectedMapActivity!),
+              color: Colors.orange,
             )
           ]
-        : <Marker>[];
+        : <SimpleMarker>[];
 
     final locationMarkers = _myLocation != null
         ? [
-            Marker(
-              point: _myLocation!,
-              width: 60,
-              height: 60,
-              child: _MyLocationMarker(heading: _myHeading),
+            SimpleMarker(
+              id: 'my_location_dot',
+              position: _myLocation!,
+              color: Colors.blue,
             )
           ]
-        : <Marker>[];
+        : <SimpleMarker>[];
 
-    return GoogleMap(
-      onMapCreated: (c) => _mapController = c,
-      initialCameraPosition: CameraPosition(
-        target: _myLocation ?? const LatLng(40.7128, -74.0060),
-        zoom: 14.0,
-      ),
-      mapType: MapType.normal,
+    return AppMapView(
+      key: ValueKey('map-$_isMapDarkMode-$_mapLayer'),
+      onMapReady: (c) {
+        _mapController = c;
+      },
+      initialCenter: _myLocation ?? const LatLng(40.7128, -74.0060),
+      initialZoom: 14.0,
       myLocationEnabled: true,
-      zoomControlsEnabled: false,
-      myLocationButtonEnabled: false,
-      markers: {
+      markers: [
         ...activityMarkers,
         if (_myLocation != null)
-          Marker(
-            markerId: const MarkerId('my_location'),
+          SimpleMarker(
+            id: 'my_location',
             position: _myLocation!,
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            color: Colors.blue,
           ),
         if (_selectedMapActivity != null)
-          Marker(
-            markerId: const MarkerId('popup'),
+          SimpleMarker(
+            id: 'popup',
             position: LatLng(
               _selectedMapActivity!['lat'] as double? ??
                   _selectedMapActivity!['latitude'] as double? ??
@@ -6575,10 +6673,9 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                   _selectedMapActivity!['longitude'] as double? ??
                   -74.0060,
             ),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            color: Colors.red,
           ),
-      },
+      ],
     );
   }
 
@@ -6650,10 +6747,12 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
               ..._MapLayer.values.map((layer) {
                 final selected = _mapLayer == layer;
                 return InkWell(
-                  onTap: () => setState(() {
-                    _mapLayer = layer;
-                    _showLayerPicker = false;
-                  }),
+                  onTap: () {
+                    setState(() {
+                      _mapLayer = layer;
+                      _showLayerPicker = false;
+                    });
+                  },
                   borderRadius:
                       selected ? BorderRadius.zero : BorderRadius.circular(0),
                   child: AnimatedContainer(
@@ -6779,8 +6878,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                 _searchResults.clear();
                 _showDropdown = false;
               });
-              _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
-                  LatLng(loc['lat'], loc['lng']), 14.0));
+              _mapController?.animateToLatLng(
+                  LatLng(loc['lat'], loc['lng']), zoom: 14.0);
             },
           );
         },
@@ -6788,24 +6887,22 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
     );
   }
 
-  Marker _buildActivityMarker(Map<String, dynamic> act) {
+  SimpleMarker _buildActivityMarker(Map<String, dynamic> act) {
     final isRushIn = act['is_rush_in'] == true;
     final lat = act['lat'] as double? ?? act['latitude'] as double? ?? 40.7128;
     final lng =
         act['lng'] as double? ?? act['longitude'] as double? ?? -74.0060;
 
-    return Marker(
-      markerId: MarkerId(act['id']?.toString() ?? '${lat}_$lng'),
+    return SimpleMarker(
+      id: act['id']?.toString() ?? '${lat}_$lng',
       position: LatLng(lat, lng),
-      icon: BitmapDescriptor.defaultMarkerWithHue(
-        isRushIn ? BitmapDescriptor.hueOrange : BitmapDescriptor.hueViolet,
-      ),
+      color: isRushIn ? Colors.orange : Colors.purple,
       onTap: () {
         setState(() {
           _selectedMapActivity = act;
         });
         _mapController
-            ?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lng), 15.0));
+            ?.animateToLatLng(LatLng(lat, lng), zoom: 15.0);
       },
     );
   }
@@ -7344,24 +7441,18 @@ class _SinglePinMapScreen extends StatelessWidget {
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.pop(context)),
       ),
-      body: GoogleMap(
-          initialCameraPosition: CameraPosition(
-            target: LatLng(lat, lng),
-            zoom: 16.0,
-          ),
-          mapType: MapType.normal,
+      body: AppMapView(
+          initialCenter: LatLng(lat, lng),
+          initialZoom: 16.0,
           myLocationEnabled: false,
-          zoomControlsEnabled: false,
-          myLocationButtonEnabled: false,
-          markers: {
-            Marker(
-              markerId: const MarkerId('explore_pin'),
+          markers: [
+            SimpleMarker(
+              id: 'explore_pin',
               position: LatLng(lat, lng),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueAzure),
-              infoWindow: InfoWindow(title: label),
+              color: Colors.blue,
+              label: label,
             ),
-          }),
+          ]),
     );
   }
 }

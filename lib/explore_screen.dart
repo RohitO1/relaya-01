@@ -642,6 +642,9 @@ class ExploreCache {
   static bool quickSetupDone = false;
   static bool hasCheckedSetup = false;
 
+  // Track which user's data is cached — invalidate if the logged-in user changes
+  static String? cachedUserId;
+
   static Map<String, dynamic>? myProfile;
   static bool hasLoadedMyProfile = false;
 
@@ -656,6 +659,16 @@ class ExploreCache {
   static Timer? _pollTimer;
   static final StreamController<void> updateStream =
       StreamController<void>.broadcast();
+
+  /// Call this whenever the logged-in user changes to wipe per-user cached data.
+  static void clearUserData() {
+    myProfile = null;
+    hasLoadedMyProfile = false;
+    hasLoadedKnocks = false;
+    acceptedProfileIds = {};
+    sentKnockProfileIds = {};
+    cachedUserId = null;
+  }
 
   static void initStream() {
     if (profilesSub != null) return;
@@ -696,11 +709,13 @@ class ExploreCache {
 
 class _ExploreScreenState extends State<ExploreScreen>
     with TickerProviderStateMixin {
-  final _uid = Supabase.instance.client.auth.currentUser?.id;
+  // Always read fresh so it never gets stale after a hot restart / auth refresh
+  String? get _uid => Supabase.instance.client.auth.currentUser?.id;
   bool _isLoading = true;
 
-  List<Map<String, dynamic>> _activeUsers = [];
-  List<Map<String, dynamic>> _inactiveUsers = [];
+  List<Map<String, dynamic>> _allUsers = [];
+  List<Map<String, dynamic>> _filteredUsers = [];
+  String _selectedIntentFilter = 'all';
   Map<String, dynamic>? _myProfile;
   final List<Map<String, dynamic>> _pendingKnocks = [];
 
@@ -735,9 +750,16 @@ class _ExploreScreenState extends State<ExploreScreen>
       _checkSetupDone();
     }
 
-    if (ExploreCache.hasLoadedMyProfile) {
+    // ── Critical: if the cached profile belongs to a DIFFERENT user (e.g. after
+    // account switch), discard it and reload for the current user. ──
+    final currentUid = _uid;
+    if (ExploreCache.hasLoadedMyProfile &&
+        ExploreCache.cachedUserId == currentUid &&
+        currentUid != null) {
       _myProfile = ExploreCache.myProfile;
     } else {
+      // Stale / wrong user's cache — clear and reload
+      ExploreCache.clearUserData();
       _loadMyProfile();
     }
 
@@ -821,11 +843,114 @@ class _ExploreScreenState extends State<ExploreScreen>
       if (r != null) {
         ExploreCache.myProfile = r;
         ExploreCache.hasLoadedMyProfile = true;
-        if (mounted) setState(() => _myProfile = r);
+        ExploreCache.cachedUserId = _uid; // mark which user this belongs to
+        
+        var profileData = Map<String, dynamic>.from(r);
+        if (profileData['explore_intents'] == null || _parseIntents(profileData['explore_intents']).isEmpty) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final localIntents = prefs.getStringList('local_explore_intents');
+            if (localIntents != null) {
+              profileData['explore_intents'] = localIntents;
+            }
+          } catch (_) {}
+        }
+
+        if (mounted) {
+          setState(() => _myProfile = profileData);
+          _checkVibeStatus();
+        }
       }
     } catch (e) {
       print("Error in loadMyProfile: $e");
     }
+  }
+
+  bool _vibePopupShown = false;
+
+  Future<void> _checkVibeStatus() async {
+    if (_vibePopupShown || _myProfile == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final lastSet = prefs.getInt('vibe_last_set') ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final currentVibe = _myProfile!['explore_status']?.toString().trim() ?? '';
+    
+    // 5 hours = 5 * 60 * 60 * 1000 = 18000000 ms
+    if (now - lastSet >= 18000000 || currentVibe.isEmpty) {
+      _vibePopupShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showSetVibePopup();
+      });
+    }
+  }
+
+  void _showSetVibePopup() {
+    final ctl = TextEditingController(text: _myProfile?['explore_status'] ?? '');
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF181820),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Set Your Vibe', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('What are you looking for right now? This vibe will reset in 5 hours.', 
+              style: GoogleFonts.outfit(color: Colors.white70, fontSize: 14)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctl,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'e.g. library partner, clubbing buddy',
+                hintStyle: const TextStyle(color: Colors.white54),
+                filled: true,
+                fillColor: Colors.white.withOpacity(0.05),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: ctl,
+            builder: (context, value, child) {
+              if (value.text.trim().isNotEmpty) {
+                return const SizedBox.shrink();
+              }
+              return TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('Skip', style: GoogleFonts.outfit(color: Colors.white54)),
+              );
+            },
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF5C00),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setInt('vibe_last_set', DateTime.now().millisecondsSinceEpoch);
+              if (ctl.text.trim().isNotEmpty && _uid != null) {
+                try {
+                  await Supabase.instance.client.from('profiles').update({
+                    'explore_status': ctl.text.trim()
+                  }).eq('id', _uid!);
+                  _loadMyProfile(); // Refresh my profile
+                } catch (e) {
+                  print("Error updating vibe: $e");
+                }
+              }
+            },
+            child: Text('Save Vibe', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
+          )
+        ],
+      ),
+    );
   }
 
   void _processAndFilterProfiles() {
@@ -833,13 +958,12 @@ class _ExploreScreenState extends State<ExploreScreen>
     if (district.isEmpty || district == 'Unknown') {
       if (mounted)
         setState(() {
-          _activeUsers = [];
-          _inactiveUsers = [];
+          _allUsers = [];
         });
       return;
     }
 
-    final List<Map<String, dynamic>> act = [], inact = [];
+    final List<Map<String, dynamic>> all = [];
     final city = district.toLowerCase().trim();
     final cLat = locationService.activeLat ?? 0;
     final cLng = locationService.activeLng ?? 0;
@@ -894,25 +1018,47 @@ class _ExploreScreenState extends State<ExploreScreen>
         'wants_children': p['wants_children'] ?? '',
         'open_to_relocate': p['open_to_relocate'] ?? '',
         'fitness_routine': p['fitness_routine'] ?? '',
+        'explore_intents': _parseIntents(p['explore_intents']),
       };
-      if (vis == 'active') {
-        act.add(profile);
-      } else {
-        inact.add(profile);
-      }
+      
+      all.add(profile);
     }
 
-    act.sort((a, b) => (b['visibility_updated_at']?.toString() ?? '')
-        .compareTo(a['visibility_updated_at']?.toString() ?? ''));
-    inact.sort((a, b) => (b['visibility_updated_at']?.toString() ?? '')
+    all.sort((a, b) => (b['visibility_updated_at']?.toString() ?? '')
         .compareTo(a['visibility_updated_at']?.toString() ?? ''));
 
     if (mounted) {
       setState(() {
-        _activeUsers = act;
-        _inactiveUsers = inact;
+        _allUsers = all;
+        _filteredUsers = _applyIntentFilter(all, _selectedIntentFilter);
       });
     }
+  }
+
+  static List<String> _parseIntents(dynamic raw) {
+    if (raw == null) return [];
+    try {
+      if (raw is List) return raw.map((e) => e.toString()).toList();
+      final decoded = jsonDecode(raw.toString());
+      if (decoded is List) return decoded.map((e) => e.toString()).toList();
+    } catch (_) {}
+    return [];
+  }
+
+  List<Map<String, dynamic>> _applyIntentFilter(
+      List<Map<String, dynamic>> list, String filter) {
+    if (filter == 'all') return list;
+    return list.where((p) {
+      final intents = (p['explore_intents'] as List<String>? ?? []);
+      return intents.any((i) => i.toLowerCase() == filter.toLowerCase());
+    }).toList();
+  }
+
+  void _onIntentFilterChanged(String intent) {
+    setState(() {
+      _selectedIntentFilter = intent;
+      _filteredUsers = _applyIntentFilter(_allUsers, intent);
+    });
   }
 
   Future<void> _loadKnocksAndStartStream() async {
@@ -924,8 +1070,7 @@ class _ExploreScreenState extends State<ExploreScreen>
     if (district.isEmpty || district == 'Unknown') {
       if (mounted)
         setState(() {
-          _activeUsers = [];
-          _inactiveUsers = [];
+          _allUsers = [];
           _isLoading = false;
         });
       return;
@@ -1247,7 +1392,7 @@ class _ExploreScreenState extends State<ExploreScreen>
             .toList()
             .cast<Map<String, dynamic>>();
 
-        if (qs.length >= 3) {
+        if (qs.isNotEmpty) {
           qs.shuffle();
           return qs.take(5).toList();
         }
@@ -1300,6 +1445,22 @@ class _ExploreScreenState extends State<ExploreScreen>
     if (!_checkAndPromptCompleteness()) return;
 
     HapticFeedback.mediumImpact();
+
+    // Ensure the logged-in user's own profile is always loaded before navigating
+    if (_myProfile == null) {
+      _loadMyProfile().then((_) {
+        if (!mounted) return;
+        setState(() {
+          _selected = profile;
+          _view = _XView.split;
+          _isSpinning = false;
+          _seenProfileIds.add(profile['id']?.toString() ?? '');
+        });
+        _splitCtrl.forward(from: 0);
+      });
+      return;
+    }
+
     setState(() {
       _selected = profile;
       _view = _XView.split;
@@ -1309,10 +1470,16 @@ class _ExploreScreenState extends State<ExploreScreen>
     _splitCtrl.forward(from: 0);
   }
 
-  void _goRandom() {
+  Future<void> _goRandom() async {
     if (!_checkAndPromptCompleteness()) return;
 
-    final all = [..._activeUsers, ..._inactiveUsers];
+    // Ensure own profile is loaded before showing comparison
+    if (_myProfile == null) {
+      await _loadMyProfile();
+      if (!mounted) return;
+    }
+
+    final all = _allUsers;
     if (all.isEmpty) return;
     HapticFeedback.heavyImpact();
 
@@ -1513,7 +1680,7 @@ class _ExploreScreenState extends State<ExploreScreen>
           target: _selected,
           isRandom: _view == _XView.random,
           isSpinning: _isSpinning,
-          allProfiles: [..._activeUsers, ..._inactiveUsers],
+          allProfiles: _allUsers,
           compat: _selected != null ? _compat(_selected!) : 50,
           compatCategories:
               _selected != null ? _compatCategories(_selected!) : {},
@@ -1528,14 +1695,18 @@ class _ExploreScreenState extends State<ExploreScreen>
         return _GridView(
           myProfile: _myProfile,
           isLoading: _isLoading,
-          activeUsers: _activeUsers,
-          inactiveUsers: _inactiveUsers,
+          profiles: _filteredUsers.isNotEmpty || _selectedIntentFilter != 'all'
+              ? _filteredUsers
+              : _allUsers,
           onRefresh: _refresh,
           onSelect: _goSplit,
           onRandom: _goRandom,
+          onSetVibe: _showSetVibePopup,
           onSettings: () => _showKnockSettings(context),
           pendingKnocksCount: _pendingKnocks.length,
           onShowKnocks: () {},
+          selectedIntentFilter: _selectedIntentFilter,
+          onIntentFilterChanged: _onIntentFilterChanged,
         );
     }
   }
@@ -2221,6 +2392,7 @@ class _ExploreScreenState extends State<ExploreScreen>
     int knocksSent = 0;
     int acceptedReceived = 0;
     bool hasUnseenKnocks = false;
+    int vibeLastSet = 0;
 
     try {
       final r = await Supabase.instance.client
@@ -2265,6 +2437,7 @@ class _ExploreScreenState extends State<ExploreScreen>
       if (totalKnocksReceived > seenCount) {
         hasUnseenKnocks = true;
       }
+      vibeLastSet = prefs.getInt('vibe_last_set') ?? 0;
     } catch (e) {
       print("Error in loadMyProfile: $e");
     }
@@ -2278,6 +2451,18 @@ class _ExploreScreenState extends State<ExploreScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
           final doodle = isDoodleMode(ctx);
+          
+          final now = DateTime.now().millisecondsSinceEpoch;
+          final timeLeftMs = 18000000 - (now - vibeLastSet);
+          String timerText = '';
+          if (timeLeftMs > 0 && (_myProfile?['explore_status']?.toString().isNotEmpty ?? false)) {
+            final hours = (timeLeftMs / 3600000).floor();
+            final minutes = ((timeLeftMs % 3600000) / 60000).floor();
+            timerText = 'Resets in ${hours}h ${minutes}m';
+          } else if (_myProfile?['explore_status']?.toString().isNotEmpty ?? false) {
+            timerText = 'Expired';
+          }
+          final myIntents = _parseIntents(_myProfile?['explore_intents']);
 
           return Padding(
             padding:
@@ -2440,86 +2625,143 @@ class _ExploreScreenState extends State<ExploreScreen>
                                     acceptedReceived: acceptedReceived,
                                     hasUnseenKnocks: hasUnseenKnocks),
                               ),
+
                               const SizedBox(height: 32),
 
-                              // ── Visibility ──
+                              // ── Vibe / Intent ──
                               Row(
                                 children: [
-                                  const Icon(Icons.visibility_rounded,
-                                      color: _orange, size: 18),
+                                  const Icon(Icons.flash_on_rounded, color: _orange, size: 18),
                                   const SizedBox(width: 8),
-                                  _SettingsLabel('DISCOVERABILITY MODE'),
+                                  _SettingsLabel('CURRENT VIBE'),
+                                  if (timerText.isNotEmpty) ...[
+                                    const SizedBox(width: 12),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        timerText,
+                                        style: GoogleFonts.outfit(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  ],
+                                  const Spacer(),
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.of(ctx).pop();
+                                      _showSetVibePopup();
+                                    },
+                                    child: Text('Edit', style: GoogleFonts.outfit(color: _orange, fontWeight: FontWeight.bold)),
+                                  )
                                 ],
                               ),
-                              const SizedBox(height: 14),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.03),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                                ),
+                                child: Text(
+                                  _myProfile?['explore_status']?.toString().isNotEmpty == true
+                                      ? _myProfile!['explore_status']
+                                      : 'No vibe set',
+                                  style: GoogleFonts.outfit(color: Colors.white70, fontSize: 15, fontStyle: FontStyle.italic),
+                                ),
+                              ),
+                              const SizedBox(height: 32),
+
+                              // ── My Intents ──
                               Row(
                                 children: [
-                                  Expanded(
-                                      child: _VisBtn(
-                                    label: 'Active',
-                                    sub: 'Visible & Open',
-                                    icon: Icons.bolt_rounded,
-                                    selected: currentMode == KnockMode.active,
-                                    selColor: _orange,
-                                    onTap: () {
-                                      setModalState(
-                                          () => currentMode = KnockMode.active);
-                                      if (_uid != null) {
-                                        Supabase.instance.client
-                                            .from('profiles')
-                                            .update({
-                                              'visibility': 'active',
-                                              'visibility_updated_at':
-                                                  DateTime.now()
-                                                      .toUtc()
-                                                      .toIso8601String(),
-                                            })
-                                            .eq('id', _uid!)
-                                            .then((_) {
-                                              if (mounted &&
-                                                  _myProfile != null) {
-                                                setState(() =>
-                                                    _myProfile!['visibility'] =
-                                                        'active');
-                                              }
-                                            });
-                                      }
-                                    },
-                                  )),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                      child: _VisBtn(
-                                    label: 'Inactive',
-                                    sub: 'Hidden',
-                                    icon: Icons.snooze_rounded,
-                                    selected: currentMode == KnockMode.inactive,
-                                    selColor: Colors.white60,
-                                    onTap: () {
-                                      setModalState(() =>
-                                          currentMode = KnockMode.inactive);
-                                      if (_uid != null) {
-                                        Supabase.instance.client
-                                            .from('profiles')
-                                            .update({
-                                              'visibility': 'inactive',
-                                              'visibility_updated_at':
-                                                  DateTime.now()
-                                                      .toUtc()
-                                                      .toIso8601String(),
-                                            })
-                                            .eq('id', _uid!)
-                                            .then((_) {
-                                              if (mounted &&
-                                                  _myProfile != null) {
-                                                setState(() =>
-                                                    _myProfile!['visibility'] =
-                                                        'inactive');
-                                              }
-                                            });
-                                      }
-                                    },
-                                  )),
+                                  const Icon(Icons.interests_rounded, color: _orange, size: 18),
+                                  const SizedBox(width: 8),
+                                  _SettingsLabel('MY INTENTS (MAX 2)'),
                                 ],
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  'study', 'movie', 'fitness', 'hangout', 'clubbing',
+                                  'tech', 'food', 'coffee', 'walk', 'dating'
+                                ].map((intentKey) {
+                                  final isSelected = myIntents.contains(intentKey);
+                                  final intentMeta = _GridView._kIntents.firstWhere((e) => e['key'] == intentKey, orElse: () => {'label': intentKey, 'icon': Icons.label});
+                                  final label = intentMeta['label'] as String;
+                                  final icon = intentMeta['icon'] as IconData;
+                                  final color = _GridTileItem._intentColors[intentKey] ?? _orange;
+                                  
+                                  return GestureDetector(
+                                    onTap: () async {
+                                      HapticFeedback.lightImpact();
+                                      if (isSelected) {
+                                        myIntents.remove(intentKey);
+                                      } else {
+                                        if (myIntents.length >= 2) {
+                                          myIntents.removeAt(0); // Remove oldest
+                                        }
+                                        myIntents.add(intentKey);
+                                      }
+                                      
+                                      // Save to SharedPreferences (local fallback — column may not exist in Supabase yet)
+                                      try {
+                                        final prefs = await SharedPreferences.getInstance();
+                                        await prefs.setStringList('local_explore_intents', myIntents);
+                                        
+                                        if (mounted) {
+                                          setState(() {
+                                            if (_myProfile != null) {
+                                              _myProfile = Map<String, dynamic>.from(_myProfile!)..['explore_intents'] = List<String>.from(myIntents);
+                                            }
+                                          });
+                                        }
+                                        setModalState(() {});
+                                        
+                                        // Try Supabase silently — if column exists great, if not it's saved locally
+                                        if (_uid != null) {
+                                          Supabase.instance.client.from('profiles').update({
+                                            'explore_intents': myIntents,
+                                          }).eq('id', _uid!).then((_) {}).catchError((_) {});
+                                        }
+                                      } catch (e) {
+                                        print("Error saving intents locally: $e");
+                                      }
+                                    },
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 200),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: isSelected ? color.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: isSelected ? color : Colors.white.withValues(alpha: 0.1),
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(icon, size: 14, color: isSelected ? color : Colors.white60),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            label,
+                                            style: GoogleFonts.outfit(
+                                              color: isSelected ? Colors.white : Colors.white60,
+                                              fontSize: 12,
+                                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
                               ),
                               const SizedBox(height: 32),
 
@@ -2880,27 +3122,45 @@ class _ExploreScreenState extends State<ExploreScreen>
 class _GridView extends StatelessWidget {
   final Map<String, dynamic>? myProfile;
   final bool isLoading;
-  final List<Map<String, dynamic>> activeUsers, inactiveUsers;
+  final List<Map<String, dynamic>> profiles;
   final Future<void> Function() onRefresh;
   final void Function(Map<String, dynamic>) onSelect;
-  final VoidCallback onRandom, onSettings, onShowKnocks;
+  final VoidCallback onRandom, onSettings, onShowKnocks, onSetVibe;
   final int pendingKnocksCount;
+  final String selectedIntentFilter;
+  final void Function(String) onIntentFilterChanged;
 
   const _GridView({
     this.myProfile,
     required this.isLoading,
-    required this.activeUsers,
-    required this.inactiveUsers,
+    required this.profiles,
     required this.onRefresh,
     required this.onSelect,
     required this.onRandom,
     required this.onSettings,
     required this.onShowKnocks,
+    required this.onSetVibe,
     required this.pendingKnocksCount,
+    this.selectedIntentFilter = 'all',
+    required this.onIntentFilterChanged,
   });
 
   static const _orangeAcc = Color(0xFFFF5C00);
   static const _darkBg = Color(0xFF080808);
+
+  static const _kIntents = [
+    {'label': 'All', 'key': 'all', 'icon': Icons.apps_rounded},
+    {'label': 'Study', 'key': 'study', 'icon': Icons.menu_book_rounded},
+    {'label': 'Movie', 'key': 'movie', 'icon': Icons.movie_creation_outlined},
+    {'label': 'Fitness', 'key': 'fitness', 'icon': Icons.fitness_center_rounded},
+    {'label': 'Hangout', 'key': 'hangout', 'icon': Icons.people_alt_rounded},
+    {'label': 'Clubbing', 'key': 'clubbing', 'icon': Icons.nightlife_rounded},
+    {'label': 'Tech', 'key': 'tech', 'icon': Icons.code_rounded},
+    {'label': 'Food', 'key': 'food', 'icon': Icons.fastfood_rounded},
+    {'label': 'Coffee', 'key': 'coffee', 'icon': Icons.coffee_rounded},
+    {'label': 'Walk', 'key': 'walk', 'icon': Icons.directions_walk_rounded},
+    {'label': 'Dating', 'key': 'dating', 'icon': Icons.favorite_rounded},
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -2948,90 +3208,13 @@ class _GridView extends StatelessWidget {
                   SliverToBoxAdapter(child: _buildHeader(context)),
                   if (isLoading)
                     SliverFillRemaining(child: _buildLoading(context))
-                  else if (activeUsers.isEmpty && inactiveUsers.isEmpty)
+                  else if (profiles.isEmpty)
                     SliverFillRemaining(child: _buildEmpty())
                   else ...[
-                    if (activeUsers.isNotEmpty) ...[
-                      if (doodle)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            child: CustomPaint(
-                              painter: SketchBorderPainter(
-                                  color: DoodleColors.sketchLine,
-                                  strokeWidth: 1.5,
-                                  radius: 16),
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.only(top: 8, bottom: 16),
-                                decoration: BoxDecoration(
-                                    color: DoodleColors.cream
-                                        .withValues(alpha: 0.5),
-                                    borderRadius: BorderRadius.circular(16)),
-                                child: Column(
-                                  children: [
-                                    _sectionHeader(
-                                        context,
-                                        'ACTIVE',
-                                        activeUsers.length,
-                                        Icons.stars_rounded),
-                                    _buildActiveRow(),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      else ...[
-                        SliverToBoxAdapter(
-                            child: _sectionHeader(context, 'ACTIVE',
-                                activeUsers.length, Icons.stars_rounded)),
-                        SliverToBoxAdapter(child: _buildActiveRow()),
-                      ]
-                    ],
-                    if (inactiveUsers.isNotEmpty) ...[
-                      SliverToBoxAdapter(child: const SizedBox(height: 10)),
-                      if (doodle)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            child: CustomPaint(
-                              painter: SketchBorderPainter(
-                                  color: DoodleColors.sketchLine,
-                                  strokeWidth: 1.5,
-                                  radius: 16),
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.only(top: 8, bottom: 16),
-                                decoration: BoxDecoration(
-                                    color: DoodleColors.paper,
-                                    borderRadius: BorderRadius.circular(16)),
-                                child: Column(
-                                  children: [
-                                    _sectionHeader(
-                                        context,
-                                        'INACTIVE',
-                                        inactiveUsers.length,
-                                        Icons.grid_view_rounded),
-                                    _buildInactiveGridBox(),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      else ...[
-                        SliverToBoxAdapter(
-                            child: _sectionHeader(context, 'INACTIVE',
-                                inactiveUsers.length, Icons.grid_view_rounded)),
-                        SliverPadding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          sliver: _buildInactiveGrid(),
-                        ),
-                      ]
-                    ],
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      sliver: _buildUnifiedGrid(),
+                    ),
                     const SliverToBoxAdapter(child: SizedBox(height: 140)),
                   ],
                 ],
@@ -3082,36 +3265,28 @@ class _GridView extends StatelessWidget {
             ),
 
           // ── Settings Icon ──
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 4,
-            right: 4,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onSettings,
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: doodle
-                    ? CustomPaint(
-                        painter: SketchCirclePainter(
-                            color: DoodleColors.brown.withValues(alpha: 0.5),
-                            strokeWidth: 1.5),
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          child: const Icon(Icons.settings_outlined,
-                              color: DoodleColors.brown, size: 24),
-                        ),
-                      )
-                    : Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.05),
-                            shape: BoxShape.circle),
-                        child: const Icon(Icons.settings_suggest_rounded,
-                            color: Colors.white70, size: 24),
-                      ),
+          if (doodle)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 4,
+              right: 4,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onSettings,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: CustomPaint(
+                    painter: SketchCirclePainter(
+                        color: DoodleColors.brown.withValues(alpha: 0.5),
+                        strokeWidth: 1.5),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      child: const Icon(Icons.settings_outlined,
+                          color: DoodleColors.brown, size: 24),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
 
           // ── Deploy Random — Bottom Bar ──
           Positioned(
@@ -3127,90 +3302,229 @@ class _GridView extends StatelessWidget {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // HEADER
-  // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildHeader(BuildContext context) {
     final doodle = isDoodleMode(context);
+    
+    if (doodle) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const DoodleDecoration(icon: Icons.send_rounded, color: DoodleColors.orange, rotation: -15, size: 28),
+              const SizedBox(width: 10),
+              Text('Explore', style: DoodleFonts.heading(fontSize: 40, fontWeight: FontWeight.w800)),
+              const Spacer(),
+              const DoodleDecoration(icon: Icons.favorite_border_rounded, color: DoodleColors.coral, rotation: 10, size: 24),
+              const SizedBox(width: 40),
+            ]),
+            const SizedBox(height: 12),
+            // Location chip (Doodle mode)
+            ValueListenableBuilder<String>(
+              valueListenable: locationService.activeDistrictNotifier,
+              builder: (_, loc, __) {
+                final disp = loc.isNotEmpty ? loc : 'Jhansi';
+                return GestureDetector(
+                  onTap: () {
+                    HapticFeedback.heavyImpact();
+                    showLocationSearchSheet(context);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: DoodleDecorations.chip(),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.location_on, color: DoodleColors.orange, size: 16),
+                        const SizedBox(width: 8),
+                        Text('Engaging in $disp',
+                            style: DoodleFonts.body(fontSize: 14, fontWeight: FontWeight.w600, color: DoodleColors.orangeDark)),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: DoodleColors.textMuted, size: 18),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          doodle
-              ? Row(
-                  children: [
-                    const DoodleDecoration(
-                        icon: Icons.send_rounded,
-                        color: DoodleColors.orange,
-                        rotation: -15,
-                        size: 28),
-                    const SizedBox(width: 10),
-                    Text('Explore',
-                        style: DoodleFonts.heading(
-                            fontSize: 40, fontWeight: FontWeight.w800)),
-                    const Spacer(),
-                    const DoodleDecoration(
-                        icon: Icons.favorite_border_rounded,
-                        color: DoodleColors.coral,
-                        rotation: 10,
-                        size: 24),
-                    const SizedBox(width: 40), // space for settings
-                  ],
-                )
-              : Text('EXPLORE',
-                  style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic,
-                      letterSpacing: 1.0)),
-          const SizedBox(height: 12),
-          ValueListenableBuilder<String>(
-            valueListenable: locationService.activeDistrictNotifier,
-            builder: (_, loc, __) {
-              final disp = loc.isNotEmpty ? loc : 'Jhansi';
-              return GestureDetector(
-                onTap: () {
-                  HapticFeedback.heavyImpact();
-                  showLocationSearchSheet(context);
-                },
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: doodle
-                      ? DoodleDecorations.chip()
-                      : BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.1)),
-                        ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+          // Row with Explore Title, Subtitle and Settings Button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Icon(Icons.location_on,
-                          color: doodle ? DoodleColors.orange : _orangeAcc,
-                          size: 16),
-                      const SizedBox(width: 8),
-                      Text('Engaging in $disp',
-                          style: doodle
-                              ? DoodleFonts.body(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: DoodleColors.orangeDark)
-                              : GoogleFonts.outfit(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500)),
-                      const SizedBox(width: 6),
-                      Icon(Icons.keyboard_arrow_down_rounded,
-                          color:
-                              doodle ? DoodleColors.textMuted : Colors.white70,
-                          size: 18),
+                      Text('Explore',
+                          style: GoogleFonts.outfit(
+                              color: Colors.white,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w900,
+                              fontStyle: FontStyle.italic)),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.auto_awesome, color: _orangeAcc, size: 18),
                     ],
                   ),
+                  const SizedBox(height: 4),
+                  Text('Find your vibe. Meet your kind.',
+                      style: GoogleFonts.outfit(
+                          color: Colors.white38,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400)),
+                ],
+              ),
+              GestureDetector(
+                onTap: onSettings,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.03),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _orangeAcc.withValues(alpha: 0.6),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.tune_rounded,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
                 ),
-              );
-            },
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // Unified Location and Interests bar
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.025),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+            ),
+            child: Row(
+              children: [
+                // Location Picker Button
+                ValueListenableBuilder<String>(
+                  valueListenable: locationService.activeDistrictNotifier,
+                  builder: (_, loc, __) {
+                    final disp = loc.isNotEmpty ? loc : 'Jhansi';
+                    return GestureDetector(
+                      onTap: () {
+                        HapticFeedback.heavyImpact();
+                        showLocationSearchSheet(context);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.location_on, color: _orangeAcc, size: 14),
+                            const SizedBox(width: 6),
+                            Text('Engaging in $disp',
+                                style: GoogleFonts.outfit(
+                                    color: Colors.white.withValues(alpha: 0.85),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white54, size: 14),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                // Interests chips (scrollable inline)
+                Expanded(
+                  child: SizedBox(
+                    height: 58,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: _kIntents.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) {
+                        final intent = _kIntents[i];
+                        final key = intent['key'] as String;
+                        final label = intent['label'] as String;
+                        final icon = intent['icon'] as IconData;
+                        final isSelected = selectedIntentFilter == key;
+                        
+                        return GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            onIntentFilterChanged(key);
+                          },
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  shape: isSelected ? BoxShape.rectangle : BoxShape.circle,
+                                  borderRadius: isSelected ? BorderRadius.circular(10) : null,
+                                  gradient: isSelected
+                                      ? const LinearGradient(
+                                          colors: [Color(0xFFFF3D00), Color(0xFFFF9100)],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        )
+                                      : null,
+                                  color: isSelected ? null : Colors.white.withValues(alpha: 0.04),
+                                  border: Border.all(
+                                    color: isSelected ? Colors.transparent : Colors.white.withValues(alpha: 0.06),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Icon(
+                                  icon,
+                                  size: 16,
+                                  color: isSelected ? Colors.white : _orangeAcc,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                label,
+                                style: GoogleFonts.outfit(
+                                  color: isSelected ? Colors.white : Colors.white54,
+                                  fontSize: 9,
+                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -3278,56 +3592,21 @@ class _GridView extends StatelessWidget {
   // ═══════════════════════════════════════════════════════════════════════════
   // ROW LISTS & GRIDS
   // ═══════════════════════════════════════════════════════════════════════════
-  Widget _buildActiveRow() {
-    return SizedBox(
-      height: 140,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: activeUsers.length,
-        itemBuilder: (context, i) {
-          final p = activeUsers[i];
-          return _AvatarTile(
-              profile: p, index: i, onTap: onSelect, isActive: true);
-        },
-      ),
-    );
-  }
-
-  Widget _buildInactiveGrid() {
+  Widget _buildUnifiedGrid() {
     return SliverGrid(
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 16,
-        childAspectRatio: 0.8, // Adjust for image+name
+        crossAxisCount: 4,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 6,
+        childAspectRatio: 0.58,
       ),
       delegate: SliverChildBuilderDelegate(
         (context, i) {
-          final p = inactiveUsers[i];
+          final p = profiles[i];
           return _GridTileItem(profile: p, index: i, onTap: onSelect);
         },
-        childCount: inactiveUsers.length,
+        childCount: profiles.length,
       ),
-    );
-  }
-
-  Widget _buildInactiveGridBox() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 16,
-        childAspectRatio: 0.85,
-      ),
-      itemCount: inactiveUsers.length,
-      itemBuilder: (context, i) {
-        final p = inactiveUsers[i];
-        return _GridTileItem(profile: p, index: i, onTap: onSelect);
-      },
     );
   }
 
@@ -3602,6 +3881,35 @@ class _GridTileItem extends StatelessWidget {
   const _GridTileItem(
       {required this.profile, required this.index, required this.onTap});
 
+  static const _orange = Color(0xFFFF5C00);
+
+  // Colour map for intent chips
+  static const _intentColors = {
+    'study': Color(0xFF4A90D9),
+    'movie': Color(0xFF9B59B6),
+    'fitness': Color(0xFF27AE60),
+    'hangout': Color(0xFFE67E22),
+    'clubbing': Color(0xFFE91E8C),
+    'tech': Color(0xFF00BCD4),
+    'food': Color(0xFFFF7043),
+    'coffee': Color(0xFF8D6E63),
+    'walk': Color(0xFF66BB6A),
+    'dating': Color(0xFFEF5350),
+  };
+
+  static const _intentIcons = {
+    'study': Icons.menu_book_rounded,
+    'movie': Icons.movie_creation_outlined,
+    'fitness': Icons.fitness_center_rounded,
+    'hangout': Icons.people_alt_rounded,
+    'clubbing': Icons.nightlife_rounded,
+    'tech': Icons.code_rounded,
+    'food': Icons.fastfood_rounded,
+    'coffee': Icons.coffee_rounded,
+    'walk': Icons.directions_walk_rounded,
+    'dating': Icons.favorite_rounded,
+  };
+
   @override
   Widget build(BuildContext context) {
     final doodle = isDoodleMode(context);
@@ -3610,6 +3918,9 @@ class _GridTileItem extends StatelessWidget {
     if (url.isEmpty) {
       url = 'https://picsum.photos/seed/${profile['id'] ?? name}/200';
     }
+    final isOnline = (profile['visibility']?.toString() ?? '') == 'active';
+    final intents = (profile['explore_intents'] as List<String>? ?? []);
+    final vibe = profile['explore_status']?.toString() ?? '';
 
     if (doodle) {
       return GestureDetector(
@@ -3623,91 +3934,189 @@ class _GridTileItem extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               CustomPaint(
-                painter: SketchCirclePainter(
-                    color: DoodleColors.brown, strokeWidth: 1.5),
+                painter: SketchCirclePainter(color: DoodleColors.brown, strokeWidth: 1.5),
                 child: Padding(
                   padding: const EdgeInsets.all(4.0),
                   child: ClipOval(
                     child: SizedBox(
-                      width: 50,
-                      height: 50,
-                      child: Image(
-                          image: _getSafeImageProvider(url),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _fallback()),
+                      width: 50, height: 50,
+                      child: Image(image: _getSafeImageProvider(url), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback()),
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 8),
-              Text(name,
-                  style: DoodleFonts.subheading(
-                      fontSize: 16, color: DoodleColors.brown),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
+              Text(name, style: DoodleFonts.subheading(fontSize: 13, color: DoodleColors.brown), maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (vibe.isNotEmpty) _VibeText(text: vibe),
             ],
           ),
         ),
-      )
-          .animate(key: ValueKey('grid_${profile['id']}'))
-          .fadeIn(duration: 400.ms, delay: (index * 40).ms)
-          .scale(
-              begin: const Offset(0.9, 0.9),
-              end: const Offset(1.0, 1.0),
-              duration: 400.ms,
-              delay: (index * 40).ms,
-              curve: Curves.easeOutCubic);
+      ).animate(key: ValueKey('grid_${profile['id']}')).fadeIn(duration: 400.ms, delay: (index * 40).ms);
     }
 
+    // ── Non-doodle: Circular tile ──
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
         onTap(profile);
       },
-      child: Container(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ClipOval(
-              child: SizedBox(
-                width: 60,
-                height: 60,
-                child: Image(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Avatar with orange ring + online dot
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                padding: const EdgeInsets.all(2.5),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: isOnline
+                        ? [const Color(0xFFFF8A00), const Color(0xFFFF5C00)]
+                        : [Colors.white24, Colors.white12],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: isOnline
+                      ? [BoxShadow(color: _orange.withValues(alpha: 0.35), blurRadius: 10)]
+                      : [],
+                ),
+                child: ClipOval(
+                  child: Image(
                     image: _getSafeImageProvider(url),
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _fallback()),
+                    errorBuilder: (_, __, ___) => _fallback(),
+                  ),
+                ),
               ),
+              // Online indicator
+              Positioned(
+                bottom: 2,
+                right: 2,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: isOnline ? const Color(0xFF4CAF50) : Colors.grey.shade700,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF080808), width: 2),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Name
+          Text(
+            name,
+            style: GoogleFonts.outfit(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+          // Intent chips
+          if (intents.isNotEmpty) ...[  
+            const SizedBox(height: 4),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 3,
+              runSpacing: 3,
+              children: intents.take(2).map((intent) {
+                final color = _intentColors[intent.toLowerCase()] ?? _orange;
+                final icon = _intentIcons[intent.toLowerCase()] ?? Icons.label_rounded;
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: color.withValues(alpha: 0.4), width: 0.8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, size: 9, color: color),
+                      const SizedBox(width: 2),
+                      Text(
+                        intent[0].toUpperCase() + intent.substring(1),
+                        style: GoogleFonts.outfit(color: color, fontSize: 9, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
             ),
-            const SizedBox(height: 12),
-            Text(name,
-                style: GoogleFonts.outfit(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
           ],
-        ),
+          // Vibe text
+          if (vibe.isNotEmpty) ...[  
+            const SizedBox(height: 2),
+            _VibeText(text: vibe),
+          ],
+        ],
       ),
-    )
-        .animate(key: ValueKey('grid_${profile['id']}'))
-        .fadeIn(duration: 400.ms, delay: (index * 40).ms)
-        .scale(
-            begin: const Offset(0.9, 0.9),
-            end: const Offset(1.0, 1.0),
-            duration: 400.ms,
-            delay: (index * 40).ms,
-            curve: Curves.easeOutCubic);
+    ).animate(key: ValueKey('grid_${profile['id']}')).fadeIn(duration: 400.ms, delay: (index * 40).ms).slideY(begin: 0.15, end: 0, duration: 400.ms, delay: (index * 40).ms, curve: Curves.easeOutCubic);
   }
 
   Widget _fallback() {
     return Container(
       color: const Color(0xFF151515),
-      child: const Center(
-          child: Icon(Icons.person, color: Colors.white12, size: 30)),
+      child: const Center(child: Icon(Icons.person, color: Colors.white12, size: 30)),
     );
   }
 }
+
+class _VibeText extends StatefulWidget {
+  final String text;
+  const _VibeText({required this.text});
+
+  @override
+  State<_VibeText> createState() => _VibeTextState();
+}
+
+class _VibeTextState extends State<_VibeText> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.text.isEmpty) return const SizedBox.shrink();
+    final doodle = isDoodleMode(context);
+    
+    final words = widget.text.split(' ');
+    final isLong = words.length > 4;
+    final displayText = (!_expanded && isLong) 
+        ? '${words.take(4).join(' ')}...' 
+        : widget.text;
+
+    return GestureDetector(
+      onTap: isLong ? () {
+        setState(() {
+          _expanded = !_expanded;
+        });
+      } : null,
+      child: Container(
+        margin: const EdgeInsets.only(top: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF5C00).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          displayText,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: doodle
+              ? DoodleFonts.body(fontSize: 10, color: DoodleColors.brown.withValues(alpha: 0.7))
+              : GoogleFonts.outfit(color: const Color(0xFFFF9860), fontSize: 10, fontStyle: FontStyle.italic, fontWeight: FontWeight.w500),
+        ),
+      ),
+    );
+  }
+}
+
+
 
 // COMPATIBILITY COMPARISON PAGE — LUXURIOUS HOLOGRAPHIC GLASS REDESIGN
 // ═══════════════════════════════════════════════════════════════════════════════

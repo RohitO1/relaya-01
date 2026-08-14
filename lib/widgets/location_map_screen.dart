@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../utils/mapbox_helpers.dart';
 import 'package:geolocator/geolocator.dart';
 
 class LocationMapScreen extends StatefulWidget {
@@ -21,7 +21,7 @@ class _LocationMapScreenState extends State<LocationMapScreen> {
   bool _disposed = false;
   bool _isNavigating = false;
   bool _isLoadingRoute = false;
-  GoogleMapController? _mapController;
+  MapController? _mapController;
 
   LatLng? _myLocation;
   double _speedKmh = 0.0;
@@ -69,17 +69,7 @@ class _LocationMapScreenState extends State<LocationMapScreen> {
   // ── Fit map to show both markers ─────────────────────────────────────────
   void _fitBothLocations(LatLng a, LatLng b) {
     if (_mapController == null) return;
-    final minLat = math.min(a.latitude, b.latitude);
-    final maxLat = math.max(a.latitude, b.latitude);
-    final minLng = math.min(a.longitude, b.longitude);
-    final maxLng = math.max(a.longitude, b.longitude);
-    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(
-      LatLngBounds(
-        southwest: LatLng(minLat, minLng),
-        northeast: LatLng(maxLat, maxLng),
-      ),
-      60,
-    ));
+    _mapController!.fitBounds(a, b);
   }
 
   // ── Fetch OSRM driving route ──────────────────────────────────────────────
@@ -181,7 +171,7 @@ class _LocationMapScreenState extends State<LocationMapScreen> {
         _distanceMeters = dist;
       });
       if (_isNavigating && !_disposed) {
-        _mapController?.animateCamera(CameraUpdate.newLatLng(loc));
+        _mapController?.animateToLatLng(loc);
       }
     });
   }
@@ -207,43 +197,43 @@ class _LocationMapScreenState extends State<LocationMapScreen> {
     return '${hours.floor()}h ${(mins % 60)}m';
   }
 
-  Set<Marker> _buildMarkers() {
+  List<SimpleMarker> _buildMarkers() {
     final eventPoint = LatLng(widget.lat, widget.lng);
-    final markers = <Marker>{
-      Marker(
-        markerId: const MarkerId('destination'),
+    final markers = <SimpleMarker>[
+      SimpleMarker(
+        id: 'destination',
         position: eventPoint,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-        infoWindow: InfoWindow(title: widget.title),
+        label: widget.title,
+        color: Colors.orange,
       ),
-    };
+    ];
     if (_myLocation != null) {
-      markers.add(Marker(
-        markerId: const MarkerId('me'),
+      markers.add(SimpleMarker(
+        id: 'me',
         position: _myLocation!,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        infoWindow: const InfoWindow(title: 'You'),
+        label: 'You',
+        color: Colors.blue,
       ));
     }
     return markers;
   }
 
-  Set<Polyline> _buildPolylines() {
-    if (_routePoints.isEmpty) return {};
-    return {
-      Polyline(
-        polylineId: const PolylineId('route_outline'),
+  List<SimplePolyline> _buildPolylines() {
+    if (_routePoints.isEmpty) return [];
+    return [
+      SimplePolyline(
+        id: 'route_outline',
         points: _routePoints,
         color: const Color(0xFF1E3A8A),
         width: 10,
       ),
-      Polyline(
-        polylineId: const PolylineId('route_inner'),
+      SimplePolyline(
+        id: 'route_inner',
         points: _routePoints,
         color: const Color(0xFF60A5FA),
         width: 6,
       ),
-    };
+    ];
   }
 
   @override
@@ -291,18 +281,13 @@ class _LocationMapScreenState extends State<LocationMapScreen> {
         // ── Map ──────────────────────────────────────────────────────────
         Expanded(
           child: Stack(children: [
-            GoogleMap(
-              onMapCreated: (c) => _mapController = c,
-              initialCameraPosition: CameraPosition(
-                target: _myLocation ?? eventPoint,
-                zoom: 14,
-              ),
-              mapType: MapType.normal,
+            AppMapView(
+              initialCenter: _myLocation ?? eventPoint,
+              initialZoom: 14,
               myLocationEnabled: true,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: false,
               markers: _buildMarkers(),
               polylines: _buildPolylines(),
+              onMapReady: (c) => _mapController = c,
             ),
 
             // Route error toast
@@ -348,7 +333,7 @@ class _LocationMapScreenState extends State<LocationMapScreen> {
               // Jump to destination
               GestureDetector(
                 onTap: () => _mapController
-                    ?.animateCamera(CameraUpdate.newLatLngZoom(eventPoint, 15)),
+                    ?.animateToLatLng(eventPoint, zoom: 15),
                 child: Container(
                   width: 56,
                   height: 56,
@@ -435,8 +420,7 @@ class _LocationMapScreenState extends State<LocationMapScreen> {
                             _routeError = null;
                           });
                           if (_myLocation != null)
-                            _mapController?.animateCamera(
-                                CameraUpdate.newLatLngZoom(_myLocation!, 14));
+                            _mapController?.animateToLatLng(_myLocation!, zoom: 14);
                         }
                       },
               ),

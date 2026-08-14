@@ -3,7 +3,7 @@ import 'dart:async'; // Required for Timer
 import 'dart:convert'; // Required for jsonDecode
 
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'utils/mapbox_helpers.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -1801,11 +1801,12 @@ class AddLocationDialog extends StatefulWidget {
 }
 
 class _AddLocationDialogState extends State<AddLocationDialog> {
-  GoogleMapController? _googleMapController;
+  MapController? _googleMapController;
   final TextEditingController _searchCtrl = TextEditingController();
   LatLng _selectedPoint = const LatLng(25.4358, 78.5685);
   String _resolvedName = '';
   bool _isResolving = false;
+  bool _isMapDarkMode = true;
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _debounce;
 
@@ -1910,7 +1911,7 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
       _searchResults = [];
       _searchCtrl.text = '';
     });
-    _googleMapController?.animateCamera(CameraUpdate.newLatLngZoom(pt, 12));
+    _googleMapController?.animateToLatLng(pt, zoom: 12);
     _reverseGeocode(pt);
   }
 
@@ -1953,13 +1954,10 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
                   child: Stack(
                     children: [
                       // Map
-                      GoogleMap(
-                        onMapCreated: (c) => _googleMapController = c,
-                        initialCameraPosition:
-                            CameraPosition(target: _selectedPoint, zoom: 12),
-                        mapType: MapType.normal,
-                        myLocationButtonEnabled: false,
-                        zoomControlsEnabled: false,
+                      AppMapView(
+                        onMapReady: (c) => _googleMapController = c,
+                        initialCenter: _selectedPoint,
+                        initialZoom: 12,
                         onTap: (point) {
                           setState(() {
                             _selectedPoint = point;
@@ -1967,14 +1965,13 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
                           });
                           _reverseGeocode(point);
                         },
-                        markers: {
-                          Marker(
-                            markerId: const MarkerId('selected'),
+                        markers: [
+                          SimpleMarker(
+                            id: 'selected',
                             position: _selectedPoint,
-                            icon: BitmapDescriptor.defaultMarkerWithHue(
-                                BitmapDescriptor.hueOrange),
+                            color: Colors.orange,
                           ),
-                        },
+                        ],
                       ),
 
                       // Dark Wash
