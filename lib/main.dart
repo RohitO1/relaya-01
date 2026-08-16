@@ -5184,8 +5184,20 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 const SizedBox(height: 8),
                                 _buildActionButton(
                                     'Block ${p['name'] ?? 'User'}',
-                                    Colors.white70, () {
+                                    Colors.white70, () async {
                                   Navigator.pop(context);
+                                  final myUid = Supabase.instance.client.auth.currentUser?.id ?? '';
+                                  final targetId = p['id'] ?? '';
+                                  if (myUid.isNotEmpty && targetId.isNotEmpty && myUid != targetId) {
+                                    await Supabase.instance.client
+                                        .from('requests')
+                                        .upsert({
+                                      'sender_id': myUid,
+                                      'target_id': targetId,
+                                      'target_type': 'block',
+                                      'status': 'approved',
+                                    }, onConflict: 'sender_id,target_id,target_type');
+                                  }
                                   ScaffoldMessenger.of(context)
                                       .showSnackBar(SnackBar(
                                     content: Text(

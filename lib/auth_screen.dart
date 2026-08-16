@@ -978,7 +978,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         opaque: false,
         barrierDismissible: true,
         barrierColor: Colors.black87,
-        pageBuilder: (_, __, ___) => const _ForgotPasswordFlow(),
+        pageBuilder: (_, __, ___) => const ForgotPasswordFlow(),
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
       ),
@@ -1445,13 +1445,13 @@ class YinYangCrescentPainter extends CustomPainter {
 // FORGOT PASSWORD — OTP-based reset flow
 // ═══════════════════════════════════════════════════════════════════
 
-class _ForgotPasswordFlow extends StatefulWidget {
-  const _ForgotPasswordFlow();
+class ForgotPasswordFlow extends StatefulWidget {
+  const ForgotPasswordFlow();
   @override
-  State<_ForgotPasswordFlow> createState() => _ForgotPasswordFlowState();
+  State<ForgotPasswordFlow> createState() => ForgotPasswordFlowState();
 }
 
-class _ForgotPasswordFlowState extends State<_ForgotPasswordFlow> {
+class ForgotPasswordFlowState extends State<ForgotPasswordFlow> {
   // 0 = enter username/phone, 1 = OTP, 2 = new password, 3 = success
   int _step = 0;
 

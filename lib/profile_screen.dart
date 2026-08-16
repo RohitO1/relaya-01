@@ -14,7 +14,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:ui'; // For ImageFilter
-import 'services/theme_service.dart';
 import 'services/location_service.dart';
 
 import 'widgets/location_picker_sheet.dart';
@@ -22,6 +21,7 @@ import 'widgets/profile_detail_sheet.dart';
 // import 'follow_list_screen.dart'; // removed unused
 import 'auth_screen.dart';
 
+import 'package:url_launcher/url_launcher.dart';
 import 'edit_profile_screen.dart';
 import 'package:share_plus/share_plus.dart';
 import 'admin_dashboard_screen.dart';
@@ -103,25 +103,21 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   // Settings State Variables
   bool _pushNotifications = true;
-  bool _emailNotifications = true;
   bool _locationServices = true;
   bool _ghostMode = false;
   bool _sparkNotifications = true;
   bool _autoMatchSpark = false;
+  bool _activityStatus = true;
   bool _saveToCameraRoll = false;
   double _matchRadius = 15.0;
   bool _isGlobal = false;
   double _ageMin = 21.0;
   double _ageMax = 35.0;
   String _mediaQuality = 'High';
-  String _mapsApp = 'Google Maps';
   bool _isPublic = true;
   String _navTransition = 'Slide';
 
-  // BolRoom Anonymity
-  bool _bolroomAnonymous = false;
-  String _bolroomAnonName = 'Anonymous';
-  String _bolroomAnonAvatar = '';
+
 
   @override
   void initState() {
@@ -132,7 +128,6 @@ class _ProfileScreenState extends State<ProfileScreen>
     )..repeat(reverse: true);
     _loadProfile();
     _loadSavedPosts();
-    _loadBolRoomAnonSettings();
   }
 
   Future<void> _loadSavedPosts() async {
@@ -154,16 +149,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     } catch (_) {}
   }
 
-  Future<void> _loadBolRoomAnonSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-      setState(() {
-        _bolroomAnonymous = prefs.getBool('bolroom_anonymous') ?? false;
-        _bolroomAnonName = prefs.getString('bolroom_anon_name') ?? 'Anonymous';
-        _bolroomAnonAvatar = prefs.getString('bolroom_anon_avatar') ?? '';
-      });
-    }
-  }
+
 
   @override
   void dispose() {
@@ -298,7 +284,6 @@ class _ProfileScreenState extends State<ProfileScreen>
           _joinedCommunities = joinedCamps;
 
           _pushNotifications = prefs.getBool('push_notifications') ?? true;
-          _emailNotifications = prefs.getBool('email_notifications') ?? true;
           _locationServices = prefs.getBool('location_services') ?? true;
           _ghostMode = prefs.getBool('ghost_mode') ?? false;
           _sparkNotifications = prefs.getBool('spark_notifications') ?? true;
@@ -309,7 +294,6 @@ class _ProfileScreenState extends State<ProfileScreen>
           _ageMin = prefs.getDouble('age_range_min') ?? 21.0;
           _ageMax = prefs.getDouble('age_range_max') ?? 35.0;
           _mediaQuality = prefs.getString('media_quality') ?? 'High';
-          _mapsApp = prefs.getString('maps_app') ?? 'Google Maps';
           _navTransition = prefs.getString('nav_transition') ?? 'Slide';
 
           _loadingProfile = false;
@@ -2489,319 +2473,385 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   // ============== BOLROOM ANONYMITY SHEETS ==============
-  void _showBolRoomAnonNameSheet() {
-    final ctrl = TextEditingController(text: _bolroomAnonName);
+  Future<void> _goToEditProfile() async {
+    final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => EditProfileScreen(initialProfile: _profile ?? {})));
+    if (result == true) {
+      _loadProfile();
+    }
+  }
+
+  void _showChangePasswordSheet() {
+    final currentPasswordCtrl = TextEditingController();
+    final newPasswordCtrl = TextEditingController();
+    bool isSaving = false;
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    String? errorText;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: ProfileColors.bgSecondary,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return StatefulBuilder(builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+                left: 24,
+                right: 24,
+                top: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Change Password',
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: currentPasswordCtrl,
+                  obscureText: obscureCurrent,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Current Password',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    filled: true,
+                    fillColor: ProfileColors.glass,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        obscureCurrent ? Icons.visibility_off : Icons.visibility,
+                        color: Colors.white54,
+                      ),
+                      onPressed: () => setSheetState(() => obscureCurrent = !obscureCurrent),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: newPasswordCtrl,
+                  obscureText: obscureNew,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'New Password',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    filled: true,
+                    fillColor: ProfileColors.glass,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        obscureNew ? Icons.visibility_off : Icons.visibility,
+                        color: Colors.white54,
+                      ),
+                      onPressed: () => setSheetState(() => obscureNew = !obscureNew),
+                    ),
+                  ),
+                ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 8),
+                  Text(errorText!, style: const TextStyle(color: ProfileColors.red, fontSize: 13)),
+                ],
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.of(context).push(
+                        PageRouteBuilder(
+                          opaque: false,
+                          barrierDismissible: true,
+                          barrierColor: Colors.black87,
+                          pageBuilder: (_, __, ___) => const ForgotPasswordFlow(),
+                          transitionsBuilder: (_, anim, __, child) =>
+                              FadeTransition(opacity: anim, child: child),
+                        ),
+                      );
+                    },
+                    child: const Text('Forgot Password?', style: TextStyle(color: ProfileColors.cyan, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: ProfileColors.cyan,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: isSaving ? null : () async {
+                      final currentPw = currentPasswordCtrl.text.trim();
+                      final newPw = newPasswordCtrl.text.trim();
+                      if (currentPw.isEmpty || newPw.isEmpty) {
+                        setSheetState(() => errorText = "Please fill out both fields.");
+                        return;
+                      }
+                      setSheetState(() { isSaving = true; errorText = null; });
+                      
+                      try {
+                        final email = Supabase.instance.client.auth.currentUser?.email;
+                        if (email == null) throw Exception("No email found for current user.");
+                        
+                        await Supabase.instance.client.auth.signInWithPassword(
+                          email: email,
+                          password: currentPw,
+                        );
+                        
+                        await Supabase.instance.client.auth.updateUser(
+                          UserAttributes(password: newPw),
+                        );
+                        
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Password updated successfully.'),
+                          backgroundColor: ProfileColors.green,
+                        ));
+                      } on AuthException catch (e) {
+                        setSheetState(() {
+                          isSaving = false;
+                          errorText = e.message;
+                        });
+                      } catch (e) {
+                        setSheetState(() {
+                          isSaving = false;
+                          errorText = e.toString();
+                        });
+                      }
+                    },
+                    child: isSaving 
+                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                        : const Text('Save',
+                        style: TextStyle(
+                            color: Colors.black, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  void _showDeleteAccountSheet() {
+    final passwordCtrl = TextEditingController();
+    bool obscure = true;
+    bool isDeleting = false;
+    String? errorText;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: ProfileColors.bgSecondary,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
-        child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                  child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: ProfileColors.textMuted,
-                          borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 20),
-              Row(children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [
-                      ProfileColors.purple.withValues(alpha: 0.2),
-                      ProfileColors.cyan.withValues(alpha: 0.1)
-                    ]),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.theater_comedy,
-                      color: ProfileColors.purple, size: 24),
-                ),
-                const SizedBox(width: 14),
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Alias Name',
-                      style: GoogleFonts.inter(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: ProfileColors.textPrimary)),
-                  Text('This name will appear in BolRooms only',
-                      style: GoogleFonts.inter(
-                          fontSize: 12, color: ProfileColors.textMuted)),
-                ]),
-              ]),
-              const SizedBox(height: 24),
-              TextField(
-                controller: ctrl,
-                autofocus: true,
-                style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600),
-                maxLength: 20,
-                decoration: InputDecoration(
-                  hintText: 'Enter your alias...',
-                  hintStyle: GoogleFonts.inter(color: ProfileColors.textMuted),
-                  filled: true,
-                  fillColor: ProfileColors.glass,
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide:
-                          const BorderSide(color: ProfileColors.borderSubtle)),
-                  enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide:
-                          const BorderSide(color: ProfileColors.borderSubtle)),
-                  focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(
-                          color: ProfileColors.cyan, width: 2)),
-                  counterStyle: GoogleFonts.inter(
-                      color: ProfileColors.textMuted, fontSize: 11),
-                  prefixIcon: const Icon(Icons.alternate_email,
-                      color: ProfileColors.cyan, size: 20),
-                ),
-              ),
-              const SizedBox(height: 8),
-              // Quick suggestion chips
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final suggestion in [
-                  'Shadow',
-                  'Phantom',
-                  'Ghost',
-                  'Ninja',
-                  'Mystic',
-                  'Raven',
-                  'Storm',
-                  'Echo'
-                ])
-                  GestureDetector(
-                    onTap: () => ctrl.text = suggestion,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: ProfileColors.glass,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: ProfileColors.borderSubtle),
-                      ),
-                      child: Text(suggestion,
-                          style: GoogleFonts.inter(
-                              color: ProfileColors.textSecondary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500)),
-                    ),
-                  ),
-              ]),
-              const SizedBox(height: 20),
-              GestureDetector(
-                onTap: () async {
-                  final name = ctrl.text.trim();
-                  if (name.isEmpty) return;
-                  Navigator.pop(ctx);
-                  setState(() => _bolroomAnonName = name);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('bolroom_anon_name', name);
-                },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                        colors: [ProfileColors.cyan, ProfileColors.purple]),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                          color: ProfileColors.cyan.withValues(alpha: 0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4))
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Text('Save Alias',
-                      style: GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white)),
-                ),
-              ),
-            ]),
-      ),
-    );
-  }
-
-  static const _anonAvatars = [
-    {'emoji': '🦊', 'label': 'Fox', 'color': 0xFFFF6B35},
-    {'emoji': '🐺', 'label': 'Wolf', 'color': 0xFF7C8DB5},
-    {'emoji': '🦅', 'label': 'Eagle', 'color': 0xFF8B6914},
-    {'emoji': '🐉', 'label': 'Dragon', 'color': 0xFF4CAF50},
-    {'emoji': '🦁', 'label': 'Lion', 'color': 0xFFFF9800},
-    {'emoji': '🐯', 'label': 'Tiger', 'color': 0xFFF57C00},
-    {'emoji': '🦇', 'label': 'Bat', 'color': 0xFF7B1FA2},
-    {'emoji': '🐼', 'label': 'Panda', 'color': 0xFF455A64},
-    {'emoji': '🦉', 'label': 'Owl', 'color': 0xFF795548},
-    {'emoji': '🐸', 'label': 'Frog', 'color': 0xFF66BB6A},
-    {'emoji': '🦄', 'label': 'Unicorn', 'color': 0xFFE040FB},
-    {'emoji': '👻', 'label': 'Ghost', 'color': 0xFFB0BEC5},
-  ];
-
-  void _showBolRoomAnonAvatarSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: ProfileColors.bgSecondary,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setSheetState) {
+        return StatefulBuilder(builder: (context, setSheetState) {
           return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+                left: 24,
+                right: 24,
+                top: 28),
             child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                      child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                              color: ProfileColors.textMuted,
-                              borderRadius: BorderRadius.circular(2)))),
-                  const SizedBox(height: 20),
-                  Row(children: [
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [
-                          ProfileColors.purple.withValues(alpha: 0.2),
-                          ProfileColors.cyan.withValues(alpha: 0.1)
-                        ]),
-                        borderRadius: BorderRadius.circular(12),
+                        shape: BoxShape.circle,
+                        color: ProfileColors.red.withValues(alpha: 0.15),
                       ),
-                      child: const Icon(Icons.face,
-                          color: ProfileColors.cyan, size: 24),
+                      child: const Icon(Icons.delete_forever,
+                          color: ProfileColors.red, size: 20),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12),
                     Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Choose Avatar',
-                              style: GoogleFonts.inter(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  color: ProfileColors.textPrimary)),
-                          Text('Pick your anonymous identity',
-                              style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  color: ProfileColors.textMuted)),
-                        ]),
-                  ]),
-                  const SizedBox(height: 20),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 4,
-                            mainAxisSpacing: 12,
-                            crossAxisSpacing: 12,
-                            childAspectRatio: 0.85),
-                    itemCount: _anonAvatars.length,
-                    itemBuilder: (_, i) {
-                      final av = _anonAvatars[i];
-                      final avatarKey = 'anon_${av['label']}';
-                      final isSelected = _bolroomAnonAvatar == avatarKey;
-                      final color = Color(av['color'] as int);
-                      return GestureDetector(
-                        onTap: () async {
-                          Navigator.pop(ctx);
-                          setState(() => _bolroomAnonAvatar = avatarKey);
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setString(
-                              'bolroom_anon_avatar', avatarKey);
-                        },
-                        child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: LinearGradient(colors: [
-                                    color.withValues(alpha: 0.3),
-                                    color.withValues(alpha: 0.1)
-                                  ]),
-                                  border: Border.all(
-                                      color: isSelected
-                                          ? ProfileColors.cyan
-                                          : color.withValues(alpha: 0.3),
-                                      width: isSelected ? 3 : 1.5),
-                                  boxShadow: isSelected
-                                      ? [
-                                          BoxShadow(
-                                              color: ProfileColors.cyan
-                                                  .withValues(alpha: 0.4),
-                                              blurRadius: 12)
-                                        ]
-                                      : [],
-                                ),
-                                child: Center(
-                                    child: Text(av['emoji'] as String,
-                                        style: const TextStyle(fontSize: 26))),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(av['label'] as String,
-                                  style: GoogleFonts.inter(
-                                      fontSize: 10,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                      color: isSelected
-                                          ? ProfileColors.cyan
-                                          : ProfileColors.textMuted)),
-                            ]),
-                      );
-                    },
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Delete Account',
+                            style: GoogleFonts.inter(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: ProfileColors.red)),
+                        Text('This action is permanent and irreversible.',
+                            style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: ProfileColors.textMuted)),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: ProfileColors.red.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: ProfileColors.red.withValues(alpha: 0.25)),
                   ),
-                  const SizedBox(height: 16),
-                  // "No avatar" option
-                  GestureDetector(
-                    onTap: () async {
-                      Navigator.pop(ctx);
-                      setState(() => _bolroomAnonAvatar = '');
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setString('bolroom_anon_avatar', '');
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: ProfileColors.glass,
+                  child: Text(
+                    'Deleting your account will permanently remove all your data including your profile, photos, messages, and matches. This cannot be undone.',
+                    style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: ProfileColors.textSecondary,
+                        height: 1.5),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text('Enter your password to confirm',
+                    style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: ProfileColors.textSecondary)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: passwordCtrl,
+                  obscureText: obscure,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Your password',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    filled: true,
+                    fillColor: ProfileColors.glass,
+                    border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: _bolroomAnonAvatar.isEmpty
-                                ? ProfileColors.cyan
-                                : ProfileColors.borderSubtle),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text('Use Default Initial',
-                          style: GoogleFonts.inter(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: _bolroomAnonAvatar.isEmpty
-                                  ? ProfileColors.cyan
-                                  : ProfileColors.textSecondary)),
+                        borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                            color: ProfileColors.red.withValues(alpha: 0.6))),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                          obscure
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          color: Colors.white54),
+                      onPressed: () =>
+                          setSheetState(() => obscure = !obscure),
                     ),
                   ),
-                ]),
+                ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 8),
+                  Text(errorText!,
+                      style: const TextStyle(
+                          color: ProfileColors.red, fontSize: 13)),
+                ],
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: ProfileColors.red,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: isDeleting
+                        ? null
+                        : () async {
+                            final pw = passwordCtrl.text.trim();
+                            if (pw.isEmpty) {
+                              setSheetState(() =>
+                                  errorText = 'Please enter your password.');
+                              return;
+                            }
+                            setSheetState(() {
+                              isDeleting = true;
+                              errorText = null;
+                            });
+                            try {
+                              final sb = Supabase.instance.client;
+                              final email =
+                                  sb.auth.currentUser?.email ?? '';
+                              if (email.isEmpty)
+                                throw Exception('No account email found.');
+
+                              // Step 1: Re-authenticate to verify password
+                              await sb.auth.signInWithPassword(
+                                  email: email, password: pw);
+
+                              final uid = _myUid;
+
+                              // Step 2: Delete all user data rows
+                              await Future.wait([
+                                sb.from('profiles').delete().eq('id', uid),
+                                sb.from('requests')
+                                    .delete()
+                                    .or('sender_id.eq.$uid,target_id.eq.$uid'),
+                                sb.from('messages')
+                                    .delete()
+                                    .or('sender_id.eq.$uid,receiver_id.eq.$uid')
+                                    .catchError((_) {}),
+                              ]);
+
+                              // Step 3: Delete auth user
+                              await sb.auth.admin.deleteUser(uid)
+                                  .catchError((_) {
+                                // admin API may not be available; sign out instead
+                              });
+
+                              await sb.auth.signOut();
+
+                              if (!mounted) return;
+                              Navigator.of(context, rootNavigator: true)
+                                  .pushAndRemoveUntil(
+                                MaterialPageRoute(
+                                    builder: (_) => const AuthScreen()),
+                                (route) => false,
+                              );
+                            } on AuthException catch (e) {
+                              setSheetState(() {
+                                isDeleting = false;
+                                errorText = e.message.contains('Invalid')
+                                    ? 'Incorrect password. Please try again.'
+                                    : e.message;
+                              });
+                            } catch (e) {
+                              setSheetState(() {
+                                isDeleting = false;
+                                errorText = e.toString();
+                              });
+                            }
+                          },
+                    child: isDeleting
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2))
+                        : Text('Delete My Account Permanently',
+                            style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15)),
+                  ),
+                ),
+                const SizedBox(height: 28),
+              ],
+            ),
           );
         });
       },
@@ -2940,16 +2990,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                   _buildSectionTitle('Account'),
                   _buildSettingsRow(
                       Icons.person_outline, 'Personal Information',
-                      hasArrow: true),
-                  _buildSettingsRow(Icons.lock_outline, 'Password & Security',
-                      hasArrow: true),
-                  _buildSettingsRow(
-                      Icons.verified_user_outlined, 'Identity Verification',
-                      valueText: 'Verified ✔',
-                      valueColor: ProfileColors.green,
-                      hasArrow: true),
-                  _buildSettingsRow(Icons.link, 'Linked Accounts',
-                      hasArrow: true),
+                      hasArrow: true, onTap: _goToEditProfile),
+                  _buildSettingsRow(Icons.lock_outline, 'Change Password',
+                      hasArrow: true, onTap: _showChangePasswordSheet),
                   const SizedBox(height: 24),
 
                   _buildSectionTitle('Preferences'),
@@ -2959,20 +3002,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                     setState(() => _pushNotifications = v);
                     _saveSetting('push_notifications', v);
                   }),
-                  _buildSettingsRow(Icons.mail_outline, 'Email Notifications',
-                      toggleValue: _emailNotifications, onToggle: (v) {
-                    setState(() => _emailNotifications = v);
-                    _saveSetting('email_notifications', v);
+                  _buildSettingsRow(
+                      Icons.light_mode_outlined, 'Light Mode',
+                      hasArrow: false, onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Light mode will be available in future updates.'),
+                        backgroundColor: ProfileColors.cyan));
                   }),
-                  ValueListenableBuilder<ThemeMode>(
-                      valueListenable: themeService.themeModeNotifier,
-                      builder: (context, mode, _) {
-                        return _buildSettingsRow(
-                            Icons.dark_mode_outlined, 'Dark Mode',
-                            toggleValue: mode == ThemeMode.dark,
-                            onToggle: (v) => themeService.setTheme(
-                                v ? ThemeMode.dark : ThemeMode.light));
-                      }),
                   _buildSettingsRow(
                       Icons.swipe_outlined, 'Navigation Transition',
                       valueText: _navTransition,
@@ -2993,114 +3029,16 @@ class _ProfileScreenState extends State<ProfileScreen>
                           onTap: () => showLocationSearchSheet(context),
                         );
                       }),
-                  _buildSettingsRow(Icons.map_outlined, 'Default Maps App',
-                      valueText: _mapsApp, hasArrow: true),
                   const SizedBox(height: 24),
 
                   _buildSectionTitle('Privacy'),
-                  _buildSettingsRow(
-                      Icons.privacy_tip_outlined, 'Private Account',
-                      toggleValue: _isPublic == false, onToggle: (v) async {
-                    setState(() => _isPublic = !v);
-                    if (_myUid.isNotEmpty)
-                      await Supabase.instance.client
-                          .from('profiles')
-                          .update({'is_public': !v}).eq('id', _myUid);
-                  }),
-                  _buildSettingsRow(
-                      Icons.visibility_outlined, 'Activity Status',
-                      toggleValue: true, onToggle: (v) {}),
                   _buildSettingsRow(Icons.block, 'Blocked Accounts',
-                      hasArrow: true),
-                  _buildSettingsRow(Icons.volume_off_outlined, 'Muted Accounts',
-                      hasArrow: true),
-                  _buildSettingsRow(Icons.visibility_off_outlined, 'Ghost Mode',
-                      toggleValue: _ghostMode, onToggle: (v) {
-                    setState(() => _ghostMode = v);
-                    _saveSetting('ghost_mode', v);
+                      hasArrow: true, onTap: () {
+                    Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => BlockedUsersScreen(myUid: _myUid)));
                   }),
                   const SizedBox(height: 24),
 
-                  _buildSectionTitle('Activity Matches'),
-                  _buildSettingsRow(Icons.public, 'Global Discovery',
-                      toggleValue: _isGlobal, onToggle: (v) {
-                    setState(() => _isGlobal = v);
-                    _saveSetting('is_global', v);
-                  }),
-                  if (!_isGlobal)
-                    _buildSettingsRow(Icons.radar, 'Match Radius',
-                        valueText: '${_matchRadius.toInt()} km',
-                        hasArrow: true,
-                        onTap: _showMatchRadiusSheet),
-                  _buildSettingsRow(Icons.group_outlined, 'Age Preference',
-                      valueText: '${_ageMin.toInt()}-${_ageMax.toInt()}',
-                      hasArrow: true,
-                      onTap: _showAgePrefSheet),
-                  _buildSettingsRow(Icons.bolt, 'Spark Notifications',
-                      toggleValue: _sparkNotifications, onToggle: (v) {
-                    setState(() => _sparkNotifications = v);
-                    _saveSetting('spark_notifications', v);
-                  }),
-                  _buildSettingsRow(Icons.auto_awesome, 'Auto-Match with Spark',
-                      toggleValue: _autoMatchSpark, onToggle: (v) {
-                    setState(() => _autoMatchSpark = v);
-                    _saveSetting('auto_match_spark', v);
-                  }),
-                  _buildSettingsRow(
-                    Icons.explore,
-                    'Explore Visibility',
-                    valueText: _getVibeVisibilitySummary(),
-                    valueColor: ProfileColors.cyan,
-                    hasArrow: true,
-                    onTap: _showVibeVisibilitySheet,
-                  ),
-                  const SizedBox(height: 24),
-
-                  _buildSectionTitle('BolRoom Identity'),
-                  _buildSettingsRow(Icons.theater_comedy, 'Anonymous Mode',
-                      toggleValue: _bolroomAnonymous, onToggle: (v) async {
-                    setState(() => _bolroomAnonymous = v);
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('bolroom_anonymous', v);
-                  }),
-                  if (_bolroomAnonymous) ...[
-                    _buildSettingsRow(
-                      Icons.edit,
-                      'Alias Name',
-                      valueText: _bolroomAnonName,
-                      valueColor: ProfileColors.cyan,
-                      hasArrow: true,
-                      onTap: _showBolRoomAnonNameSheet,
-                    ),
-                    _buildSettingsRow(
-                      Icons.face,
-                      'Avatar',
-                      valueText:
-                          _bolroomAnonAvatar.isNotEmpty ? 'Custom' : 'Default',
-                      valueColor: ProfileColors.purple,
-                      hasArrow: true,
-                      onTap: _showBolRoomAnonAvatarSheet,
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-
-                  _buildSectionTitle('Data & Storage'),
-                  _buildSettingsRow(Icons.storage, 'Cache Size',
-                      valueText: '45.2 MB', hasArrow: false),
-                  _buildSettingsRow(Icons.delete_outline, 'Clear Cache',
-                      hasArrow: false, onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Cache cleared! (Simulated)'),
-                        backgroundColor: ProfileColors.green));
-                  }),
-                  _buildSettingsRow(Icons.high_quality, 'Media Quality',
-                      valueText: _mediaQuality, hasArrow: true),
-                  _buildSettingsRow(Icons.save_alt, 'Save to Camera Roll',
-                      toggleValue: _saveToCameraRoll, onToggle: (v) {
-                    setState(() => _saveToCameraRoll = v);
-                    _saveSetting('save_camera_roll', v);
-                  }),
-                  const SizedBox(height: 24),
 
                   _buildSectionTitle('Support & About'),
                   _buildSettingsRow(Icons.help_outline, 'Help Center',
@@ -3119,11 +3057,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                   _buildSectionTitle('Danger Zone'),
                   _buildSettingsRow(Icons.logout, 'Log Out',
                       isDanger: true, onTap: _onLogout),
-                  _buildSettingsRow(
-                      Icons.warning_amber_rounded, 'Deactivate Account',
-                      isDanger: true, onTap: () {}),
                   _buildSettingsRow(Icons.delete_forever, 'Delete Account',
-                      isDanger: true, onTap: () {}),
+                      isDanger: true, onTap: _showDeleteAccountSheet),
 
                   const SizedBox(height: 32),
                 ],
@@ -3891,6 +3826,240 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
               ],
             ),
           )
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BLOCKED USERS SCREEN
+// ═══════════════════════════════════════════════════════════════════
+
+class BlockedUsersScreen extends StatefulWidget {
+  final String myUid;
+  const BlockedUsersScreen({super.key, required this.myUid});
+
+  @override
+  State<BlockedUsersScreen> createState() => _BlockedUsersScreenState();
+}
+
+class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
+  List<Map<String, dynamic>> _blocked = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBlocked();
+  }
+
+  Future<void> _loadBlocked() async {
+    setState(() => _loading = true);
+    try {
+      // Fetch rows where I am the blocker (sender) and target_type = 'block'
+      final rows = await Supabase.instance.client
+          .from('requests')
+          .select('target_id, created_at, profiles!requests_target_id_fkey(id, name, username, profile_image_url)')
+          .eq('sender_id', widget.myUid)
+          .eq('target_type', 'block');
+      setState(() {
+        _blocked = List<Map<String, dynamic>>.from(rows);
+        _loading = false;
+      });
+    } catch (_) {
+      // Fallback: try without join
+      try {
+        final rows = await Supabase.instance.client
+            .from('requests')
+            .select('target_id, created_at')
+            .eq('sender_id', widget.myUid)
+            .eq('target_type', 'block');
+        // Fetch profiles separately
+        final targetIds = (rows as List).map((r) => r['target_id'] as String).toList();
+        List<Map<String, dynamic>> enriched = [];
+        for (final id in targetIds) {
+          final profile = await Supabase.instance.client
+              .from('profiles')
+              .select('id, name, username, profile_image_url')
+              .eq('id', id)
+              .maybeSingle();
+          if (profile != null) enriched.add(profile);
+        }
+        setState(() {
+          _blocked = enriched;
+          _loading = false;
+        });
+      } catch (e) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _unblock(String targetId) async {
+    await Supabase.instance.client
+        .from('requests')
+        .delete()
+        .eq('sender_id', widget.myUid)
+        .eq('target_id', targetId)
+        .eq('target_type', 'block');
+    await _loadBlocked();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('User unblocked.'),
+          backgroundColor: Color(0xFF22C55E)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: ProfileColors.bgPrimary,
+      appBar: AppBar(
+        backgroundColor: ProfileColors.bgSecondary,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text('Blocked Accounts',
+            style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700)),
+        centerTitle: true,
+        bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1),
+            child: Container(height: 1, color: ProfileColors.borderSubtle)),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: ProfileColors.cyan))
+          : _blocked.isEmpty
+              ? _buildEmpty()
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  itemCount: _blocked.length,
+                  itemBuilder: (ctx, i) => _buildBlockedCard(_blocked[i]),
+                ),
+    );
+  }
+
+  Widget _buildEmpty() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: ProfileColors.glass,
+              border: Border.all(color: ProfileColors.borderSubtle),
+            ),
+            child: const Icon(Icons.block, size: 36, color: ProfileColors.textMuted),
+          ),
+          const SizedBox(height: 20),
+          Text('No blocked accounts',
+              style: GoogleFonts.inter(
+                  color: ProfileColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Text("Users you block won't appear in your feed\nand can't contact you.",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                  color: ProfileColors.textMuted, fontSize: 14, height: 1.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBlockedCard(Map<String, dynamic> item) {
+    // item may be the joined profile or just a profile map
+    final profile = item['profiles'] as Map<String, dynamic>? ?? item;
+    final name = profile['name'] ?? profile['username'] ?? 'Unknown User';
+    final username = profile['username'] ?? '';
+    final avatar = profile['profile_image_url'] ?? '';
+    final targetId = profile['id'] ?? item['target_id'] ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: ProfileColors.bgSecondary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ProfileColors.borderSubtle),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: CircleAvatar(
+          radius: 26,
+          backgroundColor: ProfileColors.glass,
+          backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+          child: avatar.isEmpty
+              ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
+                  style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold))
+              : null,
+        ),
+        title: Text(name,
+            style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 15)),
+        subtitle: username.isNotEmpty
+            ? Text('@$username',
+                style: GoogleFonts.inter(
+                    color: ProfileColors.textMuted, fontSize: 13))
+            : null,
+        trailing: GestureDetector(
+          onTap: () => _showUnblockDialog(targetId, name),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: ProfileColors.red.withValues(alpha: 0.6)),
+              color: ProfileColors.red.withValues(alpha: 0.12),
+            ),
+            child: Text('Unblock',
+                style: GoogleFonts.inter(
+                    color: ProfileColors.red,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13)),
+          ),
+        ),
+      ),
+    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.15, end: 0);
+  }
+
+  void _showUnblockDialog(String targetId, String name) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: ProfileColors.bgSecondary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Unblock $name?',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text(
+            '$name will be able to see your profile and contact you again.',
+            style: const TextStyle(color: ProfileColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel',
+                style: TextStyle(color: ProfileColors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _unblock(targetId);
+            },
+            child: const Text('Unblock',
+                style: TextStyle(
+                    color: ProfileColors.cyan, fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
     );

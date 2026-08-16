@@ -3281,6 +3281,57 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
+  // ── Hangout Picker ────────────────────────────────────────────────────────
+  void _showHangoutPicker() {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.75),
+      builder: (ctx) => _HangoutPickerSheet(
+        partnerName: widget.name,
+        onSelect: (emojiStr, name) {
+          Navigator.pop(ctx);
+          _sendHangoutCard(emojiStr, name);
+        },
+      ),
+    );
+  }
+
+  Future<void> _sendHangoutCard(String emojiStr, String name) async {
+    HapticFeedback.heavyImpact();
+    final text = '⚡HANGOUT_INVITE|$emojiStr|$name|right now';
+    final tempMsg = {
+      'id': DateTime.now().millisecondsSinceEpoch,
+      'sender_id': _myUid,
+      'receiver_id': widget.targetUserId,
+      'text': text,
+      'is_image': false,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    setState(() => _messages.add(tempMsg));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    try {
+      await Supabase.instance.client.from('messages').insert({
+        'sender_id': _myUid,
+        'receiver_id': widget.targetUserId,
+        'text': text,
+        'is_image': false,
+      });
+      NotificationService.sendNotification(
+        userId: widget.targetUserId,
+        type: NotificationType.message,
+        title: '🔥 Hangout Invite from $_myName',
+        body: '$_myName wants to hang out — $name!',
+        payload: {'sender_id': _myUid},
+      );
+      _fetchMessages();
+    } catch (e) {
+      debugPrint('Error sending hangout card: $e');
+    }
+  }
+
   Future<void> _sendMessage() async {
     if (_msgController.text.trim().isEmpty) return;
 
@@ -4839,6 +4890,28 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                     color: Colors.white54, size: 22),
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            // ── Hangout Picker Button ──
+                            GestureDetector(
+                              onTap: _showHangoutPicker,
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1A1A1A),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFFF6B00)
+                                          .withValues(alpha: 0.25),
+                                      blurRadius: 10,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
+                                child: const Text('🔥',
+                                    style: TextStyle(fontSize: 18)),
+                              ),
+                            ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: TextField(
@@ -5329,6 +5402,342 @@ class _TypingIndicatorState extends State<TypingIndicator>
           _buildDot(1),
           _buildDot(2),
         ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// HANGOUT PICKER SHEET
+// =============================================================================
+class _HangoutPickerSheet extends StatefulWidget {
+  final String partnerName;
+  final void Function(String emoji, String name) onSelect;
+  const _HangoutPickerSheet(
+      {required this.partnerName, required this.onSelect});
+
+  @override
+  State<_HangoutPickerSheet> createState() => _HangoutPickerSheetState();
+}
+
+class _HangoutPickerSheetState extends State<_HangoutPickerSheet>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _fade;
+  late Animation<Offset> _slide;
+  int? _pressedIndex;
+
+  static const _hangouts = [
+    {
+      'emoji': '☕',
+      'name': 'Coffee Run',
+      'desc': 'Grab a cup together',
+      'grad': [Color(0xFF6F4E37), Color(0xFFD4A574)],
+    },
+    {
+      'emoji': '🎮',
+      'name': 'Gaming Session',
+      'desc': 'Play something epic',
+      'grad': [Color(0xFF1A0533), Color(0xFF7B2FBE)],
+    },
+    {
+      'emoji': '🍕',
+      'name': 'Food Trip',
+      'desc': 'Let\'s eat something good',
+      'grad': [Color(0xFF7B0D1E), Color(0xFFFF6B00)],
+    },
+    {
+      'emoji': '🎬',
+      'name': 'Movie Night',
+      'desc': 'Pick a film, bring snacks',
+      'grad': [Color(0xFF0A0A1A), Color(0xFF1565C0)],
+    },
+    {
+      'emoji': '🏃',
+      'name': 'Workout',
+      'desc': 'Train hard together',
+      'grad': [Color(0xFF004D1A), Color(0xFF00C853)],
+    },
+    {
+      'emoji': '🌙',
+      'name': 'Late Night Talks',
+      'desc': 'Deep convos under the stars',
+      'grad': [Color(0xFF0D0D2B), Color(0xFF3949AB)],
+    },
+    {
+      'emoji': '🎵',
+      'name': 'Music Vibes',
+      'desc': 'Share sounds & playlists',
+      'grad': [Color(0xFF1A0A2E), Color(0xFFE040FB)],
+    },
+    {
+      'emoji': '🔥',
+      'name': 'Something Wild',
+      'desc': 'Surprise me, let\'s go',
+      'grad': [Color(0xFF1A0500), Color(0xFFFF3D00)],
+    },
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 420));
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _slide = Tween<Offset>(
+            begin: const Offset(0, 0.12), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: ClipRRect(
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(32)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D0D14).withValues(alpha: 0.95),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(32)),
+                border: Border(
+                  top: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.07), width: 1),
+                ),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ── Handle ──
+                    const SizedBox(height: 14),
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // ── Header ──
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Hang Out',
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: Colors.white,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.8,
+                                ),
+                              ),
+                              Text(
+                                'with ${widget.partnerName}',
+                                style: GoogleFonts.inter(
+                                  color: const Color(0xFFFF6B00),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF6B00).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: const Color(0xFFFF6B00)
+                                      .withValues(alpha: 0.25)),
+                            ),
+                            child: const Text('🔥',
+                                style: TextStyle(fontSize: 22)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        'Pick a vibe and send an invite card',
+                        style: GoogleFonts.inter(
+                            color: Colors.white38, fontSize: 13),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    // ── Grid ──
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 1.55,
+                        ),
+                        itemCount: _hangouts.length,
+                        itemBuilder: (ctx, i) {
+                          final h = _hangouts[i];
+                          final grads = h['grad'] as List<Color>;
+                          final isPressed = _pressedIndex == i;
+                          return GestureDetector(
+                            onTapDown: (_) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _pressedIndex = i);
+                            },
+                            onTapUp: (_) {
+                              setState(() => _pressedIndex = null);
+                              Future.delayed(
+                                  const Duration(milliseconds: 80), () {
+                                widget.onSelect(
+                                    h['emoji'] as String,
+                                    h['name'] as String);
+                              });
+                            },
+                            onTapCancel: () =>
+                                setState(() => _pressedIndex = null),
+                            child: AnimatedScale(
+                              scale: isPressed ? 0.93 : 1.0,
+                              duration: const Duration(milliseconds: 100),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: grads,
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.10),
+                                    width: 1,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          grads.last.withValues(alpha: 0.35),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Stack(
+                                  children: [
+                                    // ── Subtle radial glow ──
+                                    Positioned(
+                                      right: -20,
+                                      top: -20,
+                                      child: Container(
+                                        width: 90,
+                                        height: 90,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Colors.white
+                                              .withValues(alpha: 0.06),
+                                        ),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                          14, 12, 10, 12),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          // Emoji pill
+                                          Container(
+                                            width: 38,
+                                            height: 38,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.12),
+                                              border: Border.all(
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.15),
+                                              ),
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: Text(
+                                              h['emoji'] as String,
+                                              style: const TextStyle(
+                                                  fontSize: 18),
+                                            ),
+                                          ),
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                h['name'] as String,
+                                                style:
+                                                    GoogleFonts.plusJakartaSans(
+                                                  color: Colors.white,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w800,
+                                                  letterSpacing: -0.2,
+                                                ),
+                                                maxLines: 1,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                              ),
+                                              Text(
+                                                h['desc'] as String,
+                                                style: GoogleFonts.inter(
+                                                  color: Colors.white
+                                                      .withValues(alpha: 0.6),
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                                maxLines: 1,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
