@@ -123,11 +123,12 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
         // STEP 1: Evict stale members (force-killed apps stop sending last_seen heartbeats).
         // The DB trigger auto_close_empty_chatroom fires after each DELETE and
         // removes the room if it becomes empty.
-        await _sb
-            .from('chatroom_members')
-            .delete()
-            .lt('last_seen',
-                DateTime.now().subtract(const Duration(minutes: 2)).toUtc().toIso8601String());
+        await _sb.from('chatroom_members').delete().lt(
+            'last_seen',
+            DateTime.now()
+                .subtract(const Duration(minutes: 2))
+                .toUtc()
+                .toIso8601String());
 
         // STEP 2: Final safety net - delete rooms with no members at all
         final roomsRes = await _sb.from('chatrooms').select('id, created_at');
@@ -146,7 +147,9 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
             if (createdAt != null) {
               final age = now.difference(createdAt);
               if (age.inSeconds > 5 && !activeRoomIds.contains(roomId)) {
-                await _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', roomId);
+                await _sb
+                    .from('chatrooms')
+                    .update({'room_status': 'deleted'}).eq('id', roomId);
                 await _sb.from('chatrooms').delete().eq('id', roomId);
                 debugPrint('Lobby Sweep: Deleted empty room $roomId');
               }
@@ -158,7 +161,6 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
       }
     });
   }
-
 
   Future<void> _loadRooms() async {
     try {
@@ -188,22 +190,29 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
       for (var r in rawRooms) {
         final rId = r['id']?.toString();
         final count = rId != null ? (memberCounts[rId] ?? 0) : 0;
-        
+
         // Auto-dissolve check: If member count is 0 and age > 5s, room is dead -> delete from DB
         final createdAtStr = r['created_at']?.toString();
         bool isOrphan = false;
         if (createdAtStr != null) {
           final createdAt = DateTime.tryParse(createdAtStr);
-          if (createdAt != null && now.difference(createdAt).inSeconds > 5 && count == 0) {
+          if (createdAt != null &&
+              now.difference(createdAt).inSeconds > 5 &&
+              count == 0) {
             isOrphan = true;
             if (rId != null) {
-              _sb.from('chatrooms').update({'room_status': 'deleted'}).eq('id', rId).then((_) {
-                _sb.from('chatrooms').delete().eq('id', rId);
-              }).catchError((_) {});
+              _sb
+                  .from('chatrooms')
+                  .update({'room_status': 'deleted'})
+                  .eq('id', rId)
+                  .then((_) {
+                    _sb.from('chatrooms').delete().eq('id', rId);
+                  })
+                  .catchError((_) {});
             }
           }
         }
-        
+
         if (!isOrphan) {
           r['member_count'] = count;
           rooms.add(r);
@@ -224,7 +233,7 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
           if (hostIds.isNotEmpty) {
             final profilesRes = await _sb
                 .from('bolroom_profiles')
-                .select('id, anon_name, avatar_key')
+                .select('id, anon_name, avatar_key, custom_avatar_url')
                 .inFilter('id', hostIds);
 
             final profileMap = <String, Map<String, dynamic>>{};
@@ -241,7 +250,9 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                 final pData = profileMap[hId]!;
                 final anon = (pData['anon_name'] ?? '').toString().trim();
                 if (anon.isNotEmpty) room['host_name'] = anon;
-                room['host_avatar_key'] = pData['avatar_key'] ?? BolroomAvatars.forUser(hId).id;
+                room['host_avatar_key'] =
+                    pData['avatar_key'] ?? BolroomAvatars.forUser(hId).id;
+                room['host_custom_avatar_url'] = pData['custom_avatar_url'];
               }
             }
           }
@@ -861,7 +872,17 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
-                doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 16, child: Icon(Icons.person, color: DoodleColors.cream, size: 16)) : _buildGlowingAvatar(auraColor, 32, userId: room['host_id']?.toString(), avatarKey: room['host_avatar_key']?.toString() ?? room['host_avatar']?.toString()),
+                doodle
+                    ? CircleAvatar(
+                        backgroundColor: DoodleColors.orange,
+                        radius: 16,
+                        child: Icon(Icons.person,
+                            color: DoodleColors.cream, size: 16))
+                    : _buildGlowingAvatar(auraColor, 32,
+                        userId: room['host_id']?.toString(),
+                        avatarKey: room['host_avatar_key']?.toString() ??
+                            room['host_avatar']?.toString(),
+                        avatarUrl: room['host_custom_avatar_url']?.toString()),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -1424,16 +1445,28 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
 
                         String hostName = 'Host';
                         String? hostAvatarKey;
-                        final bp = await _sb.from('bolroom_profiles').select('anon_name, avatar_key').eq('id', myId).maybeSingle();
+                        final bp = await _sb
+                            .from('bolroom_profiles')
+                            .select('anon_name, avatar_key, custom_avatar_url')
+                            .eq('id', myId)
+                            .maybeSingle();
                         if (bp != null) {
-                          final anon = (bp['anon_name'] ?? '').toString().trim();
+                          final anon =
+                              (bp['anon_name'] ?? '').toString().trim();
                           if (anon.isNotEmpty) hostName = anon;
                           hostAvatarKey = bp['avatar_key']?.toString();
                         }
                         if (hostName == 'Host') {
-                          final profile = await _sb.from('profiles').select('full_name, name').eq('id', myId).maybeSingle();
+                          final profile = await _sb
+                              .from('profiles')
+                              .select('full_name, name')
+                              .eq('id', myId)
+                              .maybeSingle();
                           if (profile != null) {
-                            final n = (profile['full_name'] ?? profile['name'] ?? '').toString().trim();
+                            final n =
+                                (profile['full_name'] ?? profile['name'] ?? '')
+                                    .toString()
+                                    .trim();
                             if (n.isNotEmpty) hostName = n;
                           }
                         }
@@ -1451,21 +1484,26 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
                               .eq('host_id', myId)
                               .eq('room_status', 'active');
 
-                          final res = await _sb.from('chatrooms').insert({
-                            'name': name,
-                            'host_id': myId,
-                            'host_name': hostName,
-                            'host_avatar': hostAvatarKey,
-                            'topic': topic,
-                            'speak_permission': 'everyone',
-                            'is_recording': isRecording,
-                            'game_mode': gameMode,
-                            'visibility': visibility,
-                            'max_participants': maxParticipants,
-                            'room_status': 'active',
-                            'scheduled_at': null,
-                            'created_at': DateTime.now().toUtc().toIso8601String(),
-                          }).select().single();
+                          final res = await _sb
+                              .from('chatrooms')
+                              .insert({
+                                'name': name,
+                                'host_id': myId,
+                                'host_name': hostName,
+                                'host_avatar': hostAvatarKey,
+                                'topic': topic,
+                                'speak_permission': 'everyone',
+                                'is_recording': isRecording,
+                                'game_mode': gameMode,
+                                'visibility': visibility,
+                                'max_participants': maxParticipants,
+                                'room_status': 'active',
+                                'scheduled_at': null,
+                                'created_at':
+                                    DateTime.now().toUtc().toIso8601String(),
+                              })
+                              .select()
+                              .single();
 
                           // Update bolroom profile hosted count
                           try {
@@ -1566,12 +1604,15 @@ class _BolroomVoiceScreenState extends State<BolroomVoiceScreen> {
   }
 
   Widget _buildGlowingAvatar(Color glowColor, double size,
-      {bool isPulsing = false, String? userId, String? avatarKey}) {
+      {bool isPulsing = false,
+      String? userId,
+      String? avatarKey,
+      String? avatarUrl}) {
     // If we have a userId, prefer BolroomAvatarWidget for the custom avatar experience
     if (userId != null && userId.isNotEmpty) {
       return BolroomAvatarWidget(
         size: size,
-        avatarUrl: null,
+        avatarUrl: avatarUrl,
         avatarKey: avatarKey,
         userId: userId,
         showRing: true,

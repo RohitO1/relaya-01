@@ -911,38 +911,39 @@ class _SparkScreenState extends State<SparkScreen>
       backgroundColor:
           isDoodleMode(context) ? DoodleColors.cream : SparkColors.bg,
       body: SafeArea(
-        top: true,
-        bottom: false,
-        child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 1. Map View (Full Screen Background)
-          if (_activeView == 'map') _buildMapView(),
+          top: true,
+          bottom: false,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. Map View (Full Screen Background)
+              if (_activeView == 'map') _buildMapView(),
 
-          // 2. Foreground Content
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: _activeView == 'list' ? 0 : null,
-            child: SafeArea(
-              bottom: false,
-              child: Column(
-                mainAxisSize: _activeView == 'map'
-                    ? MainAxisSize.min
-                    : MainAxisSize.max,
-                children: [
-                  _buildHeader(),
-                  if (_activeView == 'list') Expanded(child: _buildListView()),
-                ],
+              // 2. Foreground Content
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: _activeView == 'list' ? 0 : null,
+                child: SafeArea(
+                  bottom: false,
+                  child: Column(
+                    mainAxisSize: _activeView == 'map'
+                        ? MainAxisSize.min
+                        : MainAxisSize.max,
+                    children: [
+                      _buildHeader(),
+                      if (_activeView == 'list')
+                        Expanded(child: _buildListView()),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
 
-          // Progress Bar (Mock at top)
-          _buildScrollProgress(),
-        ],
-      )),
+              // Progress Bar (Mock at top)
+              _buildScrollProgress(),
+            ],
+          )),
       floatingActionButton: null,
     );
   }
@@ -1051,7 +1052,8 @@ class _SparkScreenState extends State<SparkScreen>
               onTap: () => setState(
                   () => _activeView = _activeView == 'list' ? 'map' : 'list'),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: bgBoxColor,
                   borderRadius: BorderRadius.circular(20),
@@ -3875,7 +3877,8 @@ class _SparkMapViewState extends State<_SparkMapView> {
     super.initState();
     _fetchActualLocation();
     _fetchNearbyPeople();
-    _nearbyTimer = Timer.periodic(const Duration(minutes: 2), (_) => _fetchNearbyPeople());
+    _nearbyTimer =
+        Timer.periodic(const Duration(minutes: 2), (_) => _fetchNearbyPeople());
   }
 
   @override
@@ -3898,7 +3901,8 @@ class _SparkMapViewState extends State<_SparkMapView> {
   Future<void> _fetchActualLocation() async {
     try {
       final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
+          locationSettings:
+              const LocationSettings(accuracy: LocationAccuracy.high));
       if (mounted) {
         setState(() => _actualLocation = LatLng(pos.latitude, pos.longitude));
         _mapController?.animateToLatLng(_actualLocation!, zoom: 14.0);
@@ -3921,7 +3925,9 @@ class _SparkMapViewState extends State<_SparkMapView> {
       final uid = sb.auth.currentUser?.id;
       if (uid == null) return;
       // Count profiles active in last 15 minutes, excluding self
-      final cutoff = DateTime.now().subtract(const Duration(minutes: 15)).toIso8601String();
+      final cutoff = DateTime.now()
+          .subtract(const Duration(minutes: 15))
+          .toIso8601String();
       final result = await sb
           .from('profiles')
           .select('id')
@@ -3962,7 +3968,11 @@ class _SparkMapViewState extends State<_SparkMapView> {
       }
 
       final memberCount = item.joinedMembers;
-      final label = _currentZoom >= 14.0 ? '' : (memberCount > 0 ? '${item.title.length > 10 ? item.title.substring(0, 10) + '…' : item.title} · $memberCount 👥' : item.title);
+      final label = _currentZoom >= 14.0
+          ? ''
+          : (memberCount > 0
+              ? '${item.title.length > 10 ? item.title.substring(0, 10) + '…' : item.title} · $memberCount 👥'
+              : item.title);
 
       return SimpleMarker(
         id: item.id,
@@ -3971,7 +3981,16 @@ class _SparkMapViewState extends State<_SparkMapView> {
         label: label,
         imageUrl: item.imageUrl,
         emoji: _getEmojiForTags(item.tags),
-        onTap: () => widget.onItemTap(item),
+        onTap: () {
+          if (_mapController != null) {
+            double targetZoom = _currentZoom + 1.5;
+            if (targetZoom > 16.5) targetZoom = 16.5;
+            if (targetZoom < 14.5) targetZoom = 14.5;
+            _mapController!
+                .animateToLatLng(LatLng(item.lat, item.lng), zoom: targetZoom);
+          }
+          widget.onItemTap(item);
+        },
       );
     }).toList();
   }
@@ -3979,11 +3998,19 @@ class _SparkMapViewState extends State<_SparkMapView> {
   String _getEmojiForTags(List<String> tags) {
     if (tags.isEmpty) return '🔥';
     final tagStr = tags.join(' ').toLowerCase();
-    if (tagStr.contains('sport') || tagStr.contains('soccer') || tagStr.contains('cricket')) return '⚽';
+    if (tagStr.contains('sport') ||
+        tagStr.contains('soccer') ||
+        tagStr.contains('cricket')) return '⚽';
     if (tagStr.contains('music') || tagStr.contains('concert')) return '🎵';
-    if (tagStr.contains('food') || tagStr.contains('dinner') || tagStr.contains('cafe')) return '🍔';
-    if (tagStr.contains('outdoor') || tagStr.contains('hike') || tagStr.contains('nature')) return '🌲';
-    if (tagStr.contains('party') || tagStr.contains('club') || tagStr.contains('dance')) return '🎉';
+    if (tagStr.contains('food') ||
+        tagStr.contains('dinner') ||
+        tagStr.contains('cafe')) return '🍔';
+    if (tagStr.contains('outdoor') ||
+        tagStr.contains('hike') ||
+        tagStr.contains('nature')) return '🌲';
+    if (tagStr.contains('party') ||
+        tagStr.contains('club') ||
+        tagStr.contains('dance')) return '🎉';
     if (tagStr.contains('study') || tagStr.contains('book')) return '📚';
     if (tagStr.contains('game') || tagStr.contains('esport')) return '🎮';
     if (tagStr.contains('movie') || tagStr.contains('film')) return '🍿';
@@ -4006,23 +4033,32 @@ class _SparkMapViewState extends State<_SparkMapView> {
 
   Future<void> _performSearch(String query) async {
     if (query.trim().length < 2) {
-      if (mounted) setState(() { _searchResults.clear(); _showDropdown = false; });
+      if (mounted)
+        setState(() {
+          _searchResults.clear();
+          _showDropdown = false;
+        });
       return;
     }
     try {
       final encoded = Uri.encodeComponent(query);
-      final url = 'https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=5&addressdetails=1';
-      final res = await http.get(Uri.parse(url), headers: {'User-Agent': 'RelayaApp/1.0'});
+      final url =
+          'https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=5&addressdetails=1';
+      final res = await http
+          .get(Uri.parse(url), headers: {'User-Agent': 'RelayaApp/1.0'});
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as List;
         if (mounted) {
           setState(() {
-            _searchResults = data.map((it) => {
-              'display_name': it['display_name'].toString().split(',').first.trim(),
-              'full_name': it['display_name'].toString(),
-              'lat': double.parse(it['lat'].toString()),
-              'lon': double.parse(it['lon'].toString()),
-            }).toList();
+            _searchResults = data
+                .map((it) => {
+                      'display_name':
+                          it['display_name'].toString().split(',').first.trim(),
+                      'full_name': it['display_name'].toString(),
+                      'lat': double.parse(it['lat'].toString()),
+                      'lon': double.parse(it['lon'].toString()),
+                    })
+                .toList();
             _showDropdown = _searchResults.isNotEmpty;
           });
         }
@@ -4031,16 +4067,25 @@ class _SparkMapViewState extends State<_SparkMapView> {
   }
 
   void _selectResult(Map<String, dynamic> res) {
-    setState(() { _searchResults = []; _showDropdown = false; _searchCtrl.text = res['display_name']; });
+    setState(() {
+      _searchResults = [];
+      _showDropdown = false;
+      _searchCtrl.text = res['display_name'];
+    });
     FocusScope.of(context).unfocus();
-    _mapController?.animateToLatLng(LatLng(res['lat'] as double, res['lon'] as double), zoom: 15.0);
+    _mapController?.animateToLatLng(
+        LatLng(res['lat'] as double, res['lon'] as double),
+        zoom: 15.0);
   }
 
   Future<void> _recenterToLocation() async {
     try {
       final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 10)));
-      _mapController?.animateToLatLng(LatLng(pos.latitude, pos.longitude), zoom: 15.0);
+          locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 10)));
+      _mapController?.animateToLatLng(LatLng(pos.latitude, pos.longitude),
+          zoom: 15.0);
     } catch (_) {
       if (_actualLocation != null) {
         _mapController?.animateToLatLng(_actualLocation!, zoom: 15.0);
@@ -4066,7 +4111,8 @@ class _SparkMapViewState extends State<_SparkMapView> {
           },
           onZoomChanged: (zoom) {
             // Re-render markers if zooming across the 14.0 boundary
-            final crossed = (_currentZoom < 14.0 && zoom >= 14.0) || (_currentZoom >= 14.0 && zoom < 14.0);
+            final crossed = (_currentZoom < 14.0 && zoom >= 14.0) ||
+                (_currentZoom >= 14.0 && zoom < 14.0);
             _currentZoom = zoom;
             if (crossed) {
               _updateMapMarkers();
@@ -4093,7 +4139,10 @@ class _SparkMapViewState extends State<_SparkMapView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSearchBar(),
-                  if (_showDropdown) ...[const SizedBox(height: 6), _buildSearchDropdown()],
+                  if (_showDropdown) ...[
+                    const SizedBox(height: 6),
+                    _buildSearchDropdown()
+                  ],
                 ],
               ),
             ),
@@ -4116,35 +4165,31 @@ class _SparkMapViewState extends State<_SparkMapView> {
           ),
 
         // ── 6. Bottom row (Search, See List, Add, Go To) perfectly aligned ──
+        // ── 6. Bottom row (Search, See List, Go To) perfectly aligned ──
         Positioned(
           bottom: bottomPad,
           left: 16,
           right: 16,
-          child: Stack(
-            alignment: Alignment.bottomCenter,
-            clipBehavior: Clip.none,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Left: Search
-                  _buildSearchIconButton(),
-                  // Right: Add & Go to
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildCreateFab(),
-                      const SizedBox(width: 16),
-                      _buildNavigationArrowButton(),
-                    ],
-                  ),
-                ],
-              ),
-              // Center: See list
-              Positioned(
-                bottom: 8, // slight lift to optically align center with circles
+              // Left: See list
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
                 child: _buildSeeListPill(),
+              ),
+              // Right: Search & Go to
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildSearchIconButton(),
+                    const SizedBox(width: 16),
+                    _buildNavigationArrowButton(),
+                  ],
+                ),
               ),
             ],
           ),
@@ -4157,54 +4202,42 @@ class _SparkMapViewState extends State<_SparkMapView> {
 
   /// Search icon button — tapping toggles the floating search bar
   Widget _buildSearchIconButton() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              _searchVisible = !_searchVisible;
-              if (!_searchVisible) {
-                _searchCtrl.clear();
-                _searchResults = [];
-                _showDropdown = false;
-              }
-            });
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _searchVisible = !_searchVisible;
+          if (!_searchVisible) {
+            _searchCtrl.clear();
+            _searchResults = [];
+            _showDropdown = false;
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          color: _searchVisible
+              ? const Color(0xFFFF6B00)
+              : const Color(0xFF131A26),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
               color: _searchVisible
-                  ? const Color(0xFFFF6B00)
-                  : const Color(0xFF0D1527),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: _searchVisible
-                    ? const Color(0xFFFF6B00)
-                    : Colors.white.withValues(alpha: 0.15),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _searchVisible
-                      ? const Color(0xFFFF6B00).withValues(alpha: 0.5)
-                      : Colors.black.withValues(alpha: 0.4),
-                  blurRadius: _searchVisible ? 16 : 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+                  ? const Color(0xFFFF6B00).withValues(alpha: 0.5)
+                  : Colors.black.withValues(alpha: 0.2),
+              blurRadius: _searchVisible ? 16 : 12,
+              offset: const Offset(0, 4),
             ),
-            child: Icon(
-              _searchVisible ? Icons.close_rounded : Icons.search_rounded,
-              color: Colors.white,
-              size: 22,
-            ),
-          ),
+          ],
         ),
-        const SizedBox(height: 6),
-        Text('Search', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
-      ],
+        child: Icon(
+          _searchVisible ? Icons.close_rounded : Icons.search_rounded,
+          color: Colors.white,
+          size: 24,
+        ),
+      ),
     );
   }
 
@@ -4234,7 +4267,8 @@ class _SparkMapViewState extends State<_SparkMapView> {
                   style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
                   decoration: InputDecoration(
                     hintText: 'Search places, areas...',
-                    hintStyle: GoogleFonts.inter(color: const Color(0xFF6B7280), fontSize: 14),
+                    hintStyle: GoogleFonts.inter(
+                        color: const Color(0xFF6B7280), fontSize: 14),
                     border: InputBorder.none,
                     isDense: true,
                   ),
@@ -4244,9 +4278,13 @@ class _SparkMapViewState extends State<_SparkMapView> {
                 GestureDetector(
                   onTap: () {
                     _searchCtrl.clear();
-                    setState(() { _searchResults = []; _showDropdown = false; });
+                    setState(() {
+                      _searchResults = [];
+                      _showDropdown = false;
+                    });
                   },
-                  child: const Icon(Icons.close, color: Color(0xFF6B7280), size: 16),
+                  child: const Icon(Icons.close,
+                      color: Color(0xFF6B7280), size: 16),
                 ),
             ],
           ),
@@ -4271,14 +4309,24 @@ class _SparkMapViewState extends State<_SparkMapView> {
             shrinkWrap: true,
             padding: EdgeInsets.zero,
             itemCount: _searchResults.length,
-            separatorBuilder: (_, __) => Container(height: 1, color: Colors.white.withValues(alpha: 0.06)),
+            separatorBuilder: (_, __) => Container(
+                height: 1, color: Colors.white.withValues(alpha: 0.06)),
             itemBuilder: (_, i) {
               final res = _searchResults[i];
               return ListTile(
                 dense: true,
-                leading: const Icon(Icons.place_outlined, color: Color(0xFF6B7280), size: 18),
-                title: Text(res['display_name'], style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-                subtitle: Text(res['full_name'], style: GoogleFonts.inter(color: const Color(0xFF6B7280), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                leading: const Icon(Icons.place_outlined,
+                    color: Color(0xFF6B7280), size: 18),
+                title: Text(res['display_name'],
+                    style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+                subtitle: Text(res['full_name'],
+                    style: GoogleFonts.inter(
+                        color: const Color(0xFF6B7280), fontSize: 10),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
                 onTap: () => _selectResult(res),
               );
             },
@@ -4306,13 +4354,30 @@ class _SparkMapViewState extends State<_SparkMapView> {
               // Tiny avatar stack indicator
               Stack(
                 children: [
-                  Container(width: 20, height: 20, decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF3B82F6))),
-                  Positioned(left: 10, child: Container(width: 20, height: 20, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF8B5CF6), border: Border.all(color: const Color(0xFF0D1527), width: 1.5)))),
+                  Container(
+                      width: 20,
+                      height: 20,
+                      decoration: const BoxDecoration(
+                          shape: BoxShape.circle, color: Color(0xFF3B82F6))),
+                  Positioned(
+                      left: 10,
+                      child: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFF8B5CF6),
+                              border: Border.all(
+                                  color: const Color(0xFF0D1527),
+                                  width: 1.5)))),
                 ],
               ),
               const SizedBox(width: 8),
               Text('$_nearbyPeople people',
-                  style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                  style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -4324,7 +4389,6 @@ class _SparkMapViewState extends State<_SparkMapView> {
     final filters = [
       ('all', '🔥 All'),
       ('rush', '⚡ Rush-Ins'),
-      ('activity', '📅 Activities'),
       ('joined', '✅ Joined'),
     ];
 
@@ -4349,10 +4413,18 @@ class _SparkMapViewState extends State<_SparkMapView> {
                     : const Color(0xCC0D1527),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isActive ? const Color(0xFFFF6B00) : Colors.white.withValues(alpha: 0.12),
+                  color: isActive
+                      ? const Color(0xFFFF6B00)
+                      : Colors.white.withValues(alpha: 0.12),
                 ),
                 boxShadow: isActive
-                    ? [BoxShadow(color: const Color(0xFFFF6B00).withValues(alpha: 0.4), blurRadius: 10, spreadRadius: 1)]
+                    ? [
+                        BoxShadow(
+                            color:
+                                const Color(0xFFFF6B00).withValues(alpha: 0.4),
+                            blurRadius: 10,
+                            spreadRadius: 1)
+                      ]
                     : [],
               ),
               child: Text(
@@ -4373,52 +4445,55 @@ class _SparkMapViewState extends State<_SparkMapView> {
   Widget _buildSeeListPill() {
     return GestureDetector(
       onTap: widget.onSwitchToList,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xCC0D1527),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFB000), // Vibrant aesthetic yellow
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFFB000).withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.format_list_bulleted_rounded, color: Colors.white, size: 16),
-                const SizedBox(width: 8),
-                Text('See list', style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.format_list_bulleted_rounded,
+                color: Colors.black, size: 20),
+            const SizedBox(width: 8),
+            Text('See list',
+                style: GoogleFonts.inter(
+                    color: Colors.black,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700)),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildNavigationArrowButton() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
-          onTap: _recenterToLocation,
-          child: Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: const Color(0xFF0D1527),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
-            ),
-            child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 22),
-          ),
+    return GestureDetector(
+      onTap: _recenterToLocation,
+      child: Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          color: const Color(0xFF131A26),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 12,
+                offset: const Offset(0, 4))
+          ],
         ),
-        const SizedBox(height: 6),
-        Text('Go to', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
-      ],
+        child:
+            const Icon(Icons.navigation_rounded, color: Colors.white, size: 24),
+      ),
     );
   }
 
@@ -4435,18 +4510,28 @@ class _SparkMapViewState extends State<_SparkMapView> {
               color: const Color(0xFF0D1527),
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))],
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4))
+              ],
             ),
             child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
           ),
         ),
         const SizedBox(height: 6),
-        Text('Add', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
+        Text('Add',
+            style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w500)),
       ],
     );
   }
 
-  Widget _buildCircleButton({required IconData icon, required VoidCallback onTap, String? tooltip}) {
+  Widget _buildCircleButton(
+      {required IconData icon, required VoidCallback onTap, String? tooltip}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -4456,7 +4541,12 @@ class _SparkMapViewState extends State<_SparkMapView> {
           color: const Color(0xCC0D1527),
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 2))],
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 2))
+          ],
         ),
         child: Icon(icon, color: Colors.white70, size: 18),
       ),
@@ -4963,8 +5053,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           _pinLocation = LatLng(lat, lon);
           _fetchingGps = false;
         });
-        _mapController
-            ?.animateToLatLng(_pinLocation, zoom: 16.0);
+        _mapController?.animateToLatLng(_pinLocation, zoom: 16.0);
       } else {
         if (mounted) setState(() => _fetchingGps = false);
       }
@@ -4984,8 +5073,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
           _pinLocation = LatLng(pos.latitude, pos.longitude);
           _fetchingGps = false;
         });
-        _mapController
-            ?.animateToLatLng(_pinLocation, zoom: 16.0);
+        _mapController?.animateToLatLng(_pinLocation, zoom: 16.0);
       }
     } catch (_) {
       // Fall back to saved location from service
@@ -4997,8 +5085,7 @@ class _SparkCreateModalState extends State<_SparkCreateModal> {
             _pinLocation = LatLng(lat, lng);
             _fetchingGps = false;
           });
-          _mapController
-              ?.animateToLatLng(_pinLocation, zoom: 14.0);
+          _mapController?.animateToLatLng(_pinLocation, zoom: 14.0);
         } else {
           setState(() => _fetchingGps = false);
         }

@@ -75,16 +75,13 @@ class _BolroomShellState extends State<BolroomShell> {
     // Priority 2: Room is minimized as bubble → allow normal navigation
     // (We removed the logic that maximizes it here to prevent the navigation loop)
 
-    // Priority 3: Navigate to the previous tab in history
-    if (_tabHistory.isNotEmpty) {
-      setState(() {
-        _currentIndex = _tabHistory.removeLast();
-      });
-      _pageCtrl.jumpToPage(_currentIndex);
+    // Priority 3: Navigate to Voiceroom tab (index 0) if not already there
+    if (_currentIndex != 0) {
+      _switchTab(0);
       return true;
     }
 
-    // Priority 4: Nothing left — pop the BolroomShell, go back to Home
+    // Priority 4: If already on Voiceroom, pop BolroomShell (back to Home)
     return false;
   }
 
@@ -125,21 +122,23 @@ class _BolroomShellState extends State<BolroomShell> {
         bottomNavigationBar: Container(
           height: 80,
           decoration: doodle
-            ? BoxDecoration(
-                color: DoodleColors.cream,
-                border: Border(top: BorderSide(color: DoodleColors.brown, width: 2)),
-              )
-            : BoxDecoration(
-                color: navBg,
-                border: const Border(top: BorderSide(color: Color(0xFF1D182E), width: 1)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 20,
-                    offset: const Offset(0, -5),
-                  ),
-                ],
-              ),
+              ? BoxDecoration(
+                  color: DoodleColors.cream,
+                  border: Border(
+                      top: BorderSide(color: DoodleColors.brown, width: 2)),
+                )
+              : BoxDecoration(
+                  color: navBg,
+                  border: const Border(
+                      top: BorderSide(color: Color(0xFF1D182E), width: 1)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 20,
+                      offset: const Offset(0, -5),
+                    ),
+                  ],
+                ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 30),
             child: Row(
@@ -167,22 +166,29 @@ class _BolroomShellState extends State<BolroomShell> {
         children: [
           Icon(
             icon,
-            color: isActive ? (doodle ? DoodleColors.blue : purplePrimary) : (doodle ? DoodleColors.brown.withValues(alpha: 0.5) : textMuted),
+            color: isActive
+                ? (doodle ? DoodleColors.blue : purplePrimary)
+                : (doodle
+                    ? DoodleColors.brown.withValues(alpha: 0.5)
+                    : textMuted),
             size: 26,
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: doodle
-              ? DoodleFonts.body(
-                  color: isActive ? DoodleColors.blue : DoodleColors.brown.withValues(alpha: 0.5),
-                  fontSize: 12,
-                ).copyWith(fontWeight: isActive ? FontWeight.w600 : FontWeight.w400)
-              : TextStyle(
-                  color: isActive ? purplePrimary : textMuted,
-                  fontSize: 11,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                ),
+                ? DoodleFonts.body(
+                    color: isActive
+                        ? DoodleColors.blue
+                        : DoodleColors.brown.withValues(alpha: 0.5),
+                    fontSize: 12,
+                  ).copyWith(
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w400)
+                : TextStyle(
+                    color: isActive ? purplePrimary : textMuted,
+                    fontSize: 11,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                  ),
           ),
           if (isActive)
             Container(
@@ -192,13 +198,15 @@ class _BolroomShellState extends State<BolroomShell> {
               decoration: BoxDecoration(
                 color: doodle ? DoodleColors.blue : purplePrimary,
                 shape: BoxShape.circle,
-                boxShadow: doodle ? [] : [
-                  BoxShadow(
-                    color: purplePrimary.withValues(alpha: 0.5),
-                    blurRadius: 4,
-                    spreadRadius: 1,
-                  )
-                ],
+                boxShadow: doodle
+                    ? []
+                    : [
+                        BoxShadow(
+                          color: purplePrimary.withValues(alpha: 0.5),
+                          blurRadius: 4,
+                          spreadRadius: 1,
+                        )
+                      ],
               ),
             )
           else

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'spark_screen.dart';
 import 'services/doodle_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'widgets/forward_sheet.dart';
 import 'widgets/profile_detail_sheet.dart';
 import 'rush_in_chat_room_screen.dart';
 
@@ -766,12 +767,17 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                                     _isBookmarked ? accentColor : Colors.white,
                               ),
                               const SizedBox(width: 10),
-                              _circleBtn(Icons.share_outlined, () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Link copied!'),
-                                      backgroundColor: Colors.blueGrey),
-                                );
+                              _circleBtn(Icons.send_outlined, () {
+                                final title = item.title;
+                                showModalBottomSheet(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (_) => ForwardBottomSheet(
+                                        contentTitle: title,
+                                        contentUrl:
+                                            'https://relaya.in/spark/${item.id}',
+                                        contentImageUrl: item.imageUrl));
                               }),
                             ]),
                           ],
@@ -957,8 +963,7 @@ class _SparkDetailScreenState extends State<SparkDetailScreen> {
                                             .eq('id', item.hostId!)
                                             .single();
                                         if (context.mounted) {
-                                          showFullProfileSheet(
-                                              context, p, () {}, () {});
+                                          showFullProfileSheet(context, p);
                                         }
                                       } catch (e) {
                                         if (context.mounted) {

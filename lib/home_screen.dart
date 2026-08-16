@@ -10,7 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:share_plus/share_plus.dart';
+import 'widgets/forward_sheet.dart';
 import 'profile_screen.dart';
 import 'services/location_service.dart';
 import 'package:geolocator/geolocator.dart';
@@ -1034,11 +1034,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     isBookmarked ? HomeColors.yellow : HomeColors.txt2,
                     () => _toggleBookmark(postId)),
                 const SizedBox(width: 16),
-                _buildActionBtn(Icons.share_outlined, '', HomeColors.txt2, () {
-                  final text = content.length > 100
-                      ? content.substring(0, 97) + '...'
-                      : content;
-                  Share.share('Check out this post on Relaya:\n"$text"');
+                _buildActionBtn(Icons.send_outlined, '', HomeColors.txt2, () {
+                  showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => ForwardBottomSheet(
+                          contentTitle: userName,
+                          contentUrl: 'https://relaya.in/post/$postId'));
                 }),
               ],
             ),
@@ -1305,13 +1308,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Navigator.pop(ctx);
                   _hidePost(postId);
                 }),
-                _buildMoreOption(Icons.link, 'Copy Link', () {
-                  Navigator.pop(ctx);
-                  Clipboard.setData(
-                      ClipboardData(text: 'https://relaya.in/post/$postId'));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Link copied')));
-                }),
                 _buildMoreOption(Icons.delete_outline, 'Delete Post', () {
                   Navigator.pop(ctx);
                   _deletePost(postId);
@@ -1325,13 +1321,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 _buildMoreOption(Icons.visibility_off, 'Hide Post', () {
                   Navigator.pop(ctx);
                   _hidePost(postId);
-                }),
-                _buildMoreOption(Icons.link, 'Copy Link', () {
-                  Navigator.pop(ctx);
-                  Clipboard.setData(
-                      ClipboardData(text: 'https://relaya.in/post/$postId'));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Link copied')));
                 }),
                 _buildMoreOption(Icons.flag, 'Report Post', () {
                   Navigator.pop(ctx);
@@ -3252,6 +3241,77 @@ class _MeetraMLogoPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+class _AnimatedSignalIcon extends StatefulWidget {
+  const _AnimatedSignalIcon({super.key});
+
+  @override
+  State<_AnimatedSignalIcon> createState() => _AnimatedSignalIconState();
+}
+
+class _AnimatedSignalIconState extends State<_AnimatedSignalIcon>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+
+    _scaleAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _scaleAnimation.value,
+          child: Opacity(
+            opacity: _fadeAnimation.value,
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFFFF6B00),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0xFFFF6B00),
+                    blurRadius: 12,
+                    spreadRadius: -4,
+                  )
+                ],
+              ),
+              child: const Icon(
+                Icons.sensors_rounded,
+                color: Colors.black87,
+                size: 24,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 // ==========================================
 // BOLROOM ORBITAL BANNER
 // ==========================================
@@ -3260,115 +3320,92 @@ class EchoNexusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      width: double.infinity,
-      height: 380,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.6),
-            blurRadius: 30,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const BolroomShell()));
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        width: double.infinity,
+        height: 280,
         child: Stack(
           children: [
+            // 1. Clean Background Image masked to fade out organically at edges
             Positioned.fill(
-              child: Image.asset(
-                'assets/images/bolrooms_hero.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Color(0xFF161622),
-                          Color(0xFF0C0C12),
-                          Colors.black,
-                        ],
-                      ),
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.contactless_outlined,
-                        color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
-                        size: 80,
-                      ),
-                    ),
-                  );
+              child: ShaderMask(
+                shaderCallback: (Rect bounds) {
+                  return const RadialGradient(
+                    center: Alignment.center,
+                    radius: 0.75, // Controls how far out the fade starts
+                    colors: [Colors.black, Colors.transparent],
+                    stops: [
+                      0.6,
+                      1.0
+                    ], // Fades completely to transparent at the edges
+                  ).createShader(bounds);
                 },
+                blendMode: BlendMode.dstIn,
+                child: Image.asset(
+                  'assets/images/bolrooms_hero_v4.png',
+                  fit: BoxFit.cover,
+                  alignment: const Alignment(0.4, 0),
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(color: const Color(0xFF161622));
+                  },
+                ),
               ),
             ),
+
+            // 2. Linear Gradient for Text Readability (left side)
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
                     colors: [
-                      Colors.black.withValues(alpha: 0.2),
-                      Colors.black.withValues(alpha: 0.4),
-                      Colors.black.withValues(alpha: 0.85),
-                      Colors.black,
+                      Colors.black.withValues(alpha: 0.95),
+                      Colors.black.withValues(alpha: 0.5),
+                      Colors.transparent,
                     ],
-                    stops: const [0.0, 0.4, 0.75, 1.0],
+                    stops: const [0.0, 0.4, 0.85],
                   ),
                 ),
               ),
             ),
+
+            // 3. UI Content Overlay
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // Top Row: Icon + Anonymous Badge
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.contactless_outlined,
-                            color: Color(0xFFFF6B00),
-                            size: 26,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'BOLROOMS',
-                            style: GoogleFonts.inter(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              fontStyle: FontStyle.normal,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ],
-                      ),
+                      const _AnimatedSignalIcon(),
                       Container(
+                        margin: const EdgeInsets.only(top: 4),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
+                            horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1E0E08),
-                          borderRadius: BorderRadius.circular(16),
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color:
-                                const Color(0xFFFF3D00).withValues(alpha: 0.3),
-                            width: 1,
+                            color: const Color(0xFFFF6B00),
+                            width: 1.2,
                           ),
                         ),
                         child: Text(
                           'ANONYMOUS',
                           style: GoogleFonts.inter(
-                            color: const Color(0xFFFF3D00),
-                            fontSize: 10,
+                            color: const Color(0xFFFF6B00),
+                            fontSize: 11,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.5,
                           ),
@@ -3376,115 +3413,104 @@ class EchoNexusBanner extends StatelessWidget {
                       ),
                     ],
                   ),
+
+                  // Bottom Content: Texts and Button
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 20),
-                        child: Text(
-                          'Enter a world where identity fades and real connections form.',
-                          style: GoogleFonts.inter(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            height: 1.4,
-                          ),
+                      Text(
+                        'BOLROOMS',
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                          height: 1.1,
                         ),
                       ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildActionButton(
-                            context,
-                            icon: Icons.headset_mic_outlined,
-                            label: 'Voicerooms',
-                            iconColor: const Color(0xFFFF6B00),
+                      Container(
+                        margin: const EdgeInsets.only(top: 4, bottom: 12),
+                        height: 3,
+                        width: 140,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF6B00),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+
+                      // Subtext - No limits on same line
+                      Text(
+                        'No names. No limits.',
+                        style: GoogleFonts.inter(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      RichText(
+                        text: TextSpan(
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white70,
                           ),
-                          _buildActionButton(
-                            context,
-                            icon: Icons.groups_outlined,
-                            label: 'Communities',
-                            iconColor: const Color(0xFF4E8BFF),
+                          children: const [
+                            TextSpan(text: 'Just '),
+                            TextSpan(
+                                text: 'real',
+                                style: TextStyle(color: Color(0xFFFF6B00))),
+                            TextSpan(text: ' conversations.'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Enter Bolroom Animated Gradient Button
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(24),
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFFFF6B00),
+                              Colors.white,
+                            ],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            stops: [0.6, 1.0],
                           ),
-                          _buildActionButton(
-                            context,
-                            icon: Icons.chat_bubble_outline,
-                            label: 'Messages',
-                            iconColor: const Color(0xFFFFD54F),
-                          ),
-                          _buildActionButton(
-                            context,
-                            icon: Icons.person_outline,
-                            label: 'Profile',
-                            iconColor: const Color(0xFFF48FB1),
-                          ),
-                        ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'ENTER BOLROOM',
+                              style: GoogleFonts.inter(
+                                color: Colors.black87,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Icon(
+                              Icons.arrow_forward_rounded,
+                              color: Colors.black87,
+                              size: 16,
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ],
               ),
-            ),
+            ), // end Padding
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required Color iconColor,
-  }) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        height: 60,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E).withValues(alpha: 0.65),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.08),
-            width: 1,
-          ),
-        ),
-        child: InkWell(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            if (label == 'Voicerooms') {
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const BolroomShell()));
-            } else if (label == 'Communities') {
-              Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const CommunitiesStandaloneScreen()));
-            } else if (label == 'Messages') {
-              MainDashboard.switchTab(context, 3);
-            } else if (label == 'Profile') {
-              MainDashboard.switchTab(context, 4);
-            }
-          },
-          borderRadius: BorderRadius.circular(14),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: iconColor, size: 20),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: GoogleFonts.inter(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+        ), // end Stack
+      ), // end Container
+    ); // end GestureDetector
   }
 }
 

@@ -88,223 +88,11 @@ class _HostActivityScreenState extends State<HostActivityScreen>
   int _participantLimit = 10;
   int _durationHours = 6;
   double _radiusKm = 5.0;
-  bool _isGhostMode = false;
 
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
 
-  // ── AI SUGGESTIONS ──
-  final List<Map<String, dynamic>> _defaultAiSuggestions = [
-    {
-      'title': 'Midnight Coffee Run',
-      'tags': ['Coffee', 'Late Night', 'Chill'],
-      'desc':
-          'Anyone up for a quick coffee run to the nearest 24/7 cafe? Need a caffeine boost.',
-    },
-    {
-      'title': 'Weekend Turf Cricket',
-      'tags': ['Sports', 'Cricket', 'Active'],
-      'desc':
-          'Looking for a few more players for a 6-a-side box cricket match this weekend.',
-    },
-    {
-      'title': 'Rooftop Pizza Party',
-      'tags': ['Food', 'Party', 'Music'],
-      'desc':
-          'Ordering some pizzas and playing music on the rooftop. Everyone is welcome to join.',
-    },
-    {
-      'title': 'Early Morning Cycling',
-      'tags': ['Fitness', 'Morning', 'Explore'],
-      'desc':
-          'Planning a 15km cycle ride around the city at dawn. Great way to start the day!',
-    },
-    {
-      'title': 'Casual Board Games',
-      'tags': ['Games', 'Indoor', 'Fun'],
-      'desc':
-          'Hosting a casual board game evening. I have Monopoly and Catan, bring your favorites!',
-    },
-  ];
-
-  List<Map<String, dynamic>> _filteredAiSuggestions = [];
-
-  static const _geminiApiKey =
-      String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
-
-  void _filterAiSuggestions(String query) {
-    if (_aiDebounce?.isActive ?? false) _aiDebounce!.cancel();
-
-    if (query.trim().isEmpty) {
-      setState(() {
-        _filteredAiSuggestions = List.from(_defaultAiSuggestions);
-        _isGeneratingSuggestions = false;
-      });
-      return;
-    }
-
-    // Immediately clear stale suggestions & show loading
-    setState(() {
-      _filteredAiSuggestions = [];
-      _isGeneratingSuggestions = true;
-    });
-
-    _aiDebounce =
-        Timer(const Duration(milliseconds: 400), () => _callGeminiApi(query));
-  }
-
-  Future<void> _callGeminiApi(String query, {int attempt = 1}) async {
-    if (!mounted) return;
-    if (_geminiApiKey.isEmpty) {
-      debugPrint(
-          '[AI] Gemini API key not configured. Falling back to local filtering.');
-      if (mounted) {
-        setState(() {
-          final q = query.toLowerCase();
-          _filteredAiSuggestions = _defaultAiSuggestions.where((s) {
-            return (s['title'] as String).toLowerCase().contains(q) ||
-                (s['desc'] as String).toLowerCase().contains(q);
-          }).toList();
-          // Always show at least 5 if possible by padding with defaults
-          if (_filteredAiSuggestions.length < 5) {
-            final existingTitles =
-                _filteredAiSuggestions.map((e) => e['title']).toSet();
-            final extras = _defaultAiSuggestions
-                .where((e) => !existingTitles.contains(e['title']));
-            _filteredAiSuggestions
-                .addAll(extras.take(5 - _filteredAiSuggestions.length));
-          }
-          _isGeneratingSuggestions = false;
-        });
-      }
-      return;
-    }
-    const maxAttempts = 3;
-    debugPrint('[AI] Attempt $attempt for query: "$query"');
-
-    try {
-      final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$_geminiApiKey',
-      );
-
-      final requestBody = jsonEncode({
-        'contents': [
-          {
-            'parts': [
-              {
-                'text': 'Generate 5 fun social activity ideas for the topic "$query". '
-                    'Return a JSON object: {"suggestions":[{"title":"...","tags":["tag1","tag2"],"desc":"..."}]}'
-              }
-            ]
-          }
-        ],
-        'generationConfig': {
-          'responseMimeType': 'application/json',
-          'temperature': 0.9,
-        },
-      });
-
-      debugPrint('[AI] Sending request to Gemini...');
-      final response = await http.post(url,
-          headers: {'Content-Type': 'application/json'}, body: requestBody);
-      debugPrint('[AI] Response status: ${response.statusCode}');
-
-      if (!mounted) return;
-
-      if (response.statusCode == 429 && attempt < maxAttempts) {
-        // Rate limited — wait and retry
-        final waitSec = attempt * 2;
-        debugPrint('[AI] Rate limited (429). Retrying in ${waitSec}s...');
-        await Future.delayed(Duration(seconds: waitSec));
-        if (mounted) await _callGeminiApi(query, attempt: attempt + 1);
-        return;
-      }
-
-      if (response.statusCode == 200) {
-        debugPrint('[AI] Success! Parsing response...');
-        final body = jsonDecode(response.body);
-
-        String? text;
-        try {
-          text =
-              body['candidates'][0]['content']['parts'][0]['text'] as String?;
-        } catch (e) {
-          debugPrint('[AI] Failed to extract text from response: $e');
-          debugPrint(
-              '[AI] Full response body: ${response.body.substring(0, (response.body.length > 500 ? 500 : response.body.length))}');
-        }
-
-        if (text != null && text.isNotEmpty) {
-          debugPrint(
-              '[AI] Raw text (first 300 chars): ${text.substring(0, (text.length > 300 ? 300 : text.length))}');
-
-          // Strip markdown backticks if present
-          String cleaned = text.trim();
-          if (cleaned.startsWith('```')) {
-            final firstNl = cleaned.indexOf('\n');
-            final lastBt = cleaned.lastIndexOf('```');
-            if (firstNl != -1 && lastBt > firstNl) {
-              cleaned = cleaned.substring(firstNl + 1, lastBt).trim();
-            }
-          }
-
-          final parsed = jsonDecode(cleaned);
-          if (parsed is Map && parsed.containsKey('suggestions')) {
-            final list = parsed['suggestions'] as List;
-            debugPrint('[AI] Parsed ${list.length} suggestions');
-            _filteredAiSuggestions = list
-                .map<Map<String, dynamic>>((e) {
-                  return {
-                    'title': e['title']?.toString() ?? '',
-                    'tags': List<String>.from((e['tags'] as List?) ?? []),
-                    'desc': e['desc']?.toString() ?? '',
-                  };
-                })
-                .where((s) => (s['title'] as String).isNotEmpty)
-                .toList();
-          } else {
-            debugPrint(
-                '[AI] Response JSON does not contain "suggestions" key. Keys: ${parsed is Map ? parsed.keys.toList() : "not a map"}');
-          }
-        }
-      } else {
-        debugPrint(
-            '[AI] API error ${response.statusCode}: ${response.body.substring(0, (response.body.length > 500 ? 500 : response.body.length))}');
-      }
-    } catch (e, stack) {
-      debugPrint('[AI] Exception: $e');
-      debugPrint('[AI] Stack: $stack');
-    }
-
-    if (mounted) {
-      setState(() {
-        if (_filteredAiSuggestions.length < 5) {
-          final q = query.toLowerCase();
-          final existingTitles =
-              _filteredAiSuggestions.map((e) => e['title']).toSet();
-
-          final localMatches = _defaultAiSuggestions.where((s) {
-            return !existingTitles.contains(s['title']) &&
-                ((s['title'] as String).toLowerCase().contains(q) ||
-                    (s['desc'] as String).toLowerCase().contains(q));
-          });
-
-          _filteredAiSuggestions
-              .addAll(localMatches.take(5 - _filteredAiSuggestions.length));
-
-          if (_filteredAiSuggestions.length < 5) {
-            final extras = _defaultAiSuggestions.where((e) =>
-                !_filteredAiSuggestions
-                    .map((x) => x['title'])
-                    .contains(e['title']));
-            _filteredAiSuggestions
-                .addAll(extras.take(5 - _filteredAiSuggestions.length));
-          }
-        }
-        _isGeneratingSuggestions = false;
-      });
-    }
-  }
+  // ── AI SUGGESTIONS REMOVED ──
 
   // -- SELLER PACKAGE DATA --
   bool _isSeller = false;
@@ -320,8 +108,6 @@ class _HostActivityScreenState extends State<HostActivityScreen>
   List<dynamic> _searchResults = [];
   Timer? _debounce;
   Timer? _geocodeDebounce;
-  Timer? _aiDebounce;
-  bool _isGeneratingSuggestions = false;
   bool _isSearching = false;
   bool _showDropdown = false;
 
@@ -415,8 +201,6 @@ class _HostActivityScreenState extends State<HostActivityScreen>
   @override
   void initState() {
     super.initState();
-    _isRushIn = true;
-    _filteredAiSuggestions = List.from(_defaultAiSuggestions);
     _pinLocation = widget.initialLocation;
     _pulseCtrl =
         AnimationController(vsync: this, duration: const Duration(seconds: 2))
@@ -537,8 +321,7 @@ class _HostActivityScreenState extends State<HostActivityScreen>
           _pinLocation = LatLng(position.latitude, position.longitude);
           _fetchingGps = false;
         });
-        _googleMapController
-            ?.animateToLatLng(_pinLocation, zoom: 16.0);
+        _googleMapController?.animateToLatLng(_pinLocation, zoom: 16.0);
         _reverseGeocode(_pinLocation);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Row(children: [
@@ -657,8 +440,7 @@ class _HostActivityScreenState extends State<HostActivityScreen>
       _locationNameCtrl.text = res['display_name'];
     });
     FocusScope.of(context).unfocus();
-    _googleMapController
-        ?.animateToLatLng(_pinLocation, zoom: 16.0);
+    _googleMapController?.animateToLatLng(_pinLocation, zoom: 16.0);
   }
 
   Future<void> _pickTime() async {
@@ -723,12 +505,23 @@ class _HostActivityScreenState extends State<HostActivityScreen>
       final uid = user.id;
       final now = DateTime.now();
       final dt = _isRushIn
-          ? (_selectedTime != null
-              ? DateTime(now.year, now.month, now.day, _selectedTime!.hour,
+          ? (_selectedDate != null && _selectedTime != null
+              ? DateTime(
+                  _selectedDate!.year,
+                  _selectedDate!.month,
+                  _selectedDate!.day,
+                  _selectedTime!.hour,
                   _selectedTime!.minute)
-              : now)
-          : DateTime(_selectedDate!.year, _selectedDate!.month,
-              _selectedDate!.day, _selectedTime!.hour, _selectedTime!.minute);
+              : (_selectedTime != null
+                  ? DateTime(now.year, now.month, now.day, _selectedTime!.hour,
+                      _selectedTime!.minute)
+                  : now))
+          : DateTime(
+              _selectedDate?.year ?? now.year,
+              _selectedDate?.month ?? now.month,
+              _selectedDate?.day ?? now.day,
+              _selectedTime?.hour ?? now.hour,
+              _selectedTime?.minute ?? now.minute);
 
       final payload = <String, dynamic>{
         'user_id': uid,
@@ -750,8 +543,8 @@ class _HostActivityScreenState extends State<HostActivityScreen>
         'vibes': _isRushIn ? _selectedVibes : [],
         'hook': _isRushIn ? _hookCtrl.text.trim() : null,
         'participant_limit': _isRushIn ? _participantLimit : 100,
-        'is_ghost_mode': _isRushIn ? _isGhostMode : false,
-        'is_ghost': _isRushIn ? _isGhostMode : false,
+        'is_ghost_mode': false,
+        'is_ghost': false,
         'auto_accept': false,
         'invite_only': false,
         'entry_type': 'free',
@@ -862,7 +655,7 @@ class _HostActivityScreenState extends State<HostActivityScreen>
         isRushIn: _isRushIn,
         activityCity: locationService.activeDistrict,
         radiusKm: _isRushIn ? _radiusKm.toDouble() : 50.0,
-        isAnonymous: _isRushIn && _isGhostMode,
+        isAnonymous: false,
       );
 
       if (mounted) {
@@ -1074,202 +867,8 @@ class _HostActivityScreenState extends State<HostActivityScreen>
               'Search for ideas or write your own headline.'),
           const SizedBox(height: 16),
           _neonTextField(_titleCtrl, 'Search ideas... (e.g. cricket)',
-              Icons.auto_awesome, accent,
-              onChanged: _filterAiSuggestions),
+              Icons.auto_awesome, accent),
 
-          if (_isGeneratingSuggestions) ...[
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(accent)),
-                ),
-                const SizedBox(width: 10),
-                Text('AI is brainstorming...',
-                    style: TextStyle(
-                        color: isDoodleMode(context)
-                            ? DoodleColors.textPrimary
-                            : Colors.white54,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ...List.generate(
-                3,
-                (index) => Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: isDoodleMode(context)
-                            ? Colors.white.withValues(alpha: 0.5)
-                            : const Color(0xFF16161A).withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                            color: isDoodleMode(context)
-                                ? DoodleColors.sketchLine.withValues(alpha: 0.2)
-                                : Colors.white10),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                                color: accent.withValues(alpha: 0.05),
-                                borderRadius: BorderRadius.circular(12)),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: 150,
-                                  height: 12,
-                                  decoration: BoxDecoration(
-                                      color: isDoodleMode(context)
-                                          ? Colors.black12
-                                          : Colors.white10,
-                                      borderRadius: BorderRadius.circular(6)),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 50,
-                                      height: 10,
-                                      decoration: BoxDecoration(
-                                          color: accent.withValues(alpha: 0.05),
-                                          borderRadius:
-                                              BorderRadius.circular(5)),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      width: 40,
-                                      height: 10,
-                                      decoration: BoxDecoration(
-                                          color: accent.withValues(alpha: 0.05),
-                                          borderRadius:
-                                              BorderRadius.circular(5)),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    )),
-          ] else if (_filteredAiSuggestions.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Icon(Icons.lightbulb_outline,
-                    color: isDoodleMode(context)
-                        ? DoodleColors.textPrimary
-                        : Colors.white54,
-                    size: 16),
-                const SizedBox(width: 8),
-                Text('AI suggestions for you',
-                    style: TextStyle(
-                        color: isDoodleMode(context)
-                            ? DoodleColors.textPrimary
-                            : Colors.white54,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _filteredAiSuggestions.take(5).length,
-              separatorBuilder: (ctx, i) => const SizedBox(height: 12),
-              itemBuilder: (ctx, i) {
-                final sug = _filteredAiSuggestions[i];
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _titleCtrl.text = sug['title'];
-                      _noteCtrl.text = sug['desc'];
-                      _filterAiSuggestions(sug['title']);
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: isDoodleMode(context)
-                          ? Colors.white
-                          : const Color(0xFF16161A),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                          color: isDoodleMode(context)
-                              ? DoodleColors.sketchLine
-                              : Colors.white10),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                              color: accent.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12)),
-                          child:
-                              Icon(Icons.auto_awesome, color: accent, size: 20),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(sug['title'],
-                                  style: TextStyle(
-                                      color: isDoodleMode(context)
-                                          ? DoodleColors.textPrimary
-                                          : Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: (sug['tags'] as List)
-                                    .map<Widget>((t) => Container(
-                                          margin:
-                                              const EdgeInsets.only(right: 6),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                              color:
-                                                  accent.withValues(alpha: 0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(8)),
-                                          child: Text(t,
-                                              style: TextStyle(
-                                                  color: accent,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold)),
-                                        ))
-                                    .toList(),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.chevron_right,
-                            color: isDoodleMode(context)
-                                ? Colors.black26
-                                : Colors.white24,
-                            size: 20),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
           const SizedBox(height: 32),
 
           if (_isSeller) ...[
@@ -1379,13 +978,119 @@ class _HostActivityScreenState extends State<HostActivityScreen>
           _sectionHeader(
               'QUICK SETTINGS', 'Fine-tune how your Rush-In behaves.'),
           const SizedBox(height: 16),
-          _ruleToggle(
-              Icons.visibility_off_rounded,
-              'GHOST MODE',
-              'Your identity stays hidden on the feed.',
-              _isGhostMode,
-              (v) => setState(() => _isGhostMode = v)),
-          const SizedBox(height: 12),
+          // Start Time / Date Row
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: _selectedDate ?? DateTime.now(),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                      builder: (context, child) {
+                        return Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: const ColorScheme.dark(
+                              primary: Color(0xFFFF6B00),
+                              onPrimary: Colors.white,
+                              surface: Color(0xFF16161A),
+                              onSurface: Colors.white,
+                            ),
+                          ),
+                          child: child!,
+                        );
+                      },
+                    );
+                    if (date != null) setState(() => _selectedDate = date);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today,
+                            color: Color(0xFFFF6B00), size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          _selectedDate == null
+                              ? 'Start Date'
+                              : '${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}',
+                          style: TextStyle(
+                              color: _selectedDate == null
+                                  ? Colors.white38
+                                  : Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: _selectedTime ?? TimeOfDay.now(),
+                      builder: (context, child) {
+                        return Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: const ColorScheme.dark(
+                              primary: Color(0xFFFF6B00),
+                              onPrimary: Colors.white,
+                              surface: Color(0xFF16161A),
+                              onSurface: Colors.white,
+                            ),
+                          ),
+                          child: child!,
+                        );
+                      },
+                    );
+                    if (time != null) setState(() => _selectedTime = time);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.schedule,
+                            color: Color(0xFFFF6B00), size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          _selectedTime == null
+                              ? 'Start Time'
+                              : _selectedTime!.format(context),
+                          style: TextStyle(
+                              color: _selectedTime == null
+                                  ? Colors.white38
+                                  : Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
 
           // Duration row
           Row(
@@ -2095,15 +1800,13 @@ class _HostActivityScreenState extends State<HostActivityScreen>
                 ],
 
                 // Badge status pills
-                if (_isGhostMode || _isPackage) ...[
+                if (_isPackage) ...[
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      if (_isGhostMode)
-                        _previewBadge('GHOST', Icons.visibility_off),
-                      if (_isPackage) _previewBadge('EXCLUSIVE', Icons.diamond),
+                      _previewBadge('EXCLUSIVE', Icons.diamond),
                     ],
                   )
                 ],

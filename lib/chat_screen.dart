@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,8 +10,10 @@ import 'messages_screen.dart';
 import 'communities_screen.dart';
 import 'knocks_list_screen.dart';
 import 'services/doodle_theme.dart';
+import 'services/location_service.dart';
+import 'widgets/create_community_sheet.dart';
 
-enum ChatItemType { dm, group, channel }
+enum ChatItemType { dm, group, channel, request }
 
 class ChatListItem {
   final ChatItemType type;
@@ -69,6 +72,73 @@ class _ChatScreenState extends State<ChatScreen> {
     _fetchConversations();
     _pollingTimer = Timer.periodic(
         const Duration(seconds: 5), (_) => _fetchConversations());
+    locationService.activeDistrictNotifier.addListener(_onLocationChanged);
+  }
+
+  String _communitySearchQuery = '';
+  List<Community> _searchedCommunities = [];
+  bool _isSearchingCommunities = false;
+  Timer? _searchDebounceTimer;
+
+  void _onLocationChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _searchCommunities(String query) {
+    if (_searchDebounceTimer?.isActive ?? false) _searchDebounceTimer!.cancel();
+    setState(() {
+      _communitySearchQuery = query;
+      if (query.isEmpty) {
+        _isSearchingCommunities = false;
+        _searchedCommunities.clear();
+        return;
+      }
+      _isSearchingCommunities = true;
+    });
+
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      try {
+        final res = await Supabase.instance.client
+            .from('text_camps')
+            .select('*, text_camp_messages(user_id, text, created_at)')
+            .or('name.ilike.%$query%,location_district.ilike.%$query%')
+            .order('member_count', ascending: false)
+            .limit(50);
+
+        final List<Community> searchResults = [];
+        final List data = res as List;
+        for (var row in data) {
+          searchResults.add(Community(
+            id: row['id'].toString(),
+            name: row['name'] as String,
+            category: row['category'] as String? ?? 'General',
+            creatorId: row['creator_id'] as String? ?? '',
+            memberCount: row['member_count'] as int? ?? 1,
+            avatar: row['avatar_url'] as String? ??
+                'https://images.unsplash.com/photo-1516862523118-a3724eb136d7?auto=format&fit=crop&w=150&q=80',
+            lastMessage: 'Welcome to ${row['name']}!',
+            lastMessageTime: 'Just now',
+            unreadCount: 0,
+            locationDistrict: row['location_district'] as String?,
+            channels: [CommunityChannel(name: 'general', messages: [])],
+            isPrivate: row['is_private'] as bool? ?? false,
+            description: row['description'] as String?,
+            locationState: row['location_state'] as String?,
+            bannerColor: row['banner_color'] as String? ?? '',
+            icon: row['icon'] as String? ?? '',
+            avatarUrl: row['avatar_url'] as String?,
+          ));
+        }
+
+        if (mounted && _communitySearchQuery == query) {
+          setState(() {
+            _searchedCommunities = searchResults;
+          });
+        }
+      } catch (e) {
+        debugPrint('Error searching communities: $e');
+      }
+    });
   }
 
   Future<void> _loadDeletedChats() async {
@@ -85,6 +155,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _pollingTimer?.cancel();
     _pageController.dispose();
+    locationService.activeDistrictNotifier.removeListener(_onLocationChanged);
     super.dispose();
   }
 
@@ -111,15 +182,24 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final Map<String, Map<String, dynamic>> convos = {};
       final Map<String, int> unreads = {};
+      final Set<String> _mySents = {};
+      final Set<String> _theirSents = {};
+
       for (final m in (allMsgs as List)) {
         final partnerId =
             m['sender_id'] == _myUid ? m['receiver_id'] : m['sender_id'];
         if (partnerId == null || _locallyDeletedChats.contains(partnerId))
           continue;
 
-        if (m['sender_id'] != _myUid && m['is_read'] == false) {
-          unreads[partnerId] = (unreads[partnerId] ?? 0) + 1;
+        if (m['sender_id'] == _myUid) {
+          _mySents.add(partnerId);
+        } else {
+          _theirSents.add(partnerId);
+          if (m['is_read'] == false) {
+            unreads[partnerId] = (unreads[partnerId] ?? 0) + 1;
+          }
         }
+
         if (!convos.containsKey(partnerId)) {
           convos[partnerId] = Map<String, dynamic>.from(m);
         }
@@ -227,22 +307,32 @@ class _ChatScreenState extends State<ChatScreen> {
             isPrivate: row['is_private'] ?? false,
             chatType: row['chat_type'] ?? 'group',
             isBroadcastOnly: row['is_broadcast_only'] ?? false,
+            description: row['description'] as String?,
+            locationState: row['location_state'] as String?,
+            bannerColor: row['banner_color'] as String? ?? '',
+            icon: row['icon'] as String? ?? '',
+            avatarUrl: row['avatar_url'] as String?,
           );
         }).toList();
       }
 
       final List<ChatListItem> items = [];
 
-      // Add DMs
+      // Process DMs and Requests
       for (final kv in convos.entries) {
+        final partnerId = kv.key;
+        final msg = kv.value;
+        final isRequest =
+            !_mySents.contains(partnerId) && _theirSents.contains(partnerId);
+
         items.add(ChatListItem(
-          type: ChatItemType.dm,
+          type: isRequest ? ChatItemType.request : ChatItemType.dm,
           lastActivity:
-              DateTime.tryParse(kv.value['created_at']?.toString() ?? '') ??
+              DateTime.tryParse(msg['created_at']?.toString() ?? '') ??
                   DateTime.fromMillisecondsSinceEpoch(0),
-          partnerId: kv.key,
-          dmLastMessage: kv.value,
-          unreadCount: unreads[kv.key] ?? 0,
+          partnerId: partnerId,
+          dmLastMessage: msg,
+          unreadCount: unreads[partnerId] ?? 0,
         ));
       }
 
@@ -332,7 +422,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     style: GoogleFonts.inter(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(ctx);
-                  // Trigger group creation
+                  showAdvancedCreateCommunitySheet(context, () {
+                    _fetchConversations();
+                  });
                 },
               ),
             ],
@@ -640,6 +732,50 @@ class _ChatScreenState extends State<ChatScreen> {
                           ],
                         ),
                       ),
+                      const SizedBox(width: 24),
+                      GestureDetector(
+                        onTap: () {
+                          if (_pageController.hasClients) {
+                            _pageController.animateToPage(2,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut);
+                          }
+                          setState(() => _currentIndex = 2);
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Requests',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 16,
+                                    fontWeight: _currentIndex == 2
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    color: _currentIndex == 2
+                                        ? (doodle
+                                            ? DoodleColors.textPrimary
+                                            : Colors.white)
+                                        : (doodle
+                                            ? DoodleColors.textSecondary
+                                            : Colors.white54),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            if (_currentIndex == 2)
+                              Container(
+                                  width: 32,
+                                  height: 2,
+                                  color: const Color(0xFFFF6B00))
+                            else
+                              const SizedBox(height: 2),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -665,6 +801,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               children: [
                                 _buildListView(ChatItemType.dm),
                                 _buildListView(ChatItemType.group),
+                                _buildListView(ChatItemType.request),
                               ],
                             ),
                 ),
@@ -678,25 +815,168 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildListView(ChatItemType targetType) {
+    if (targetType == ChatItemType.group && _communitySearchQuery.isNotEmpty) {
+      return Column(
+        children: [
+          _buildPremiumSearchBar(),
+          if (_searchedCommunities.isEmpty && _isSearchingCommunities)
+            const Expanded(
+                child: Center(
+                    child:
+                        CircularProgressIndicator(color: Color(0xFFFF6B00)))),
+          if (_searchedCommunities.isEmpty && !_isSearchingCommunities)
+            Expanded(
+                child: Center(
+                    child: Text("No communities found.",
+                        style: GoogleFonts.inter(color: Colors.white54)))),
+          if (_searchedCommunities.isNotEmpty)
+            Expanded(
+              child: ListView.builder(
+                itemCount: _searchedCommunities.length,
+                padding: const EdgeInsets.only(top: 4, bottom: 100),
+                itemBuilder: (context, index) {
+                  return _buildCommunityCard(_searchedCommunities[index]);
+                },
+              ),
+            ),
+        ],
+      );
+    }
+
+    final userDistrict = locationService.activeDistrict.toLowerCase().trim();
+
     final filtered = _unifiedItems.where((i) {
       if (targetType == ChatItemType.dm) return i.type == ChatItemType.dm;
-      return i.type == ChatItemType.group || i.type == ChatItemType.channel;
+      if (targetType == ChatItemType.request)
+        return i.type == ChatItemType.request;
+      if (i.type != ChatItemType.group && i.type != ChatItemType.channel)
+        return false;
+      // Location filter: if user has an active district, only show communities
+      // that are untagged or match the active district.
+      final c = i.community!;
+      if (userDistrict.isNotEmpty && userDistrict != 'unknown') {
+        final cd = (c.locationDistrict ?? '').toLowerCase().trim();
+        if (cd.isNotEmpty && cd != 'unknown') {
+          return cd.contains(userDistrict) || userDistrict.contains(cd);
+        }
+      }
+      return true;
     }).toList();
 
-    if (filtered.isEmpty) return _buildEmptyState();
+    Widget body;
+    if (filtered.isEmpty) {
+      if (targetType == ChatItemType.group ||
+          targetType == ChatItemType.channel) {
+        body = _buildCommunitiesEmptyState();
+      } else if (targetType == ChatItemType.request) {
+        body = _buildRequestsEmptyState();
+      } else {
+        body = _buildEmptyState();
+      }
+    } else {
+      final showKnocks =
+          targetType == ChatItemType.dm && _pendingKnocksCount > 0;
 
-    return ListView.builder(
-      itemCount: filtered.length,
-      padding: const EdgeInsets.only(top: 4, bottom: 100),
-      itemBuilder: (context, index) {
-        final item = filtered[index];
-        if (item.type == ChatItemType.dm) {
-          return _buildConversationRow(
-              item.partnerId!, item.dmLastMessage!, index);
-        } else {
-          return _buildCommunityCard(item.community!);
-        }
-      },
+      body = ListView.builder(
+        itemCount: filtered.length + (showKnocks ? 1 : 0),
+        padding: const EdgeInsets.only(top: 4, bottom: 100),
+        itemBuilder: (context, index) {
+          if (showKnocks && index == 0) return _buildKnocksRow();
+          final itemIndex = showKnocks ? index - 1 : index;
+          final item = filtered[itemIndex];
+
+          if (item.type == ChatItemType.dm ||
+              item.type == ChatItemType.request) {
+            return _buildConversationRow(
+                item.partnerId!, item.dmLastMessage!, itemIndex,
+                isRequestType: item.type == ChatItemType.request);
+          } else {
+            return _buildCommunityCard(item.community!);
+          }
+        },
+      );
+    }
+
+    if (targetType == ChatItemType.group) {
+      return Column(children: [
+        _buildPremiumSearchBar(),
+        Expanded(child: body),
+      ]);
+    }
+    return body;
+  }
+
+  Widget _buildCommunitiesEmptyState() {
+    final userDistrict = locationService.activeDistrict;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white12, width: 2),
+              ),
+              child: const Icon(Icons.people_outline,
+                  size: 52, color: Colors.white24),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              userDistrict.isNotEmpty
+                  ? 'No communities in $userDistrict'
+                  : 'No communities yet',
+              style: GoogleFonts.inter(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              userDistrict.isNotEmpty
+                  ? 'Be the first to create a local community for your area!'
+                  : 'Join or create a community to connect with people around you.',
+              style: GoogleFonts.inter(fontSize: 13, color: Colors.white38),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRequestsEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.04),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.mark_email_unread_outlined,
+                color: Color(0xFFFF6B00), size: 44),
+          ),
+          const SizedBox(height: 20),
+          Text('No Pending Requests',
+              style: GoogleFonts.outfit(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Text(
+            'When someone sends you a first message,\nit will appear here for review.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+                color: Colors.white38, fontSize: 13, height: 1.5),
+          ),
+        ],
+      ),
     );
   }
 
@@ -844,7 +1124,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ── Conversation row matching reference exactly ──
   Widget _buildConversationRow(
-      String partnerId, Map<String, dynamic> lastMsg, int index) {
+      String partnerId, Map<String, dynamic> lastMsg, int index,
+      {bool isRequestType = false}) {
     final profile = _profileCache[partnerId] ?? {'name': 'User', 'avatar': ''};
     final name = profile['name']!;
     final avatar = profile['avatar']!;
@@ -884,6 +1165,7 @@ class _ChatScreenState extends State<ChatScreen> {
               targetUserId: partnerId,
               name: name,
               avatarUrl: avatar,
+              isUnlocked: !isRequestType,
             ),
           ),
         );
@@ -942,7 +1224,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      msgText,
+                      isRequestType ? 'Sent you a message request' : msgText,
                       style: doodle
                           ? DoodleFonts.body(
                               color: isUnread
@@ -1059,92 +1341,436 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ── Community / Group Card ──
-  Widget _buildCommunityCard(Community c) {
-    final bool isUnread = c.unreadCount > 0;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF13151A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2D35)),
-      ),
-      child: InkWell(
-        onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => CommunityChatRoomScreen(community: c)),
-          );
-          _fetchConversations();
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  image: DecorationImage(
-                    image: NetworkImage(c.avatar),
-                    fit: BoxFit.cover,
-                  ),
-                ),
+  // ── Premium Community / Group Card ──
+  Widget _buildPremiumSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1629).withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+                width: 1.0,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      c.name,
-                      style: GoogleFonts.inter(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      c.lastMessage,
-                      style: GoogleFonts.inter(
-                        color:
-                            isUnread ? const Color(0xFFFF6B00) : Colors.white54,
-                        fontSize: 13,
-                        fontWeight:
-                            isUnread ? FontWeight.w600 : FontWeight.w400,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 20,
+                  offset: const Offset(0, 4),
                 ),
+              ],
+            ),
+            child: TextField(
+              style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400),
+              onChanged: _searchCommunities,
+              decoration: InputDecoration(
+                hintText: 'Search communities or cities...',
+                hintStyle: GoogleFonts.inter(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400),
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Icon(Icons.search_rounded,
+                      color: Colors.white.withValues(alpha: 0.35), size: 20),
+                ),
+                border: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
               ),
-              if (isUnread)
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  padding: const EdgeInsets.all(6),
-                  decoration: const BoxDecoration(
-                      color: Color(0xFFFF6B00), shape: BoxShape.circle),
-                  child: Text(
-                    '${c.unreadCount}',
-                    style: GoogleFonts.inter(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ),
-              const Icon(Icons.chevron_right, color: Colors.white38),
-            ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildCommunityCard(Community c) {
+    final bool isUnread = c.unreadCount > 0;
+    final userDistrict = locationService.activeDistrict.toLowerCase().trim();
+    final communityDistrict = (c.locationDistrict ?? '').toLowerCase().trim();
+    final bool isLocal = userDistrict.isNotEmpty &&
+        communityDistrict.isNotEmpty &&
+        (communityDistrict.contains(userDistrict) ||
+            userDistrict.contains(communityDistrict));
+    final Color accentColor = _categoryColor(c.category);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+      child: GestureDetector(
+        onTap: () async {
+          HapticFeedback.lightImpact();
+          await Navigator.push(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (_, anim, __) =>
+                  CommunityChatRoomScreen(community: c),
+              transitionsBuilder: (_, anim, __, child) => FadeTransition(
+                opacity: anim,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                          begin: const Offset(0.04, 0), end: Offset.zero)
+                      .animate(
+                          CurvedAnimation(parent: anim, curve: Curves.easeOut)),
+                  child: child,
+                ),
+              ),
+              transitionDuration: const Duration(milliseconds: 280),
+            ),
+          );
+          _fetchConversations();
+        },
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOutCubic,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: isUnread
+                      ? [
+                          accentColor.withValues(alpha: 0.12),
+                          const Color(0xFF0E0A1A),
+                        ]
+                      : [
+                          const Color(0xFF16131F),
+                          const Color(0xFF0E0A18),
+                        ],
+                ),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: isUnread
+                      ? accentColor.withValues(alpha: 0.45)
+                      : Colors.white.withValues(alpha: 0.07),
+                  width: 1.0,
+                ),
+                boxShadow: [
+                  if (isUnread)
+                    BoxShadow(
+                      color: accentColor.withValues(alpha: 0.2),
+                      blurRadius: 24,
+                      spreadRadius: -2,
+                      offset: const Offset(0, 6),
+                    ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Left accent stripe
+                  if (isUnread)
+                    Container(
+                      width: 3,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            accentColor,
+                            accentColor.withValues(alpha: 0.0),
+                          ],
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(22),
+                          bottomLeft: Radius.circular(22),
+                        ),
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 3),
+
+                  const SizedBox(width: 14),
+
+                  // Avatar with glow effect
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Glow ring behind avatar
+                      if (isUnread)
+                        Positioned.fill(
+                          child: Container(
+                            margin: const EdgeInsets.all(-4),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: accentColor.withValues(alpha: 0.4),
+                                  blurRadius: 14,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isUnread
+                                ? accentColor.withValues(alpha: 0.6)
+                                : Colors.white.withValues(alpha: 0.1),
+                            width: 1.5,
+                          ),
+                          image: DecorationImage(
+                            image: NetworkImage(c.avatar),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      // Local indicator
+                      if (isLocal)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF6B00),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: const Color(0xFF0E0A18), width: 2),
+                            ),
+                            child: const Icon(Icons.location_on_rounded,
+                                color: Colors.white, size: 8),
+                          ),
+                        ),
+                    ],
+                  ),
+
+                  const SizedBox(width: 14),
+
+                  // Main content
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Name + time row
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  c.name,
+                                  style: GoogleFonts.outfit(
+                                    color: Colors.white,
+                                    fontSize: 15.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.1,
+                                    height: 1.1,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                c.lastMessageTime,
+                                style: GoogleFonts.inter(
+                                  color: isUnread
+                                      ? accentColor
+                                      : Colors.white.withValues(alpha: 0.25),
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 5),
+                          // Last message
+                          Text(
+                            c.lastMessage,
+                            style: GoogleFonts.inter(
+                              color: isUnread
+                                  ? Colors.white.withValues(alpha: 0.65)
+                                  : Colors.white.withValues(alpha: 0.35),
+                              fontSize: 12.5,
+                              fontWeight:
+                                  isUnread ? FontWeight.w500 : FontWeight.w400,
+                              height: 1.3,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 10),
+                          // Bottom metadata row
+                          Row(
+                            children: [
+                              // Category pill
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 9, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: accentColor.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                      color: accentColor.withValues(alpha: 0.2),
+                                      width: 0.8),
+                                ),
+                                child: Text(
+                                  c.category,
+                                  style: GoogleFonts.inter(
+                                    color: accentColor,
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              // Location pill
+                              if ((c.locationDistrict ?? '').isNotEmpty &&
+                                  c.locationDistrict != 'Unknown')
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.place_rounded,
+                                        color: isLocal
+                                            ? const Color(0xFFFF6B00)
+                                            : Colors.white
+                                                .withValues(alpha: 0.25),
+                                        size: 9,
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        c.locationDistrict!,
+                                        style: GoogleFonts.inter(
+                                          color: isLocal
+                                              ? Colors.white
+                                                  .withValues(alpha: 0.55)
+                                              : Colors.white
+                                                  .withValues(alpha: 0.22),
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              const Spacer(),
+                              // Members count
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.people_alt_rounded,
+                                    color: Colors.white.withValues(alpha: 0.22),
+                                    size: 11,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${c.memberCount}',
+                                    style: GoogleFonts.inter(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.28),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Right: unread badge
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: isUnread
+                        ? Container(
+                            constraints: const BoxConstraints(minWidth: 22),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 4),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  accentColor,
+                                  accentColor.withValues(alpha: 0.7),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: accentColor.withValues(alpha: 0.55),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              '${c.unreadCount}',
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        : Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white.withValues(alpha: 0.1),
+                            size: 20,
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _categoryColor(String category) {
+    final lower = category.toLowerCase();
+    if (lower.contains('study') ||
+        lower.contains('tech') ||
+        lower.contains('code')) return const Color(0xFF6366F1);
+    if (lower.contains('fit') ||
+        lower.contains('gym') ||
+        lower.contains('sport')) return const Color(0xFF22C55E);
+    if (lower.contains('music') || lower.contains('art'))
+      return const Color(0xFFEC4899);
+    if (lower.contains('food') || lower.contains('coffee'))
+      return const Color(0xFFF97316);
+    if (lower.contains('travel')) return const Color(0xFF06B6D4);
+    if (lower.contains('gaming') || lower.contains('game'))
+      return const Color(0xFF8B5CF6);
+    return const Color(0xFFFF6B00);
   }
 }

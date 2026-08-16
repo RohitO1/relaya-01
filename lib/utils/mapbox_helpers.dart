@@ -19,8 +19,7 @@ const String _mapboxPublicToken =
 
 /// Deep navy style — Mapbox Navigation Night matches the migomap aesthetic:
 /// deep navy background, muted silver roads, minimal labels, no POI clutter.
-const String _kNavyNightStyle =
-    'mapbox://styles/mapbox/navigation-night-v1';
+const String _kNavyNightStyle = 'mapbox://styles/mapbox/navigation-night-v1';
 
 /// Light mode style for day.
 const String _kLightStyle = 'mapbox://styles/mapbox/light-v11';
@@ -39,96 +38,108 @@ Future<void> initMapbox() async {
 // ── Premium marker image builder ─────────────────────────────────────────
 
 /// Renders a glowing circular pin with inner dot — GenZ aesthetic.
-  double _currentZoom = 14.0;
-  final Map<String, Uint8List> _markerCache = {};
+double _currentZoom = 14.0;
+final Map<String, Uint8List> _markerCache = {};
 
-  Future<Uint8List> _buildMarkerImage(SimpleMarker m) async {
-    final bool useImage = m.imageUrl != null && _currentZoom >= 14.0;
-    final String cacheKey = '${m.id}_${useImage ? 'img' : 'emj'}';
-    
-    if (_markerCache.containsKey(cacheKey)) {
-      return _markerCache[cacheKey]!;
-    }
+Future<Uint8List> _buildMarkerImage(SimpleMarker m) async {
+  final bool useImage = m.imageUrl != null && _currentZoom >= 14.0;
+  final String cacheKey = '${m.id}_${useImage ? 'img' : 'emj'}';
 
-    final double size = useImage ? 160.0 : 100.0;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final paint = Paint()..isAntiAlias = true;
-    final color = m.color ?? const Color(0xFFFF5B14);
+  if (_markerCache.containsKey(cacheKey)) {
+    return _markerCache[cacheKey]!;
+  }
 
-    if (useImage) {
-      // Draw rounded image banner
-      paint.color = color;
-      final rect = RRect.fromLTRBR(0, 0, size, size, const Radius.circular(24));
-      
-      // Shadow
-      canvas.drawRRect(
-        rect.shift(const Offset(0, 8)),
-        Paint()
-          ..color = Colors.black.withValues(alpha: 0.5)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
-      );
-      
-      // Border
-      canvas.drawRRect(rect, paint);
-      
-      try {
-        final res = await http.get(Uri.parse(m.imageUrl!));
-        if (res.statusCode == 200) {
-          final codec = await ui.instantiateImageCodec(res.bodyBytes, targetWidth: size.toInt(), targetHeight: size.toInt());
-          final frame = await codec.getNextFrame();
-          final image = frame.image;
-          
-          final innerRect = RRect.fromLTRBR(6, 6, size - 6, size - 6, const Radius.circular(18));
-          canvas.save();
-          canvas.clipRRect(innerRect);
-          paint.filterQuality = FilterQuality.high;
-          canvas.drawImageRect(image, 
-            Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()), 
-            Rect.fromLTWH(6, 6, size - 12, size - 12), 
+  final double size =
+      useImage ? 240.0 : 150.0; // Increased by 50% for resolution
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  final paint = Paint()..isAntiAlias = true;
+  final color = m.color ?? const Color(0xFFFF5B14);
+
+  if (useImage) {
+    // Draw rounded image banner
+    paint.color = color;
+    final rect = RRect.fromLTRBR(0, 0, size, size, const Radius.circular(24));
+
+    // Shadow
+    canvas.drawRRect(
+      rect.shift(const Offset(0, 8)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.5)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+    );
+
+    // Border
+    canvas.drawRRect(rect, paint);
+
+    try {
+      final res = await http.get(Uri.parse(m.imageUrl!));
+      if (res.statusCode == 200) {
+        final codec = await ui.instantiateImageCodec(res.bodyBytes,
+            targetWidth: size.toInt(), targetHeight: size.toInt());
+        final frame = await codec.getNextFrame();
+        final image = frame.image;
+
+        final innerRect = RRect.fromLTRBR(
+            6, 6, size - 6, size - 6, const Radius.circular(18));
+        canvas.save();
+        canvas.clipRRect(innerRect);
+        paint.filterQuality = FilterQuality.high;
+        canvas.drawImageRect(
+            image,
+            Rect.fromLTWH(
+                0, 0, image.width.toDouble(), image.height.toDouble()),
+            Rect.fromLTWH(6, 6, size - 12, size - 12),
             paint);
-          canvas.restore();
-        } else {
-          _drawFallbackPin(canvas, size, color, m.emoji);
-        }
-      } catch (_) {
+        canvas.restore();
+      } else {
         _drawFallbackPin(canvas, size, color, m.emoji);
       }
-    } else {
+    } catch (_) {
       _drawFallbackPin(canvas, size, color, m.emoji);
     }
-
-    final picture = recorder.endRecording();
-    final img = await picture.toImage(size.toInt(), size.toInt());
-    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-    final bytes = byteData!.buffer.asUint8List();
-    _markerCache[cacheKey] = bytes;
-    return bytes;
+  } else {
+    _drawFallbackPin(canvas, size, color, m.emoji);
   }
 
-  void _drawFallbackPin(Canvas canvas, double size, Color color, String? emoji) {
-    final paint = Paint()..isAntiAlias = true;
-    
-    // Shadow
-    canvas.drawCircle(Offset(size/2, size/2 + 4), size/2 - 12, 
-      Paint()..color = color.withValues(alpha: 0.5)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12));
-      
-    // White Border
-    paint.color = Colors.white;
-    canvas.drawCircle(Offset(size/2, size/2), size/2 - 8, paint);
-    
-    // Core color
-    paint.color = color;
-    canvas.drawCircle(Offset(size/2, size/2), size/2 - 12, paint);
-    
-    // Emoji
-    if (emoji != null && emoji.isNotEmpty) {
-      final span = TextSpan(style: TextStyle(fontSize: size/2.2), text: emoji);
-      final tp = TextPainter(text: span, textAlign: TextAlign.center, textDirection: TextDirection.ltr);
-      tp.layout();
-      tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2));
-    }
+  final picture = recorder.endRecording();
+  final img = await picture.toImage(size.toInt(), size.toInt());
+  final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+  final bytes = byteData!.buffer.asUint8List();
+  _markerCache[cacheKey] = bytes;
+  return bytes;
+}
+
+void _drawFallbackPin(Canvas canvas, double size, Color color, String? emoji) {
+  final paint = Paint()..isAntiAlias = true;
+
+  // Shadow
+  canvas.drawCircle(
+      Offset(size / 2, size / 2 + 4),
+      size / 2 - 12,
+      Paint()
+        ..color = color.withValues(alpha: 0.5)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12));
+
+  // White Border
+  paint.color = Colors.white;
+  canvas.drawCircle(Offset(size / 2, size / 2), size / 2 - 8, paint);
+
+  // Core color
+  paint.color = color;
+  canvas.drawCircle(Offset(size / 2, size / 2), size / 2 - 12, paint);
+
+  // Emoji
+  if (emoji != null && emoji.isNotEmpty) {
+    final span = TextSpan(style: TextStyle(fontSize: size / 2.2), text: emoji);
+    final tp = TextPainter(
+        text: span,
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr);
+    tp.layout();
+    tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2));
   }
+}
 
 // ── Coordinate helpers ───────────────────────────────────────────────────
 
@@ -166,8 +177,7 @@ class MapController {
   Future<void> _init(mb.MapboxMap map) async {
     _map = map;
     _pointManager = await map.annotations.createPointAnnotationManager();
-    _polylineManager =
-        await map.annotations.createPolylineAnnotationManager();
+    _polylineManager = await map.annotations.createPolylineAnnotationManager();
 
     _pointManager!.addOnPointAnnotationClickListener(
       _AnnotationClickListener((annotation) {
@@ -222,7 +232,7 @@ class MapController {
       final annotation = await _pointManager!.create(mb.PointAnnotationOptions(
         geometry: toPoint(m.position),
         image: imageData,
-        iconSize: 0.6,
+        iconSize: 0.9, // Increased by 50%
         textField: m.label,
         textSize: 11.0,
         textColor: Colors.white.value,
@@ -369,10 +379,18 @@ class _AppMapViewState extends State<AppMapView> {
           onMapCreated: (map) async {
             // Hide Mapbox logo and attribution ornaments completely
             try {
-              await map.logo.updateSettings(mb.LogoSettings(position: mb.OrnamentPosition.TOP_LEFT, marginTop: -9999.0, marginLeft: -9999.0));
-              await map.attribution.updateSettings(mb.AttributionSettings(position: mb.OrnamentPosition.TOP_LEFT, marginTop: -9999.0, marginLeft: -9999.0));
-              await map.scaleBar.updateSettings(mb.ScaleBarSettings(enabled: false));
-              await map.compass.updateSettings(mb.CompassSettings(enabled: false));
+              await map.logo.updateSettings(mb.LogoSettings(
+                  position: mb.OrnamentPosition.TOP_LEFT,
+                  marginTop: -9999.0,
+                  marginLeft: -9999.0));
+              await map.attribution.updateSettings(mb.AttributionSettings(
+                  position: mb.OrnamentPosition.TOP_LEFT,
+                  marginTop: -9999.0,
+                  marginLeft: -9999.0));
+              await map.scaleBar
+                  .updateSettings(mb.ScaleBarSettings(enabled: false));
+              await map.compass
+                  .updateSettings(mb.CompassSettings(enabled: false));
             } catch (_) {}
             // Premium electric-blue pulsing puck
             if (widget.myLocationEnabled) {
@@ -405,7 +423,9 @@ class _AppMapViewState extends State<AppMapView> {
             if (widget.onMapReady != null) widget.onMapReady!(ctrl);
           },
           onCameraChangeListener: (event) async {
-            if (_controller != null && _controller!.isReady && _controller!._map != null) {
+            if (_controller != null &&
+                _controller!.isReady &&
+                _controller!._map != null) {
               final state = await _controller!._map!.getCameraState();
               _currentZoom = state.zoom;
               if (widget.onZoomChanged != null) {
@@ -433,8 +453,7 @@ class _AppMapViewState extends State<AppMapView> {
     final overlaySegment = pinOverlays.isNotEmpty ? '$pinOverlays/' : '';
     // navigation-night matches the deep navy aesthetic on web fallback too
     final styleId = isDarkMode ? 'navigation-night-v1' : 'light-v11';
-    final url =
-        'https://api.mapbox.com/styles/v1/mapbox/$styleId/static/'
+    final url = 'https://api.mapbox.com/styles/v1/mapbox/$styleId/static/'
         '$overlaySegment'
         '$lng,$lat,$zoom,0/800x600@2x'
         '?access_token=$_mapboxPublicToken';

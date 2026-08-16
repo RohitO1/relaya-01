@@ -188,8 +188,10 @@ class BolroomAvatars {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKey, avatarKey);
     try {
-      await Supabase.instance.client.from('bolroom_profiles').update(
-          {'avatar_key': avatarKey, 'avatar_url': null}).eq('id', userId);
+      await Supabase.instance.client
+          .from('bolroom_profiles')
+          .update({'avatar_key': avatarKey, 'custom_avatar_url': null}).eq(
+              'id', userId);
     } catch (e) {
       debugPrint('saveAvatarKey: $e');
     }

@@ -1,4 +1,4 @@
-// ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables, use_build_context_synchronously
+// ignore_for_file: unused_field, prefer_final_fields, use_build_context_synchronously, curly_braces_in_flow_control_structures, deprecated_member_use, unnecessary_brace_in_string_interps, prefer_const_constructors, prefer_const_literals_to_create_immutables
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,6 +11,11 @@ import '../services/notification_service.dart';
 import '../services/doodle_theme.dart';
 import 'bolroom_avatars.dart';
 
+import 'package:record/record.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+
 /// ============================================================
 /// Community Detail Screen — Chat inside a community
 /// ============================================================
@@ -18,10 +23,12 @@ class BolroomCommunityDetailScreen extends StatefulWidget {
   final Map<String, dynamic> community;
   const BolroomCommunityDetailScreen({super.key, required this.community});
   @override
-  State<BolroomCommunityDetailScreen> createState() => _BolroomCommunityDetailScreenState();
+  State<BolroomCommunityDetailScreen> createState() =>
+      _BolroomCommunityDetailScreenState();
 }
 
-class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScreen> with TickerProviderStateMixin {
+class _BolroomCommunityDetailScreenState
+    extends State<BolroomCommunityDetailScreen> with TickerProviderStateMixin {
   final _sb = Supabase.instance.client;
   final _msgCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
@@ -32,12 +39,15 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
   bool _isMember = false;
   String _myAnonName = 'Anonymous';
   String _myAvatarKey = 'default';
-  
+  String? _myCustomAvatarUrl;
+  Map<String, dynamic>? _myProfile;
+
   String? _myRole;
   bool _hasPendingRequest = false;
   bool _isRequesting = false;
 
-  final ValueNotifier<List<Map<String, dynamic>>> _membersNotifier = ValueNotifier([]);
+  final ValueNotifier<List<Map<String, dynamic>>> _membersNotifier =
+      ValueNotifier([]);
   final ValueNotifier<String?> _myRoleNotifier = ValueNotifier(null);
 
   String get _myId => _sb.auth.currentUser?.id ?? '';
@@ -49,16 +59,41 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
   late AnimationController _bgAnimCtrl;
   double _parallaxOffset = 0.0;
 
+  bool _isRecording = false;
+  bool _isAudioPreview = false;
+  String? _recordedFilePath;
+  final AudioRecorder _audioRecorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  String? _playingAudioUrl;
+  bool _isPlayingAudio = false;
+  Timer? _recordTimer;
+  Duration _recordDuration = Duration.zero;
+
   @override
   void initState() {
     super.initState();
     _localCommunity = Map.from(widget.community);
-    _bgAnimCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 10))..repeat(reverse: true);
+    _bgAnimCtrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 10))
+          ..repeat(reverse: true);
     _loadProfile();
     _loadMessages();
     _loadMembers();
     _checkMembership();
     _subscribeRealtime();
+    _msgCtrl.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (state == PlayerState.completed) {
+        if (mounted) {
+          setState(() {
+            _isPlayingAudio = false;
+            _playingAudioUrl = null;
+          });
+        }
+      }
+    });
   }
 
   @override
@@ -70,16 +105,25 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
     _membersNotifier.dispose();
     _myRoleNotifier.dispose();
     _bgAnimCtrl.dispose();
+    _audioRecorder.dispose();
+    _audioPlayer.dispose();
+    _recordTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _loadProfile() async {
     try {
-      final bp = await _sb.from('bolroom_profiles').select('anon_name, avatar_key').eq('id', _myId).maybeSingle();
+      final bp = await _sb
+          .from('bolroom_profiles')
+          .select('anon_name, avatar_key, custom_avatar_url')
+          .eq('id', _myId)
+          .maybeSingle();
       if (bp != null && mounted) {
         setState(() {
-          _myAnonName = bp['anon_name'] ?? 'Anonymous';
+          _myProfile = bp;
           _myAvatarKey = bp['avatar_key'] ?? 'default';
+          _myCustomAvatarUrl = bp['custom_avatar_url'];
+          _myAnonName = bp['anon_name'] ?? 'Anonymous';
         });
       }
     } catch (_) {}
@@ -87,7 +131,12 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Future<void> _checkMembership() async {
     try {
-      final res = await _sb.from('bolroom_community_members').select('role').eq('community_id', _communityId).eq('user_id', _myId).maybeSingle();
+      final res = await _sb
+          .from('bolroom_community_members')
+          .select('role')
+          .eq('community_id', _communityId)
+          .eq('user_id', _myId)
+          .maybeSingle();
       if (mounted) {
         setState(() {
           if (res == null) {
@@ -113,7 +162,12 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Future<void> _loadMessages() async {
     try {
-      final res = await _sb.from('bolroom_community_messages').select('*').eq('community_id', _communityId).order('created_at', ascending: true).limit(200);
+      final res = await _sb
+          .from('bolroom_community_messages')
+          .select('*')
+          .eq('community_id', _communityId)
+          .order('created_at', ascending: true)
+          .limit(200);
       if (res.isNotEmpty) {
         final latestMsgId = res.last['id'].toString();
         SharedPreferences.getInstance().then((prefs) {
@@ -135,12 +189,21 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Future<void> _loadMembers() async {
     try {
-      final res = await _sb.from('bolroom_community_members').select('*').eq('community_id', _communityId).order('joined_at');
+      final res = await _sb
+          .from('bolroom_community_members')
+          .select('*')
+          .eq('community_id', _communityId)
+          .order('joined_at');
       final list = List<Map<String, dynamic>>.from(res);
       final userIds = list.map((m) => m['user_id'].toString()).toList();
       if (userIds.isNotEmpty) {
-        final profs = await _sb.from('bolroom_profiles').select('id, anon_name, avatar_key').inFilter('id', userIds);
-        final profMap = { for (var p in profs) p['id'].toString() : p as Map<String, dynamic> };
+        final profs = await _sb
+            .from('bolroom_profiles')
+            .select('id, anon_name, avatar_key, custom_avatar_url')
+            .inFilter('id', userIds);
+        final profMap = {
+          for (var p in profs) p['id'].toString(): p as Map<String, dynamic>
+        };
         if (mounted) {
           setState(() {
             _members = list;
@@ -162,35 +225,48 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   void _subscribeRealtime() {
     _msgChannel = _sb.channel('community_msg_$_communityId').onPostgresChanges(
-      event: PostgresChangeEvent.insert, schema: 'public', table: 'bolroom_community_messages',
-      filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'community_id', value: _communityId),
-      callback: (payload) {
-        if (payload.newRecord.isNotEmpty && mounted) {
-          setState(() => _messages.add(payload.newRecord));
-          _scrollToBottom();
-          final latestMsgId = payload.newRecord['id'].toString();
-          SharedPreferences.getInstance().then((prefs) {
-            prefs.setString('seen_msg_$_communityId', latestMsgId);
-          });
-        }
-      },
-    );
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'bolroom_community_messages',
+          filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'community_id',
+              value: _communityId),
+          callback: (payload) {
+            if (payload.newRecord.isNotEmpty && mounted) {
+              setState(() => _messages.add(payload.newRecord));
+              _scrollToBottom();
+              final latestMsgId = payload.newRecord['id'].toString();
+              SharedPreferences.getInstance().then((prefs) {
+                prefs.setString('seen_msg_$_communityId', latestMsgId);
+              });
+            }
+          },
+        );
     _msgChannel!.subscribe();
 
-    _membersChannel = _sb.channel('community_mem_$_communityId').onPostgresChanges(
-      event: PostgresChangeEvent.all, schema: 'public', table: 'bolroom_community_members',
-      filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'community_id', value: _communityId),
-      callback: (payload) {
-        _loadMembers();
-        _checkMembership();
-      },
-    );
+    _membersChannel =
+        _sb.channel('community_mem_$_communityId').onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'bolroom_community_members',
+              filter: PostgresChangeFilter(
+                  type: PostgresChangeFilterType.eq,
+                  column: 'community_id',
+                  value: _communityId),
+              callback: (payload) {
+                _loadMembers();
+                _checkMembership();
+              },
+            );
     _membersChannel!.subscribe();
   }
 
   void _scrollToBottom() {
     Future.delayed(100.ms, () {
-      if (_scrollCtrl.hasClients) _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent, duration: 200.ms, curve: Curves.easeOut);
+      if (_scrollCtrl.hasClients)
+        _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent,
+            duration: 200.ms, curve: Curves.easeOut);
     });
   }
 
@@ -199,15 +275,24 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
     final text = _msgCtrl.text.trim();
     _msgCtrl.clear();
     try {
+      final assigned = BolroomAvatars.forUser(_myId);
+      final aName = _myProfile != null
+          ? _myProfile!['anon_name']
+          : 'Shadow_${_myId.substring(0, 4)}';
+      final aKey = _myProfile != null ? _myProfile!['avatar_key'] : assigned.id;
+      final aCustomUrl =
+          _myProfile != null ? _myProfile!['custom_avatar_url'] : null;
+
       await _sb.from('bolroom_community_messages').insert({
         'community_id': _communityId,
         'user_id': _myId,
-        'anon_name': _myAnonName,
-        'avatar_key': _myAvatarKey,
+        'anon_name': aName,
+        'avatar_key': aKey,
+        'custom_avatar_url': aCustomUrl,
         'text': text,
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });
-      
+
       // Notify other members
       for (var m in _members) {
         final memberId = m['user_id']?.toString();
@@ -216,8 +301,9 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
             NotificationService.sendNotification(
               userId: memberId,
               type: NotificationType.message,
-              title: 'New Message in ${widget.community['name'] ?? 'Community'}',
-              body: '$_myAnonName: $text',
+              title:
+                  'New Message in ${widget.community['name'] ?? 'Community'}',
+              body: '$aName: $text',
               payload: {
                 'community_id': _communityId,
                 'sender_id': _myId,
@@ -242,7 +328,7 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
         'user_id': _myId,
         'role': isApprovalRequired ? 'pending' : 'member',
       });
-      
+
       if (!isApprovalRequired) {
         await _sb.from('bolroom_communities').update({
           'member_count': (_localCommunity['member_count'] ?? 0) + 1
@@ -259,7 +345,11 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
     setState(() => _isRequesting = true);
     try {
       if (_hasPendingRequest) {
-        await _sb.from('bolroom_community_members').delete().eq('community_id', _communityId).eq('user_id', _myId);
+        await _sb
+            .from('bolroom_community_members')
+            .delete()
+            .eq('community_id', _communityId)
+            .eq('user_id', _myId);
         setState(() {
           _hasPendingRequest = false;
         });
@@ -284,7 +374,11 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Future<void> _approveRequest(String userId) async {
     try {
-      await _sb.from('bolroom_community_members').update({'role': 'member'}).eq('community_id', _communityId).eq('user_id', userId);
+      await _sb
+          .from('bolroom_community_members')
+          .update({'role': 'member'})
+          .eq('community_id', _communityId)
+          .eq('user_id', userId);
       await _sb.from('bolroom_communities').update({
         'member_count': (_localCommunity['member_count'] ?? 0) + 1
       }).eq('id', _communityId);
@@ -296,7 +390,11 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Future<void> _declineRequest(String userId) async {
     try {
-      await _sb.from('bolroom_community_members').delete().eq('community_id', _communityId).eq('user_id', userId);
+      await _sb
+          .from('bolroom_community_members')
+          .delete()
+          .eq('community_id', _communityId)
+          .eq('user_id', userId);
       _loadMembers();
     } catch (e) {
       debugPrint('Decline request: $e');
@@ -305,11 +403,16 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Future<void> _removeMember(String userId) async {
     try {
-      await _sb.from('bolroom_community_members').delete().eq('community_id', _communityId).eq('user_id', userId);
+      await _sb
+          .from('bolroom_community_members')
+          .delete()
+          .eq('community_id', _communityId)
+          .eq('user_id', userId);
       final currentCount = _localCommunity['member_count'] ?? 1;
-      await _sb.from('bolroom_communities').update({
-        'member_count': currentCount > 0 ? currentCount - 1 : 0
-      }).eq('id', _communityId);
+      await _sb
+          .from('bolroom_communities')
+          .update({'member_count': currentCount > 0 ? currentCount - 1 : 0}).eq(
+              'id', _communityId);
       _loadMembers();
     } catch (e) {
       debugPrint('Remove member: $e');
@@ -318,12 +421,17 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Future<void> _leaveCommunity() async {
     try {
-      await _sb.from('bolroom_community_members').delete().eq('community_id', _communityId).eq('user_id', _myId);
+      await _sb
+          .from('bolroom_community_members')
+          .delete()
+          .eq('community_id', _communityId)
+          .eq('user_id', _myId);
       final currentCount = _localCommunity['member_count'] ?? 1;
-      await _sb.from('bolroom_communities').update({
-        'member_count': currentCount > 0 ? currentCount - 1 : 0
-      }).eq('id', _communityId);
-      
+      await _sb
+          .from('bolroom_communities')
+          .update({'member_count': currentCount > 0 ? currentCount - 1 : 0}).eq(
+              'id', _communityId);
+
       if (mounted) {
         Navigator.pop(context); // Close info sheet
         Navigator.pop(context); // Go back
@@ -355,27 +463,36 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                 // Messages / Locked Overlay
                 Expanded(
                   child: _loading
-                    ? Center(child: CircularProgressIndicator(color: doodle ? DoodleColors.brown : BolroomTheme.purple, strokeWidth: 2))
-                    : (isPrivate && !_isMember)
-                      ? _buildLockedOverlay(doodle)
-                      : _messages.isEmpty
-                        ? _buildEmptyChat(doodle)
-                        : NotificationListener<ScrollNotification>(
-                            onNotification: (info) {
-                              if (info is ScrollUpdateNotification) {
-                                setState(() {
-                                  _parallaxOffset = info.metrics.pixels * 0.5;
-                                });
-                              }
-                              return false;
-                            },
-                            child: ListView.builder(
-                              controller: _scrollCtrl,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              itemCount: _messages.length,
-                              itemBuilder: (ctx, i) => _buildMessageBubble(_messages[i], doodle),
-                            ),
-                          ),
+                      ? Center(
+                          child: CircularProgressIndicator(
+                              color: doodle
+                                  ? DoodleColors.brown
+                                  : BolroomTheme.purple,
+                              strokeWidth: 2))
+                      : (isPrivate && !_isMember)
+                          ? _buildLockedOverlay(doodle)
+                          : _messages.isEmpty
+                              ? _buildEmptyChat(doodle)
+                              : NotificationListener<ScrollNotification>(
+                                  onNotification: (info) {
+                                    if (info is ScrollUpdateNotification) {
+                                      setState(() {
+                                        _parallaxOffset =
+                                            info.metrics.pixels * 0.5;
+                                      });
+                                    }
+                                    return false;
+                                  },
+                                  child: ListView.builder(
+                                    controller: _scrollCtrl,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 8),
+                                    itemCount: _messages.length,
+                                    itemBuilder: (ctx, i) =>
+                                        _buildMessageBubble(
+                                            _messages[i], doodle),
+                                  ),
+                                ),
                 ),
                 // Input
                 if (_isMember)
@@ -392,15 +509,23 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Widget _buildAdvancedBackground(bool doodle) {
     final theme = _localCommunity['chat_theme']?.toString() ?? 'default';
-    
+
     // For doodle mode, we keep a cleaner paper background but add subtle tints based on theme
     if (doodle) {
       Color tintColor = DoodleColors.paper;
       switch (theme) {
-        case 'funky': tintColor = const Color(0xFFFFF0F5); break;
-        case 'gamified': tintColor = const Color(0xFFF0F8FF); break;
-        case 'neon_cyberpunk': tintColor = const Color(0xFFF5F5DC); break;
-        case 'soft_glass': tintColor = const Color(0xFFE6E6FA); break;
+        case 'funky':
+          tintColor = const Color(0xFFFFF0F5);
+          break;
+        case 'gamified':
+          tintColor = const Color(0xFFF0F8FF);
+          break;
+        case 'neon_cyberpunk':
+          tintColor = const Color(0xFFF5F5DC);
+          break;
+        case 'soft_glass':
+          tintColor = const Color(0xFFE6E6FA);
+          break;
       }
       return Container(
         decoration: BoxDecoration(
@@ -423,8 +548,14 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
             bgWidget = Container(
               decoration: BoxDecoration(
                 gradient: SweepGradient(
-                  center: FractionalOffset(0.5 + (_bgAnimCtrl.value * 0.1), 0.5),
-                  colors: const [Color(0xFFE91E63), Color(0xFF9C27B0), Color(0xFF3F51B5), Color(0xFFE91E63)],
+                  center:
+                      FractionalOffset(0.5 + (_bgAnimCtrl.value * 0.1), 0.5),
+                  colors: const [
+                    Color(0xFFE91E63),
+                    Color(0xFF9C27B0),
+                    Color(0xFF3F51B5),
+                    Color(0xFFE91E63)
+                  ],
                 ),
               ),
               child: Opacity(
@@ -439,7 +570,12 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                 gradient: RadialGradient(
                   center: Alignment(0, -0.5 + (_bgAnimCtrl.value * 0.2)),
                   radius: 1.5,
-                  colors: const [Color(0xFF231557), Color(0xFF44107A), Color(0xFFFF1361), Color(0xFFFFF800)],
+                  colors: const [
+                    Color(0xFF231557),
+                    Color(0xFF44107A),
+                    Color(0xFFFF1361),
+                    Color(0xFFFFF800)
+                  ],
                 ),
               ),
             );
@@ -447,7 +583,10 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
           case 'doodle_canvas':
             bgWidget = Container(
               color: const Color(0xFFFFF9E6),
-              child: CustomPaint(painter: GridPainter(color: Colors.brown.withValues(alpha: 0.1)), size: Size.infinite),
+              child: CustomPaint(
+                  painter:
+                      GridPainter(color: Colors.brown.withValues(alpha: 0.1)),
+                  size: Size.infinite),
             );
             break;
           case 'gamified_pixel':
@@ -456,7 +595,11 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: const [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
+                  colors: const [
+                    Color(0xFF0F2027),
+                    Color(0xFF203A43),
+                    Color(0xFF2C5364)
+                  ],
                   stops: [0.0, 0.5 + (_bgAnimCtrl.value * 0.1), 1.0],
                 ),
               ),
@@ -471,10 +614,17 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                     top: -100 + (_bgAnimCtrl.value * 50),
                     right: -50,
                     child: Container(
-                      width: 300, height: 300,
+                      width: 300,
+                      height: 300,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: const Color(0xFF00FFCC).withValues(alpha: 0.15), blurRadius: 100, spreadRadius: 50)],
+                        boxShadow: [
+                          BoxShadow(
+                              color: const Color(0xFF00FFCC)
+                                  .withValues(alpha: 0.15),
+                              blurRadius: 100,
+                              spreadRadius: 50)
+                        ],
                       ),
                     ),
                   ),
@@ -482,10 +632,17 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                     bottom: -100 - (_bgAnimCtrl.value * 50),
                     left: -50,
                     child: Container(
-                      width: 300, height: 300,
+                      width: 300,
+                      height: 300,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: const Color(0xFFFF00FF).withValues(alpha: 0.15), blurRadius: 100, spreadRadius: 50)],
+                        boxShadow: [
+                          BoxShadow(
+                              color: const Color(0xFFFF00FF)
+                                  .withValues(alpha: 0.15),
+                              blurRadius: 100,
+                              spreadRadius: 50)
+                        ],
                       ),
                     ),
                   ),
@@ -499,7 +656,10 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [const Color(0xFFB2FEFA).withValues(alpha: 0.2), const Color(0xFF0ED2F7).withValues(alpha: 0.2)],
+                  colors: [
+                    const Color(0xFFB2FEFA).withValues(alpha: 0.2),
+                    const Color(0xFF0ED2F7).withValues(alpha: 0.2)
+                  ],
                 ),
               ),
             );
@@ -526,21 +686,26 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
             Container(
               padding: const EdgeInsets.all(24),
               decoration: doodle
-                ? DoodleDecorations.card(color: DoodleColors.orange).copyWith(shape: BoxShape.circle, borderRadius: null)
-                : BoxDecoration(
-                    color: BolroomTheme.card,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: BolroomTheme.purple.withValues(alpha: 0.2), width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: BolroomTheme.purple.withValues(alpha: 0.1),
-                        blurRadius: 24,
-                        spreadRadius: 4,
-                      ),
-                    ],
-                  ),
+                  ? DoodleDecorations.card(color: DoodleColors.orange)
+                      .copyWith(shape: BoxShape.circle, borderRadius: null)
+                  : BoxDecoration(
+                      color: BolroomTheme.card,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: BolroomTheme.purple.withValues(alpha: 0.2),
+                          width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: BolroomTheme.purple.withValues(alpha: 0.1),
+                          blurRadius: 24,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
               child: Icon(
-                _hasPendingRequest ? Icons.hourglass_empty_rounded : Icons.lock_outline_rounded,
+                _hasPendingRequest
+                    ? Icons.hourglass_empty_rounded
+                    : Icons.lock_outline_rounded,
                 color: doodle ? DoodleColors.cream : BolroomTheme.purple,
                 size: 48,
               ),
@@ -548,21 +713,27 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
             const SizedBox(height: 24),
             Text(
               'Private Community',
-              style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 26) : GoogleFonts.inter(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
+              style: doodle
+                  ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 26)
+                  : GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
             ),
             const SizedBox(height: 12),
             Text(
               'This group is private. You must request approval from the host to join and view messages.',
               textAlign: TextAlign.center,
-              style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 14) : GoogleFonts.inter(
-                color: BolroomTheme.textSecondary,
-                fontSize: 14,
-                height: 1.5,
-              ),
+              style: doodle
+                  ? DoodleFonts.body(
+                      color: DoodleColors.brown.withValues(alpha: 0.7),
+                      fontSize: 14)
+                  : GoogleFonts.inter(
+                      color: BolroomTheme.textSecondary,
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
             ),
             const SizedBox(height: 32),
             SizedBox(
@@ -571,23 +742,55 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
               child: ElevatedButton(
                 onPressed: _toggleJoinRequest,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: doodle ? (_hasPendingRequest ? DoodleColors.paper : DoodleColors.blue) : (_hasPendingRequest ? const Color(0xFF1D1B26) : BolroomTheme.purple),
-                  foregroundColor: doodle ? (_hasPendingRequest ? DoodleColors.brown : DoodleColors.cream) : Colors.white,
+                  backgroundColor: doodle
+                      ? (_hasPendingRequest
+                          ? DoodleColors.paper
+                          : DoodleColors.blue)
+                      : (_hasPendingRequest
+                          ? const Color(0xFF1D1B26)
+                          : BolroomTheme.purple),
+                  foregroundColor: doodle
+                      ? (_hasPendingRequest
+                          ? DoodleColors.brown
+                          : DoodleColors.cream)
+                      : Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(26),
-                    side: doodle ? BorderSide(color: DoodleColors.brown, width: 2) : (_hasPendingRequest ? const BorderSide(color: Colors.white10) : BorderSide.none),
+                    side: doodle
+                        ? BorderSide(color: DoodleColors.brown, width: 2)
+                        : (_hasPendingRequest
+                            ? const BorderSide(color: Colors.white10)
+                            : BorderSide.none),
                   ),
                   elevation: 0,
                 ),
                 child: _isRequesting
-                    ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: doodle ? DoodleColors.cream : Colors.white, strokeWidth: 2))
+                    ? SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                            color: doodle ? DoodleColors.cream : Colors.white,
+                            strokeWidth: 2))
                     : Text(
-                        _hasPendingRequest ? 'Cancel Join Request' : 'Request to Join',
-                        style: doodle ? DoodleFonts.body(color: doodle ? (_hasPendingRequest ? DoodleColors.brown : DoodleColors.cream) : Colors.white, fontSize: 16).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _hasPendingRequest ? Colors.white70 : Colors.white,
-                        ),
+                        _hasPendingRequest
+                            ? 'Cancel Join Request'
+                            : 'Request to Join',
+                        style: doodle
+                            ? DoodleFonts.body(
+                                    color: doodle
+                                        ? (_hasPendingRequest
+                                            ? DoodleColors.brown
+                                            : DoodleColors.cream)
+                                        : Colors.white,
+                                    fontSize: 16)
+                                .copyWith(fontWeight: FontWeight.bold)
+                            : GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: _hasPendingRequest
+                                    ? Colors.white70
+                                    : Colors.white,
+                              ),
                       ),
               ),
             ),
@@ -598,11 +801,12 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
   }
 
   bool _canCustomize() {
-    final custPerm = _localCommunity['customization_permission']?.toString() ?? 'owner';
+    final custPerm =
+        _localCommunity['customization_permission']?.toString() ?? 'owner';
     final isOwner = _localCommunity['creator_id'] == _myId;
     final isAdmin = _myRole == 'admin' || isOwner;
     final isMember = _myRole == 'member' || isAdmin;
-    
+
     if (custPerm == 'owner' && isOwner) return true;
     if (custPerm == 'admin' && isAdmin) return true;
     if (custPerm == 'member' && isMember) return true;
@@ -611,30 +815,41 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Widget _buildPinnedMessage(bool doodle) {
     final pinnedText = _localCommunity['pinned_message_text']?.toString();
-    if (pinnedText == null || pinnedText.isEmpty) return const SizedBox.shrink();
+    if (pinnedText == null || pinnedText.isEmpty)
+      return const SizedBox.shrink();
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: doodle
-        ? BoxDecoration(
-            color: DoodleColors.orange.withValues(alpha: 0.2),
-            border: Border(bottom: BorderSide(color: DoodleColors.orange.withValues(alpha: 0.5))),
-          )
-        : BoxDecoration(
-            color: BolroomTheme.gold.withValues(alpha: 0.1),
-            border: Border(bottom: BorderSide(color: BolroomTheme.gold.withValues(alpha: 0.3))),
-          ),
+          ? BoxDecoration(
+              color: DoodleColors.orange.withValues(alpha: 0.2),
+              border: Border(
+                  bottom: BorderSide(
+                      color: DoodleColors.orange.withValues(alpha: 0.5))),
+            )
+          : BoxDecoration(
+              color: BolroomTheme.gold.withValues(alpha: 0.1),
+              border: Border(
+                  bottom: BorderSide(
+                      color: BolroomTheme.gold.withValues(alpha: 0.3))),
+            ),
       child: Row(
         children: [
-          Icon(Icons.push_pin, size: 16, color: doodle ? DoodleColors.orange : BolroomTheme.gold),
+          Icon(Icons.push_pin,
+              size: 16,
+              color: doodle ? DoodleColors.orange : BolroomTheme.gold),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               pinnedText,
-              style: doodle 
-                ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 13).copyWith(fontWeight: FontWeight.bold)
-                : GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+              style: doodle
+                  ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 13)
+                      .copyWith(fontWeight: FontWeight.bold)
+                  : GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -644,7 +859,10 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
               onTap: () => _pinMessage(null),
               child: Padding(
                 padding: const EdgeInsets.only(left: 8.0),
-                child: Icon(Icons.close, size: 16, color: doodle ? DoodleColors.brown : BolroomTheme.textMuted),
+                child: Icon(Icons.close,
+                    size: 16,
+                    color:
+                        doodle ? DoodleColors.brown : BolroomTheme.textMuted),
               ),
             ),
         ],
@@ -658,45 +876,67 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 16, 12),
       decoration: doodle
-        ? BoxDecoration(
-            color: DoodleColors.paper.withValues(alpha: 0.9),
-            border: Border(bottom: BorderSide(color: DoodleColors.brown.withValues(alpha: 0.2))),
-          )
-        : BoxDecoration(
-            color: BolroomTheme.bg.withValues(alpha: 0.8),
-            border: Border(bottom: BorderSide(color: BolroomTheme.borderSubtle)),
-          ),
+          ? BoxDecoration(
+              color: DoodleColors.paper.withValues(alpha: 0.9),
+              border: Border(
+                  bottom: BorderSide(
+                      color: DoodleColors.brown.withValues(alpha: 0.2))),
+            )
+          : BoxDecoration(
+              color: BolroomTheme.bg.withValues(alpha: 0.8),
+              border:
+                  Border(bottom: BorderSide(color: BolroomTheme.borderSubtle)),
+            ),
       child: Row(
         children: [
           GestureDetector(
             onTap: () => Navigator.pop(context),
-            child: Icon(Icons.arrow_back_ios_new, color: doodle ? DoodleColors.brown : BolroomTheme.textSecondary, size: 20),
+            child: Icon(Icons.arrow_back_ios_new,
+                color: doodle ? DoodleColors.brown : BolroomTheme.textSecondary,
+                size: 20),
           ),
           const SizedBox(width: 12),
           Container(
-            width: 40, height: 40,
+            width: 40,
+            height: 40,
             decoration: doodle
-              ? BoxDecoration(
-                  color: DoodleColors.orange.withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: DoodleColors.orange),
-                )
-              : BoxDecoration(
-                  color: BolroomTheme.purple.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-            child: Center(child: Text(icon, style: const TextStyle(fontSize: 20))),
+                ? BoxDecoration(
+                    color: DoodleColors.orange.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: DoodleColors.orange),
+                  )
+                : BoxDecoration(
+                    color: BolroomTheme.purple.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+            child:
+                Center(child: Text(icon, style: const TextStyle(fontSize: 20))),
           ),
           const SizedBox(width: 12),
-          Expanded(child: Column(
+          Expanded(
+              child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(name, style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              Text(name,
+                  style: doodle
+                      ? DoodleFonts.heading(
+                          color: DoodleColors.brown, fontSize: 18)
+                      : GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
               ValueListenableBuilder<List<Map<String, dynamic>>>(
                 valueListenable: _membersNotifier,
                 builder: (context, membersList, _) {
-                  final activeCount = membersList.where((m) => m['role'] != 'pending').length;
-                  return Text('$activeCount members', style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 12).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 12));
+                  final activeCount =
+                      membersList.where((m) => m['role'] != 'pending').length;
+                  return Text('$activeCount members',
+                      style: doodle
+                          ? DoodleFonts.body(
+                                  color: DoodleColors.blue, fontSize: 12)
+                              .copyWith(fontWeight: FontWeight.bold)
+                          : GoogleFonts.inter(
+                              color: BolroomTheme.textMuted, fontSize: 12));
                 },
               ),
             ],
@@ -706,8 +946,12 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
               onTap: _showCommunitySettings,
               child: Container(
                 padding: const EdgeInsets.all(8),
-                decoration: doodle ? DoodleDecorations.card() : BolroomTheme.glassDecoration(radius: 10),
-                child: Icon(Icons.settings_outlined, color: doodle ? DoodleColors.orange : Colors.white, size: 20),
+                decoration: doodle
+                    ? DoodleDecorations.card()
+                    : BolroomTheme.glassDecoration(radius: 10),
+                child: Icon(Icons.settings_outlined,
+                    color: doodle ? DoodleColors.orange : Colors.white,
+                    size: 20),
               ),
             ),
             const SizedBox(width: 8),
@@ -716,8 +960,13 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
             onTap: () => _showCommunityInfo(),
             child: Container(
               padding: const EdgeInsets.all(8),
-              decoration: doodle ? DoodleDecorations.card() : BolroomTheme.glassDecoration(radius: 10),
-              child: Icon(Icons.info_outline, color: doodle ? DoodleColors.blue : BolroomTheme.textSecondary, size: 20),
+              decoration: doodle
+                  ? DoodleDecorations.card()
+                  : BolroomTheme.glassDecoration(radius: 10),
+              child: Icon(Icons.info_outline,
+                  color:
+                      doodle ? DoodleColors.blue : BolroomTheme.textSecondary,
+                  size: 20),
             ),
           ),
         ],
@@ -728,149 +977,275 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
   void _showCommunitySettings() {
     final doodle = isDoodleMode(context);
     final isOwner = _localCommunity['creator_id'] == _myId;
-    
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: doodle ? DoodleColors.paper : BolroomTheme.bg,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (sheetCtx) {
-        String newName = _localCommunity['name'] ?? '';
-        String newTheme = _localCommunity['chat_theme']?.toString() ?? 'default';
-        String newJoinPolicy = _localCommunity['join_policy']?.toString() ?? 'open';
-        String newCustomPerm = _localCommunity['customization_permission']?.toString() ?? 'owner';
-        bool saving = false;
 
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
+    showModalBottomSheet(
+        context: context,
+        backgroundColor: doodle ? DoodleColors.paper : BolroomTheme.bg,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (sheetCtx) {
+          String newName = _localCommunity['name'] ?? '';
+          String newTheme =
+              _localCommunity['chat_theme']?.toString() ?? 'default';
+          String newJoinPolicy =
+              _localCommunity['join_policy']?.toString() ?? 'open';
+          String newCustomPerm =
+              _localCommunity['customization_permission']?.toString() ??
+                  'owner';
+          bool saving = false;
+
+          return StatefulBuilder(builder: (ctx, setSheetState) {
             return SafeArea(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+                padding: EdgeInsets.fromLTRB(
+                    20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : BolroomTheme.border, borderRadius: BorderRadius.circular(2)))),
+                      Center(
+                          child: Container(
+                              width: 40,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                  color: doodle
+                                      ? DoodleColors.brown
+                                          .withValues(alpha: 0.5)
+                                      : BolroomTheme.border,
+                                  borderRadius: BorderRadius.circular(2)))),
                       const SizedBox(height: 20),
-                      Text('Community Settings', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 22) : GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                      Text('Community Settings',
+                          style: doodle
+                              ? DoodleFonts.heading(
+                                  color: DoodleColors.brown, fontSize: 22)
+                              : GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold)),
                       const SizedBox(height: 24),
-                      
-                      Text('Community Name', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text('Community Name',
+                          style: doodle
+                              ? DoodleFonts.body(
+                                      color: DoodleColors.brown, fontSize: 14)
+                                  .copyWith(fontWeight: FontWeight.bold)
+                              : GoogleFonts.inter(
+                                  color: BolroomTheme.textSecondary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600)),
                       const SizedBox(height: 8),
                       TextField(
-                        controller: TextEditingController(text: newName)..selection = TextSelection.collapsed(offset: newName.length),
+                        controller: TextEditingController(text: newName)
+                          ..selection =
+                              TextSelection.collapsed(offset: newName.length),
                         onChanged: (v) => newName = v,
-                        style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16) : const TextStyle(color: Colors.white),
+                        style: doodle
+                            ? DoodleFonts.body(
+                                color: DoodleColors.brown, fontSize: 16)
+                            : const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           filled: true,
-                          fillColor: doodle ? DoodleColors.cream : BolroomTheme.surface,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          fillColor: doodle
+                              ? DoodleColors.cream
+                              : BolroomTheme.surface,
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
                         ),
                       ),
                       const SizedBox(height: 20),
-
-                      Text('Chat Background Theme', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text('Chat Background Theme',
+                          style: doodle
+                              ? DoodleFonts.body(
+                                      color: DoodleColors.brown, fontSize: 14)
+                                  .copyWith(fontWeight: FontWeight.bold)
+                              : GoogleFonts.inter(
+                                  color: BolroomTheme.textSecondary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600)),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
                         value: newTheme,
-                        dropdownColor: doodle ? DoodleColors.cream : BolroomTheme.surface,
-                        style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16) : const TextStyle(color: Colors.white),
+                        dropdownColor:
+                            doodle ? DoodleColors.cream : BolroomTheme.surface,
+                        style: doodle
+                            ? DoodleFonts.body(
+                                color: DoodleColors.brown, fontSize: 16)
+                            : const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           filled: true,
-                          fillColor: doodle ? DoodleColors.cream : BolroomTheme.surface,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          fillColor: doodle
+                              ? DoodleColors.cream
+                              : BolroomTheme.surface,
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'default', child: Text('Default Dark')),
-                          DropdownMenuItem(value: 'funky', child: Text('Funky Colors')),
-                          DropdownMenuItem(value: 'premium_mesh', child: Text('Premium Mesh')),
-                          DropdownMenuItem(value: 'doodle_canvas', child: Text('Doodle Canvas')),
-                          DropdownMenuItem(value: 'gamified_pixel', child: Text('Gamified Pixel')),
-                          DropdownMenuItem(value: 'neon_cyberpunk', child: Text('Neon Cyberpunk')),
-                          DropdownMenuItem(value: 'soft_glass', child: Text('Soft Glass')),
+                          DropdownMenuItem(
+                              value: 'default', child: Text('Default Dark')),
+                          DropdownMenuItem(
+                              value: 'funky', child: Text('Funky Colors')),
+                          DropdownMenuItem(
+                              value: 'premium_mesh',
+                              child: Text('Premium Mesh')),
+                          DropdownMenuItem(
+                              value: 'doodle_canvas',
+                              child: Text('Doodle Canvas')),
+                          DropdownMenuItem(
+                              value: 'gamified_pixel',
+                              child: Text('Gamified Pixel')),
+                          DropdownMenuItem(
+                              value: 'neon_cyberpunk',
+                              child: Text('Neon Cyberpunk')),
+                          DropdownMenuItem(
+                              value: 'soft_glass', child: Text('Soft Glass')),
                         ],
                         onChanged: (v) => setSheetState(() => newTheme = v!),
                       ),
                       const SizedBox(height: 20),
-
                       if (isOwner) ...[
-                        Text('Who can customize this community?', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+                        Text('Who can customize this community?',
+                            style: doodle
+                                ? DoodleFonts.body(
+                                        color: DoodleColors.brown, fontSize: 14)
+                                    .copyWith(fontWeight: FontWeight.bold)
+                                : GoogleFonts.inter(
+                                    color: BolroomTheme.textSecondary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600)),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
                           value: newCustomPerm,
-                          dropdownColor: doodle ? DoodleColors.cream : BolroomTheme.surface,
-                          style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16) : const TextStyle(color: Colors.white),
+                          dropdownColor: doodle
+                              ? DoodleColors.cream
+                              : BolroomTheme.surface,
+                          style: doodle
+                              ? DoodleFonts.body(
+                                  color: DoodleColors.brown, fontSize: 16)
+                              : const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
                             filled: true,
-                            fillColor: doodle ? DoodleColors.cream : BolroomTheme.surface,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                            fillColor: doodle
+                                ? DoodleColors.cream
+                                : BolroomTheme.surface,
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none),
                           ),
                           items: const [
-                            DropdownMenuItem(value: 'owner', child: Text('Only Owner')),
-                            DropdownMenuItem(value: 'admin', child: Text('Owner & Admins')),
-                            DropdownMenuItem(value: 'member', child: Text('All Members')),
+                            DropdownMenuItem(
+                                value: 'owner', child: Text('Only Owner')),
+                            DropdownMenuItem(
+                                value: 'admin', child: Text('Owner & Admins')),
+                            DropdownMenuItem(
+                                value: 'member', child: Text('All Members')),
                           ],
-                          onChanged: (v) => setSheetState(() => newCustomPerm = v!),
+                          onChanged: (v) =>
+                              setSheetState(() => newCustomPerm = v!),
                         ),
                         const SizedBox(height: 20),
-                        
-                        Text('Join Policy', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+                        Text('Join Policy',
+                            style: doodle
+                                ? DoodleFonts.body(
+                                        color: DoodleColors.brown, fontSize: 14)
+                                    .copyWith(fontWeight: FontWeight.bold)
+                                : GoogleFonts.inter(
+                                    color: BolroomTheme.textSecondary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600)),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
                           value: newJoinPolicy,
-                          dropdownColor: doodle ? DoodleColors.cream : BolroomTheme.surface,
-                          style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16) : const TextStyle(color: Colors.white),
+                          dropdownColor: doodle
+                              ? DoodleColors.cream
+                              : BolroomTheme.surface,
+                          style: doodle
+                              ? DoodleFonts.body(
+                                  color: DoodleColors.brown, fontSize: 16)
+                              : const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
                             filled: true,
-                            fillColor: doodle ? DoodleColors.cream : BolroomTheme.surface,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                            fillColor: doodle
+                                ? DoodleColors.cream
+                                : BolroomTheme.surface,
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none),
                           ),
                           items: const [
-                            DropdownMenuItem(value: 'open', child: Text('Open to All')),
-                            DropdownMenuItem(value: 'approval_required', child: Text('Admin Approval Required')),
+                            DropdownMenuItem(
+                                value: 'open', child: Text('Open to All')),
+                            DropdownMenuItem(
+                                value: 'approval_required',
+                                child: Text('Admin Approval Required')),
                           ],
-                          onChanged: (v) => setSheetState(() => newJoinPolicy = v!),
+                          onChanged: (v) =>
+                              setSheetState(() => newJoinPolicy = v!),
                         ),
                         const SizedBox(height: 20),
                       ],
-
                       SizedBox(
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: doodle ? DoodleColors.orange : BolroomTheme.purple,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            backgroundColor: doodle
+                                ? DoodleColors.orange
+                                : BolroomTheme.purple,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
                           ),
-                          onPressed: saving ? null : () async {
-                            setSheetState(() => saving = true);
-                            try {
-                              await _sb.from('bolroom_communities').update({
-                                'name': newName.trim(),
-                                'chat_theme': newTheme,
-                                'customization_permission': newCustomPerm,
-                                'join_policy': newJoinPolicy,
-                              }).eq('id', _communityId);
-                              
-                              if (mounted) {
-                                setState(() {
-                                  _localCommunity['name'] = newName.trim();
-                                  _localCommunity['chat_theme'] = newTheme;
-                                  _localCommunity['customization_permission'] = newCustomPerm;
-                                  _localCommunity['join_policy'] = newJoinPolicy;
-                                });
-                                Navigator.pop(context);
-                              }
-                            } catch (e) {
-                              debugPrint('Error updating settings: $e');
-                            }
-                            if (mounted) setSheetState(() => saving = false);
-                          },
+                          onPressed: saving
+                              ? null
+                              : () async {
+                                  setSheetState(() => saving = true);
+                                  try {
+                                    await _sb
+                                        .from('bolroom_communities')
+                                        .update({
+                                      'name': newName.trim(),
+                                      'chat_theme': newTheme,
+                                      'customization_permission': newCustomPerm,
+                                      'join_policy': newJoinPolicy,
+                                    }).eq('id', _communityId);
+
+                                    if (mounted) {
+                                      setState(() {
+                                        _localCommunity['name'] =
+                                            newName.trim();
+                                        _localCommunity['chat_theme'] =
+                                            newTheme;
+                                        _localCommunity[
+                                                'customization_permission'] =
+                                            newCustomPerm;
+                                        _localCommunity['join_policy'] =
+                                            newJoinPolicy;
+                                      });
+                                      Navigator.pop(context);
+                                    }
+                                  } catch (e) {
+                                    debugPrint('Error updating settings: $e');
+                                  }
+                                  if (mounted)
+                                    setSheetState(() => saving = false);
+                                },
                           child: saving
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : Text('Save Settings', style: doodle ? DoodleFonts.body(color: DoodleColors.cream, fontSize: 16).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white)
+                              : Text('Save Settings',
+                                  style: doodle
+                                      ? DoodleFonts.body(
+                                              color: DoodleColors.cream,
+                                              fontSize: 16)
+                                          .copyWith(fontWeight: FontWeight.bold)
+                                      : const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ],
@@ -878,16 +1253,15 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                 ),
               ),
             );
-          }
-        );
-      }
-    );
+          });
+        });
   }
 
   Widget _buildMessageBubble(Map<String, dynamic> msg, bool doodle) {
     final isMe = msg['user_id'] == _myId;
     final anonName = msg['anon_name'] ?? 'Anonymous';
     final avatarKey = msg['avatar_key']?.toString();
+    final customUrl = msg['custom_avatar_url']?.toString();
     final userId = msg['user_id']?.toString() ?? '';
     final text = msg['text'] ?? '';
     final time = _formatTime(msg['created_at']);
@@ -896,12 +1270,13 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
       padding: EdgeInsets.only(bottom: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           if (!isMe) ...[
             BolroomAvatarWidget(
               size: 32,
-              avatarUrl: null,
+              avatarUrl: customUrl,
               avatarKey: avatarKey,
               userId: userId,
               showRing: false,
@@ -918,35 +1293,70 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
               child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: doodle
-                  ? BoxDecoration(
-                      color: isMe ? DoodleColors.cream : DoodleColors.paper,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(isMe ? 16 : 4),
-                        topRight: Radius.circular(isMe ? 4 : 16),
-                        bottomLeft: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
+                    ? BoxDecoration(
+                        color: isMe ? DoodleColors.cream : DoodleColors.paper,
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(isMe ? 16 : 4),
+                          topRight: Radius.circular(isMe ? 4 : 16),
+                          bottomLeft: Radius.circular(16),
+                          bottomRight: Radius.circular(16),
+                        ),
+                        border: Border.all(color: DoodleColors.brown, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                              color: DoodleColors.brown,
+                              offset: const Offset(2, 2))
+                        ],
+                      )
+                    : BoxDecoration(
+                        color: isMe
+                            ? BolroomTheme.purple.withValues(alpha: 0.15)
+                            : BolroomTheme.card,
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(isMe ? 16 : 4),
+                          topRight: Radius.circular(isMe ? 4 : 16),
+                          bottomLeft: Radius.circular(16),
+                          bottomRight: Radius.circular(16),
+                        ),
+                        border: Border.all(
+                            color: isMe
+                                ? BolroomTheme.purple.withValues(alpha: 0.15)
+                                : BolroomTheme.borderSubtle),
                       ),
-                      border: Border.all(color: DoodleColors.brown, width: 2),
-                      boxShadow: [BoxShadow(color: DoodleColors.brown, offset: const Offset(2, 2))],
-                    )
-                  : BoxDecoration(
-                      color: isMe ? BolroomTheme.purple.withValues(alpha: 0.15) : BolroomTheme.card,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(isMe ? 16 : 4),
-                        topRight: Radius.circular(isMe ? 4 : 16),
-                        bottomLeft: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
-                      border: Border.all(color: isMe ? BolroomTheme.purple.withValues(alpha: 0.15) : BolroomTheme.borderSubtle),
-                    ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (!isMe) Text(anonName, style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 12).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: BolroomTheme.purple, fontSize: 11, fontWeight: FontWeight.w700)),
+                    if (!isMe)
+                      Text(anonName,
+                          style: doodle
+                              ? DoodleFonts.body(
+                                      color: DoodleColors.blue, fontSize: 12)
+                                  .copyWith(fontWeight: FontWeight.bold)
+                              : GoogleFonts.inter(
+                                  color: BolroomTheme.purple,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700)),
                     if (!isMe) SizedBox(height: 3),
-                    Text(text, style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16) : GoogleFonts.inter(color: BolroomTheme.textPrimary, fontSize: 14, height: 1.4)),
+                    if (!isMe) SizedBox(height: 3),
+                    text.startsWith('[AUDIO]')
+                        ? _buildAudioPlayerMessage(text.substring(7), isMe, msg)
+                        : Text(text,
+                            style: doodle
+                                ? DoodleFonts.body(
+                                    color: DoodleColors.brown, fontSize: 16)
+                                : GoogleFonts.inter(
+                                    color: BolroomTheme.textPrimary,
+                                    fontSize: 14,
+                                    height: 1.4)),
                     SizedBox(height: 4),
-                    Text(time, style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.6), fontSize: 10) : GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 10)),
+                    Text(time,
+                        style: doodle
+                            ? DoodleFonts.body(
+                                color:
+                                    DoodleColors.brown.withValues(alpha: 0.6),
+                                fontSize: 10)
+                            : GoogleFonts.inter(
+                                color: BolroomTheme.textMuted, fontSize: 10)),
                   ],
                 ),
               ),
@@ -963,15 +1373,33 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
     showModalBottomSheet(
       context: context,
       backgroundColor: doodle ? DoodleColors.paper : BolroomTheme.sheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : Colors.white24, borderRadius: BorderRadius.circular(2))),
+            Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                    color: doodle
+                        ? DoodleColors.brown.withValues(alpha: 0.5)
+                        : Colors.white24,
+                    borderRadius: BorderRadius.circular(2))),
             ListTile(
-              leading: Icon(Icons.push_pin, color: doodle ? DoodleColors.orange : BolroomTheme.gold),
-              title: Text('Pin Message', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 15).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+              leading: Icon(Icons.push_pin,
+                  color: doodle ? DoodleColors.orange : BolroomTheme.gold),
+              title: Text('Pin Message',
+                  style: doodle
+                      ? DoodleFonts.body(
+                              color: DoodleColors.brown, fontSize: 15)
+                          .copyWith(fontWeight: FontWeight.bold)
+                      : GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500)),
               onTap: () {
                 Navigator.pop(context);
                 _pinMessage(msg['text']);
@@ -986,75 +1414,339 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Future<void> _pinMessage(String? text) async {
     try {
-      await _sb.from('bolroom_communities').update({'pinned_message_text': text}).eq('id', widget.community['id']);
+      await _sb.from('bolroom_communities').update(
+          {'pinned_message_text': text}).eq('id', widget.community['id']);
       setState(() {
         _localCommunity['pinned_message_text'] = text;
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text == null ? 'Message unpinned' : 'Message pinned!')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text(text == null ? 'Message unpinned' : 'Message pinned!')));
     } catch (e) {
       debugPrint('Error pinning message: $e');
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to pin message.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to pin message.')));
     }
+  }
+
+  void _toggleRecording() async {
+    if (_isRecording) {
+      final path = await _audioRecorder.stop();
+      _recordTimer?.cancel();
+      if (path != null && mounted) {
+        setState(() {
+          _isRecording = false;
+          _isAudioPreview = true;
+          _recordedFilePath = path;
+        });
+      }
+    } else {
+      final hasPermission = await _audioRecorder.hasPermission();
+      if (hasPermission) {
+        final dir = await getApplicationDocumentsDirectory();
+        final path =
+            '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        await _audioRecorder
+            .start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+        setState(() {
+          _isRecording = true;
+          _recordDuration = Duration.zero;
+        });
+        _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          setState(() => _recordDuration = Duration(seconds: timer.tick));
+        });
+      }
+    }
+  }
+
+  void _cancelAudioPreview() {
+    setState(() {
+      _isAudioPreview = false;
+      _recordedFilePath = null;
+      _isRecording = false;
+    });
+  }
+
+  Future<void> _sendAudioMessage() async {
+    if (_recordedFilePath == null) return;
+    try {
+      final file = File(_recordedFilePath!);
+      final bytes = await file.readAsBytes();
+      final myUid = _myId;
+      final fileName =
+          'chat_audio/${myUid}_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _sb.storage.from('avatars').uploadBinary(
+            fileName,
+            bytes,
+            fileOptions:
+                const FileOptions(contentType: 'audio/m4a', upsert: true),
+          );
+      final url = _sb.storage.from('avatars').getPublicUrl(fileName);
+
+      final text = '[AUDIO]$url';
+
+      final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+
+      final aName = _myProfile != null
+          ? _myProfile!['anon_name']
+          : 'Shadow_${_myId.substring(0, 4)}';
+
+      final tempMsg = {
+        'id': tempId,
+        'community_id': _communityId,
+        'user_id': _myId,
+        'text': text,
+        'anon_name': aName,
+        'avatar_key': _myAvatarKey,
+        'custom_avatar_url': _myCustomAvatarUrl,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      };
+
+      if (mounted) {
+        setState(() {
+          _messages.add(tempMsg);
+          _isAudioPreview = false;
+          _recordedFilePath = null;
+        });
+        _scrollToBottom();
+      }
+
+      final payload = <String, dynamic>{
+        'community_id': _communityId,
+        'user_id': _myId,
+        'text': text,
+        'anon_name': aName,
+        'avatar_key': _myAvatarKey,
+        'custom_avatar_url': _myCustomAvatarUrl,
+      };
+
+      await _sb.from('bolroom_community_messages').insert(payload);
+
+      _loadMessages();
+    } catch (e) {
+      debugPrint('Audio upload failed: $e');
+    }
+  }
+
+  Widget _buildAudioPreviewBar() {
+    final minutes = _recordDuration.inMinutes.toString().padLeft(2, '0');
+    final seconds = (_recordDuration.inSeconds % 60).toString().padLeft(2, '0');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF13101E),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            onPressed: _cancelAudioPreview,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          const SizedBox(width: 12),
+          if (_isRecording)
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+            ),
+          if (_isRecording) const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _isRecording
+                  ? 'Recording... $minutes:$seconds'
+                  : 'Audio Message Ready',
+              style: GoogleFonts.inter(
+                color: _isRecording ? Colors.redAccent : Colors.white70,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          if (!_isRecording)
+            GestureDetector(
+              onTap: _sendAudioMessage,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFF6B00),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.send_rounded,
+                    color: Colors.white, size: 20),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAudioPlayerMessage(String url, bool isMe, Map msg) {
+    return GestureDetector(
+      onTap: () async {
+        if (_playingAudioUrl == url && _isPlayingAudio) {
+          await _audioPlayer.pause();
+          setState(() {
+            _isPlayingAudio = false;
+          });
+        } else {
+          setState(() {
+            _playingAudioUrl = url;
+            _isPlayingAudio = true;
+          });
+          await _audioPlayer.play(UrlSource(url));
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        constraints: const BoxConstraints(maxWidth: 200, minWidth: 150),
+        decoration: BoxDecoration(
+          color: isMe ? Colors.white.withValues(alpha: 0.2) : Colors.black12,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              (_playingAudioUrl == url && _isPlayingAudio)
+                  ? Icons.pause_circle_filled
+                  : Icons.play_circle_fill,
+              color: isMe ? Colors.white : const Color(0xFFFF6B00),
+              size: 32,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Container(
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isMe ? Colors.white54 : Colors.grey[800],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    width: 30, // mock progress indicator
+                    decoration: BoxDecoration(
+                      color: isMe ? Colors.white : const Color(0xFFFF6B00),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Voice',
+              style: TextStyle(color: Colors.white, fontSize: 11),
+            )
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildInputBar(bool doodle) {
     return Container(
       padding: EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: doodle
-        ? BoxDecoration(
-            color: DoodleColors.paper,
-            border: Border(top: BorderSide(color: DoodleColors.brown.withValues(alpha: 0.2))),
-          )
-        : BoxDecoration(
-            color: BolroomTheme.bg,
-            border: Border(top: BorderSide(color: BolroomTheme.borderSubtle)),
-          ),
+          ? BoxDecoration(
+              color: DoodleColors.paper,
+              border: Border(
+                  top: BorderSide(
+                      color: DoodleColors.brown.withValues(alpha: 0.2))),
+            )
+          : BoxDecoration(
+              color: BolroomTheme.bg,
+              border: Border(top: BorderSide(color: BolroomTheme.borderSubtle)),
+            ),
       child: Row(
         children: [
           Container(
             padding: EdgeInsets.all(8),
-            decoration: doodle ? DoodleDecorations.card(color: DoodleColors.cream).copyWith(shape: BoxShape.circle, borderRadius: null) : BolroomTheme.glassDecoration(radius: 12),
-            child: Icon(Icons.add, color: doodle ? DoodleColors.brown : BolroomTheme.textSecondary, size: 20),
+            decoration: doodle
+                ? DoodleDecorations.card(color: DoodleColors.cream)
+                    .copyWith(shape: BoxShape.circle, borderRadius: null)
+                : BolroomTheme.glassDecoration(radius: 12),
+            child: Icon(Icons.add,
+                color: doodle ? DoodleColors.brown : BolroomTheme.textSecondary,
+                size: 20),
           ),
           SizedBox(width: 8),
-          Expanded(
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 14),
-              decoration: doodle
-                ? DoodleDecorations.input()
-                : BoxDecoration(
-                    color: BolroomTheme.surface,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: BolroomTheme.border),
+          _isRecording || _isAudioPreview
+              ? Expanded(child: _buildAudioPreviewBar())
+              : Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: doodle
+                        ? DoodleDecorations.input()
+                        : BoxDecoration(
+                            color: BolroomTheme.surface,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: BolroomTheme.border),
+                          ),
+                    child: TextField(
+                      controller: _msgCtrl,
+                      style: doodle
+                          ? DoodleFonts.body(
+                              color: DoodleColors.brown, fontSize: 16)
+                          : GoogleFonts.inter(
+                              color: Colors.white, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'Message as $_myAnonName...',
+                        hintStyle: doodle
+                            ? DoodleFonts.body(
+                                color:
+                                    DoodleColors.brown.withValues(alpha: 0.5),
+                                fontSize: 16)
+                            : GoogleFonts.inter(
+                                color: BolroomTheme.textHint, fontSize: 14),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
                   ),
-              child: TextField(
-                controller: _msgCtrl,
-                style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16) : GoogleFonts.inter(color: Colors.white, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: 'Message as $_myAnonName...',
-                  hintStyle: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.5), fontSize: 16) : GoogleFonts.inter(color: BolroomTheme.textHint, fontSize: 14),
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(vertical: 10),
                 ),
-                onSubmitted: (_) => _sendMessage(),
+          if (!_isRecording && !_isAudioPreview) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onLongPress: _toggleRecording,
+              onLongPressEnd: (_) => _toggleRecording(),
+              onTap: _sendMessage,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(10),
+                decoration: doodle
+                    ? DoodleDecorations.card(
+                            color: _msgCtrl.text.trim().isEmpty
+                                ? DoodleColors.brown
+                                : DoodleColors.orange)
+                        .copyWith(shape: BoxShape.circle, borderRadius: null)
+                    : BoxDecoration(
+                        color: _msgCtrl.text.trim().isEmpty
+                            ? BolroomTheme.purple.withValues(alpha: 0.5)
+                            : null,
+                        gradient: _msgCtrl.text.trim().isNotEmpty
+                            ? BolroomTheme.purpleGradient
+                            : null,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                child: Icon(
+                  _msgCtrl.text.trim().isEmpty ? Icons.mic : Icons.send_rounded,
+                  color: doodle ? DoodleColors.cream : Colors.white,
+                  size: 20,
+                ),
               ),
             ),
-          ),
-          SizedBox(width: 8),
-          GestureDetector(
-            onTap: _sendMessage,
-            child: Container(
-              padding: EdgeInsets.all(10),
-              decoration: doodle
-                ? DoodleDecorations.card(color: DoodleColors.orange).copyWith(shape: BoxShape.circle, borderRadius: null)
-                : BoxDecoration(
-                    gradient: BolroomTheme.purpleGradient,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-              child: Icon(Icons.send_rounded, color: doodle ? DoodleColors.cream : Colors.white, size: 20),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -1064,21 +1756,23 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
     if (_localCommunity['is_private'] == true) {
       return const SizedBox.shrink();
     }
-    
+
     final policy = _localCommunity['join_policy']?.toString() ?? 'open';
     final isApprovalRequired = policy == 'approval_required';
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: doodle
-        ? BoxDecoration(
-            color: DoodleColors.paper.withValues(alpha: 0.9),
-            border: Border(top: BorderSide(color: DoodleColors.brown.withValues(alpha: 0.2))),
-          )
-        : BoxDecoration(
-            color: BolroomTheme.surface.withValues(alpha: 0.9),
-            border: Border(top: BorderSide(color: BolroomTheme.borderSubtle)),
-          ),
+          ? BoxDecoration(
+              color: DoodleColors.paper.withValues(alpha: 0.9),
+              border: Border(
+                  top: BorderSide(
+                      color: DoodleColors.brown.withValues(alpha: 0.2))),
+            )
+          : BoxDecoration(
+              color: BolroomTheme.surface.withValues(alpha: 0.9),
+              border: Border(top: BorderSide(color: BolroomTheme.borderSubtle)),
+            ),
       child: GestureDetector(
         onTap: () {
           if (isApprovalRequired) {
@@ -1091,23 +1785,40 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: doodle
-            ? DoodleDecorations.card(color: _hasPendingRequest ? DoodleColors.paper : DoodleColors.blue).copyWith(borderRadius: BorderRadius.circular(16))
-            : BoxDecoration(
-                gradient: _hasPendingRequest ? null : BolroomTheme.purpleGradient,
-                color: _hasPendingRequest ? const Color(0xFF1D1B26) : null,
-                borderRadius: BorderRadius.circular(16),
-                border: _hasPendingRequest ? Border.all(color: Colors.white10) : null,
-              ),
+              ? DoodleDecorations.card(
+                      color: _hasPendingRequest
+                          ? DoodleColors.paper
+                          : DoodleColors.blue)
+                  .copyWith(borderRadius: BorderRadius.circular(16))
+              : BoxDecoration(
+                  gradient:
+                      _hasPendingRequest ? null : BolroomTheme.purpleGradient,
+                  color: _hasPendingRequest ? const Color(0xFF1D1B26) : null,
+                  borderRadius: BorderRadius.circular(16),
+                  border: _hasPendingRequest
+                      ? Border.all(color: Colors.white10)
+                      : null,
+                ),
           child: Center(
-            child: Text(
-              _hasPendingRequest 
-                ? 'Join Request Pending' 
-                : (isApprovalRequired ? 'Request to Join Community' : 'Join Community to Chat'), 
-              style: doodle 
-                ? DoodleFonts.body(color: _hasPendingRequest ? DoodleColors.brown : DoodleColors.cream, fontSize: 16).copyWith(fontWeight: FontWeight.bold) 
-                : GoogleFonts.inter(color: _hasPendingRequest ? Colors.white70 : Colors.white, fontWeight: FontWeight.w800, fontSize: 15)
-            )
-          ),
+              child: Text(
+                  _hasPendingRequest
+                      ? 'Join Request Pending'
+                      : (isApprovalRequired
+                          ? 'Request to Join Community'
+                          : 'Join Community to Chat'),
+                  style: doodle
+                      ? DoodleFonts.body(
+                              color: _hasPendingRequest
+                                  ? DoodleColors.brown
+                                  : DoodleColors.cream,
+                              fontSize: 16)
+                          .copyWith(fontWeight: FontWeight.bold)
+                      : GoogleFonts.inter(
+                          color: _hasPendingRequest
+                              ? Colors.white70
+                              : Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15))),
         ),
       ),
     );
@@ -1118,17 +1829,30 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Text(widget.community['icon'] ?? '💬', style: TextStyle(fontSize: 48)),
         SizedBox(height: 16),
-        Text('No messages yet', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 22) : GoogleFonts.montserrat(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        Text('No messages yet',
+            style: doodle
+                ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 22)
+                : GoogleFonts.montserrat(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold)),
         SizedBox(height: 8),
-        Text('Be the first to say something!', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 14) : GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 14)),
+        Text('Be the first to say something!',
+            style: doodle
+                ? DoodleFonts.body(
+                    color: DoodleColors.brown.withValues(alpha: 0.7),
+                    fontSize: 14)
+                : GoogleFonts.inter(
+                    color: BolroomTheme.textSecondary, fontSize: 14)),
       ]),
     );
   }
 
-  Widget _buildAvatarWidget(String? avatarKey, double size, {String? userId}) {
+  Widget _buildAvatarWidget(String? avatarKey, double size,
+      {String? userId, String? customUrl}) {
     return BolroomAvatarWidget(
       size: size,
-      avatarUrl: null,
+      avatarUrl: customUrl,
       avatarKey: avatarKey,
       userId: userId ?? '',
       showRing: size > 40,
@@ -1151,53 +1875,123 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
               valueListenable: _membersNotifier,
               builder: (context, membersList, _) {
                 final isHost = _localCommunity['creator_id'] == _myId;
-                
-                final activeMembers = membersList.where((m) => m['role'] != 'pending').toList();
-                final pendingRequests = membersList.where((m) => m['role'] == 'pending').toList();
+
+                final activeMembers =
+                    membersList.where((m) => m['role'] != 'pending').toList();
+                final pendingRequests =
+                    membersList.where((m) => m['role'] == 'pending').toList();
 
                 return Container(
                   decoration: doodle
-                    ? BoxDecoration(
-                        color: DoodleColors.paper,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                        border: Border.all(color: DoodleColors.brown, width: 2),
-                      )
-                    : BoxDecoration(
-                        color: BolroomTheme.bg,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                        border: Border.all(color: BolroomTheme.border),
-                      ),
+                      ? BoxDecoration(
+                          color: DoodleColors.paper,
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(28)),
+                          border:
+                              Border.all(color: DoodleColors.brown, width: 2),
+                        )
+                      : BoxDecoration(
+                          color: BolroomTheme.bg,
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(28)),
+                          border: Border.all(color: BolroomTheme.border),
+                        ),
                   child: ListView(
                     controller: scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 16),
                     children: [
-                      Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : BolroomTheme.border, borderRadius: BorderRadius.circular(2)))),
+                      Center(
+                          child: Container(
+                              width: 40,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                  color: doodle
+                                      ? DoodleColors.brown
+                                          .withValues(alpha: 0.5)
+                                      : BolroomTheme.border,
+                                  borderRadius: BorderRadius.circular(2)))),
                       const SizedBox(height: 20),
-                      Center(child: Text(_localCommunity['icon'] ?? '💬', style: const TextStyle(fontSize: 48))),
+                      Center(
+                          child: Text(_localCommunity['icon'] ?? '💬',
+                              style: const TextStyle(fontSize: 48))),
                       const SizedBox(height: 12),
-                      Center(child: Text(_localCommunity['name'] ?? '', style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 26) : GoogleFonts.montserrat(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900))),
+                      Center(
+                          child: Text(_localCommunity['name'] ?? '',
+                              style: doodle
+                                  ? DoodleFonts.heading(
+                                      color: DoodleColors.brown, fontSize: 26)
+                                  : GoogleFonts.montserrat(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900))),
                       const SizedBox(height: 8),
-                      Center(child: Text(_localCommunity['description'] ?? 'No description', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 14) : GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 14), textAlign: TextAlign.center)),
+                      Center(
+                          child: Text(
+                              _localCommunity['description'] ??
+                                  'No description',
+                              style: doodle
+                                  ? DoodleFonts.body(
+                                      color: DoodleColors.brown
+                                          .withValues(alpha: 0.7),
+                                      fontSize: 14)
+                                  : GoogleFonts.inter(
+                                      color: BolroomTheme.textSecondary,
+                                      fontSize: 14),
+                              textAlign: TextAlign.center)),
                       const SizedBox(height: 20),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _infoStat('${activeMembers.length}', 'Members', doodle),
+                          _infoStat(
+                              '${activeMembers.length}', 'Members', doodle),
                           const SizedBox(width: 32),
-                          _infoStat(_localCommunity['category'] ?? 'General', 'Category', doodle),
+                          _infoStat(_localCommunity['category'] ?? 'General',
+                              'Category', doodle),
                         ],
                       ),
                       const SizedBox(height: 24),
-                      if (_localCommunity['rules']?.toString().isNotEmpty == true) ...[
-                        Text('RULES', style: doodle ? DoodleFonts.body(color: DoodleColors.orange, fontSize: 12).copyWith(fontWeight: FontWeight.bold, letterSpacing: 1.5) : GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                      if (_localCommunity['rules']?.toString().isNotEmpty ==
+                          true) ...[
+                        Text('RULES',
+                            style: doodle
+                                ? DoodleFonts.body(
+                                        color: DoodleColors.orange,
+                                        fontSize: 12)
+                                    .copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.5)
+                                : GoogleFonts.inter(
+                                    color: BolroomTheme.textMuted,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.5)),
                         const SizedBox(height: 8),
-                        Text(_localCommunity['rules'] ?? '', style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 14) : GoogleFonts.inter(color: BolroomTheme.textSecondary, fontSize: 13)),
+                        Text(_localCommunity['rules'] ?? '',
+                            style: doodle
+                                ? DoodleFonts.body(
+                                    color: DoodleColors.brown, fontSize: 14)
+                                : GoogleFonts.inter(
+                                    color: BolroomTheme.textSecondary,
+                                    fontSize: 13)),
                         const SizedBox(height: 24),
                       ],
-                      
+
                       // Pending Requests Section
                       if (isHost && pendingRequests.isNotEmpty) ...[
-                        Text('PENDING JOIN REQUESTS (${pendingRequests.length})', style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 12).copyWith(fontWeight: FontWeight.bold, letterSpacing: 1.5) : GoogleFonts.inter(color: BolroomTheme.purple, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                        Text(
+                            'PENDING JOIN REQUESTS (${pendingRequests.length})',
+                            style: doodle
+                                ? DoodleFonts.body(
+                                        color: DoodleColors.blue, fontSize: 12)
+                                    .copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.5)
+                                : GoogleFonts.inter(
+                                    color: BolroomTheme.purple,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.5)),
                         const SizedBox(height: 8),
                         ListView.builder(
                           shrinkWrap: true,
@@ -1206,29 +2000,61 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                           itemBuilder: (ctx, idx) {
                             final req = pendingRequests[idx];
                             final reqId = req['user_id'].toString();
-                            final prof = _memberProfiles[reqId] ?? {
-                              'anon_name': 'Anonymous',
-                              'avatar_key': 'default'
-                            };
+                            final prof = _memberProfiles[reqId] ??
+                                {
+                                  'anon_name': 'Anonymous',
+                                  'avatar_key': 'default'
+                                };
                             return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 8.0),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 8.0),
                               child: Row(
                                 children: [
-                                  _buildAvatarWidget(prof['avatar_key']?.toString(), 36, userId: reqId),
+                                  _buildAvatarWidget(
+                                      prof['avatar_key']?.toString(), 36,
+                                      userId: reqId,
+                                      customUrl: prof['custom_avatar_url']
+                                          ?.toString()),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
                                       prof['anon_name'] ?? 'Anonymous',
-                                      style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                                      style: doodle
+                                          ? DoodleFonts.body(
+                                                  color: DoodleColors.brown,
+                                                  fontSize: 16)
+                                              .copyWith(
+                                                  fontWeight: FontWeight.bold)
+                                          : GoogleFonts.inter(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 14),
                                     ),
                                   ),
                                   TextButton(
                                     onPressed: () => _approveRequest(reqId),
-                                    child: Text('Accept', style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                                    child: Text('Accept',
+                                        style: doodle
+                                            ? DoodleFonts.body(
+                                                    color: DoodleColors.blue,
+                                                    fontSize: 14)
+                                                .copyWith(
+                                                    fontWeight: FontWeight.bold)
+                                            : const TextStyle(
+                                                color: Colors.greenAccent,
+                                                fontWeight: FontWeight.bold)),
                                   ),
                                   TextButton(
                                     onPressed: () => _declineRequest(reqId),
-                                    child: Text('Decline', style: doodle ? DoodleFonts.body(color: DoodleColors.orange, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.redAccent)),
+                                    child: Text('Decline',
+                                        style: doodle
+                                            ? DoodleFonts.body(
+                                                    color: DoodleColors.orange,
+                                                    fontSize: 14)
+                                                .copyWith(
+                                                    fontWeight: FontWeight.bold)
+                                            : const TextStyle(
+                                                color: Colors.redAccent)),
                                   ),
                                 ],
                               ),
@@ -1239,7 +2065,20 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                       ],
 
                       // Active Members Section
-                      Text('MEMBERS (${activeMembers.length})', style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.8), fontSize: 12).copyWith(fontWeight: FontWeight.bold, letterSpacing: 1.5) : GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                      Text('MEMBERS (${activeMembers.length})',
+                          style: doodle
+                              ? DoodleFonts.body(
+                                      color: DoodleColors.brown
+                                          .withValues(alpha: 0.8),
+                                      fontSize: 12)
+                                  .copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.5)
+                              : GoogleFonts.inter(
+                                  color: BolroomTheme.textMuted,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.5)),
                       const SizedBox(height: 8),
                       ListView.builder(
                         shrinkWrap: true,
@@ -1248,43 +2087,77 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                         itemBuilder: (ctx, idx) {
                           final mem = activeMembers[idx];
                           final memId = mem['user_id'].toString();
-                          final isMemHost = mem['role'] == 'host' || memId == widget.community['creator_id'];
-                          final prof = _memberProfiles[memId] ?? {
-                            'anon_name': 'Anonymous',
-                            'avatar_key': 'default'
-                          };
+                          final isMemHost = mem['role'] == 'host' ||
+                              memId == widget.community['creator_id'];
+                          final prof = _memberProfiles[memId] ??
+                              {
+                                'anon_name': 'Anonymous',
+                                'avatar_key': 'default'
+                              };
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8.0),
                             child: Row(
                               children: [
-                                _buildAvatarWidget(prof['avatar_key']?.toString(), 36, userId: memId),
+                                _buildAvatarWidget(
+                                    prof['avatar_key']?.toString(), 36,
+                                    userId: memId,
+                                    customUrl:
+                                        prof['custom_avatar_url']?.toString()),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Row(
                                     children: [
                                       Text(
                                         prof['anon_name'] ?? 'Anonymous',
-                                        style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                                        style: doodle
+                                            ? DoodleFonts.body(
+                                                    color: DoodleColors.brown,
+                                                    fontSize: 16)
+                                                .copyWith(
+                                                    fontWeight: FontWeight.bold)
+                                            : GoogleFonts.inter(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 14),
                                       ),
                                       if (isMemHost) ...[
                                         const SizedBox(width: 6),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
                                           decoration: doodle
-                                            ? BoxDecoration(
-                                                color: DoodleColors.orange.withValues(alpha: 0.2),
-                                                borderRadius: BorderRadius.circular(6),
-                                                border: Border.all(color: DoodleColors.orange),
-                                              )
-                                            : BoxDecoration(
-                                                color: const Color(0xFFFFD700).withValues(alpha: 0.15),
-                                                borderRadius: BorderRadius.circular(6),
-                                              ),
+                                              ? BoxDecoration(
+                                                  color: DoodleColors.orange
+                                                      .withValues(alpha: 0.2),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                  border: Border.all(
+                                                      color:
+                                                          DoodleColors.orange),
+                                                )
+                                              : BoxDecoration(
+                                                  color: const Color(0xFFFFD700)
+                                                      .withValues(alpha: 0.15),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                ),
                                           child: Row(
                                             children: [
-                                              Icon(Icons.star, color: doodle ? DoodleColors.orange : const Color(0xFFFFD700), size: 10),
+                                              Icon(Icons.star,
+                                                  color: doodle
+                                                      ? DoodleColors.orange
+                                                      : const Color(0xFFFFD700),
+                                                  size: 10),
                                               const SizedBox(width: 2),
-                                              Text('Host', style: TextStyle(color: doodle ? DoodleColors.orange : const Color(0xFFFFD700), fontSize: 9, fontWeight: FontWeight.bold)),
+                                              Text('Host',
+                                                  style: TextStyle(
+                                                      color: doodle
+                                                          ? DoodleColors.orange
+                                                          : const Color(
+                                                              0xFFFFD700),
+                                                      fontSize: 9,
+                                                      fontWeight:
+                                                          FontWeight.bold)),
                                             ],
                                           ),
                                         ),
@@ -1296,19 +2169,40 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                                   GestureDetector(
                                     onTap: () => _removeMember(memId),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
                                       decoration: doodle
-                                        ? BoxDecoration(
-                                            color: DoodleColors.orange.withValues(alpha: 0.15),
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(color: DoodleColors.orange.withValues(alpha: 0.4)),
-                                          )
-                                        : BoxDecoration(
-                                            color: Colors.red.withValues(alpha: 0.15),
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
-                                          ),
-                                      child: Text('Remove', style: doodle ? DoodleFonts.body(color: DoodleColors.orange, fontSize: 12).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.w700)),
+                                          ? BoxDecoration(
+                                              color: DoodleColors.orange
+                                                  .withValues(alpha: 0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              border: Border.all(
+                                                  color: DoodleColors.orange
+                                                      .withValues(alpha: 0.4)),
+                                            )
+                                          : BoxDecoration(
+                                              color: Colors.red
+                                                  .withValues(alpha: 0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              border: Border.all(
+                                                  color: Colors.red
+                                                      .withValues(alpha: 0.4)),
+                                            ),
+                                      child: Text('Remove',
+                                          style: doodle
+                                              ? DoodleFonts.body(
+                                                      color:
+                                                          DoodleColors.orange,
+                                                      fontSize: 12)
+                                                  .copyWith(
+                                                      fontWeight:
+                                                          FontWeight.bold)
+                                              : const TextStyle(
+                                                  color: Colors.redAccent,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700)),
                                     ),
                                   ),
                               ],
@@ -1316,7 +2210,7 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                           );
                         },
                       ),
-                      
+
                       // Leave Button
                       if (!isHost) ...[
                         const SizedBox(height: 32),
@@ -1325,11 +2219,29 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
                           height: 48,
                           child: OutlinedButton.icon(
                             onPressed: _leaveCommunity,
-                            icon: Icon(Icons.logout, color: doodle ? DoodleColors.orange : Colors.redAccent, size: 18),
-                            label: Text('Leave Community', style: doodle ? DoodleFonts.body(color: DoodleColors.orange, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : GoogleFonts.inter(color: Colors.redAccent, fontWeight: FontWeight.w700, fontSize: 14)),
+                            icon: Icon(Icons.logout,
+                                color: doodle
+                                    ? DoodleColors.orange
+                                    : Colors.redAccent,
+                                size: 18),
+                            label: Text('Leave Community',
+                                style: doodle
+                                    ? DoodleFonts.body(
+                                            color: DoodleColors.orange,
+                                            fontSize: 14)
+                                        .copyWith(fontWeight: FontWeight.bold)
+                                    : GoogleFonts.inter(
+                                        color: Colors.redAccent,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14)),
                             style: OutlinedButton.styleFrom(
-                              side: BorderSide(color: doodle ? DoodleColors.orange : Colors.redAccent, width: doodle ? 2 : 1),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              side: BorderSide(
+                                  color: doodle
+                                      ? DoodleColors.orange
+                                      : Colors.redAccent,
+                                  width: doodle ? 2 : 1),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
                             ),
                           ),
                         ),
@@ -1347,9 +2259,20 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
 
   Widget _infoStat(String value, String label, bool doodle) {
     return Column(children: [
-      Text(value, style: doodle ? DoodleFonts.heading(color: DoodleColors.blue, fontSize: 24) : GoogleFonts.montserrat(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+      Text(value,
+          style: doodle
+              ? DoodleFonts.heading(color: DoodleColors.blue, fontSize: 24)
+              : GoogleFonts.montserrat(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800)),
       SizedBox(height: 4),
-      Text(label, style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 12) : GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 12)),
+      Text(label,
+          style: doodle
+              ? DoodleFonts.body(
+                  color: DoodleColors.brown.withValues(alpha: 0.7),
+                  fontSize: 12)
+              : GoogleFonts.inter(color: BolroomTheme.textMuted, fontSize: 12)),
     ]);
   }
 
@@ -1360,7 +2283,9 @@ class _BolroomCommunityDetailScreenState extends State<BolroomCommunityDetailScr
       final h = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
       final ampm = dt.hour >= 12 ? 'PM' : 'AM';
       return '$h:${dt.minute.toString().padLeft(2, '0')} $ampm';
-    } catch (_) { return ''; }
+    } catch (_) {
+      return '';
+    }
   }
 }
 
@@ -1373,7 +2298,7 @@ class GridPainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 1.0;
-    
+
     double spacing = 30.0;
     for (double i = 0; i < size.width; i += spacing) {
       canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);

@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import 'dart:convert';
 import 'services/doodle_theme.dart';
 
-
 // =============================================================================
 // MEETRA ADMIN CONTROL — Comprehensive Management Dashboard
 // Inspired by modern SaaS admin panels, adapted for mobile.
@@ -34,6 +33,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<Map<String, dynamic>> _chatrooms = [];
   List<Map<String, dynamic>> _chatroomMembers = [];
   List<Map<String, dynamic>> _posts = [];
+  List<Map<String, dynamic>> _communities = [];
+  List<Map<String, dynamic>> _communityMembers = [];
 
   // ── Navigation items ──
   static const _navItems = [
@@ -47,6 +48,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     {'icon': Icons.message_rounded, 'label': 'Messages'},
     {'icon': Icons.mic_rounded, 'label': 'Chatrooms'},
     {'icon': Icons.feed_rounded, 'label': 'Posts'},
+    {'icon': Icons.groups_rounded, 'label': 'Communities'},
     {'icon': Icons.settings_rounded, 'label': 'Settings'},
   ];
 
@@ -84,10 +86,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _initAdminClient(String key) {
     try {
-      _adminClient = SupabaseClient('https://zlljvualqfjhbifhgabw.supabase.co', key);
+      _adminClient =
+          SupabaseClient('https://zlljvualqfjhbifhgabw.supabase.co', key);
       _fetchAllData();
     } catch (e) {
-      if (mounted) _showSnack('Failed to initialize admin client.', isError: true);
+      if (mounted)
+        _showSnack('Failed to initialize admin client.', isError: true);
     }
   }
 
@@ -96,24 +100,67 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     try {
       final client = _adminClient ?? Supabase.instance.client;
 
-      final pData = await client.from('profiles').select().order('name', ascending: true);
-      final aData = await client.from('activities').select().order('created_at', ascending: false);
-      final cData = await client.from('companions').select().order('created_at', ascending: false);
+      final pData =
+          await client.from('profiles').select().order('name', ascending: true);
+      final aData = await client
+          .from('activities')
+          .select()
+          .order('created_at', ascending: false);
+      final cData = await client
+          .from('companions')
+          .select()
+          .order('created_at', ascending: false);
 
       List rData = [];
-      try { rData = await client.from('requests').select().order('created_at', ascending: false); } catch (_) {}
+      try {
+        rData = await client
+            .from('requests')
+            .select()
+            .order('created_at', ascending: false);
+      } catch (_) {}
 
       List mData = [];
-      try { mData = await client.from('messages').select().order('created_at', ascending: false).limit(100); } catch (_) {}
+      try {
+        mData = await client
+            .from('messages')
+            .select()
+            .order('created_at', ascending: false)
+            .limit(100);
+      } catch (_) {}
 
       List crData = [];
-      try { crData = await client.from('chatrooms').select().order('created_at', ascending: false); } catch (_) {}
+      try {
+        crData = await client
+            .from('chatrooms')
+            .select()
+            .order('created_at', ascending: false);
+      } catch (_) {}
 
       List cmData = [];
-      try { cmData = await client.from('chatroom_members').select(); } catch (_) {}
+      try {
+        cmData = await client.from('chatroom_members').select();
+      } catch (_) {}
 
       List postsData = [];
-      try { postsData = await client.from('posts').select().order('created_at', ascending: false); } catch (_) {}
+      try {
+        postsData = await client
+            .from('posts')
+            .select()
+            .order('created_at', ascending: false);
+      } catch (_) {}
+
+      List bcData = [];
+      try {
+        bcData = await client
+            .from('bolroom_communities')
+            .select()
+            .order('created_at', ascending: false);
+      } catch (_) {}
+
+      List bcmData = [];
+      try {
+        bcmData = await client.from('bolroom_community_members').select();
+      } catch (_) {}
 
       final acts = List<Map<String, dynamic>>.from(aData);
 
@@ -128,6 +175,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           _chatrooms = List<Map<String, dynamic>>.from(crData);
           _chatroomMembers = List<Map<String, dynamic>>.from(cmData);
           _posts = List<Map<String, dynamic>>.from(postsData);
+          _communities = List<Map<String, dynamic>>.from(bcData);
+          _communityMembers = List<Map<String, dynamic>>.from(bcmData);
           _isLoading = false;
         });
       }
@@ -152,14 +201,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           children: [
             Icon(Icons.shield_rounded, color: _accent, size: 24),
             SizedBox(width: 10),
-            Text('Admin Authorization', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+            Text('Admin Authorization',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Paste your Supabase Service Role Key to unlock administrative control over all data layers.',
-              style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.6)),
+            const Text(
+                'Paste your Supabase Service Role Key to unlock administrative control over all data layers.',
+                style: TextStyle(
+                    color: Colors.white54, fontSize: 13, height: 1.6)),
             const SizedBox(height: 20),
             TextField(
               controller: ctrl,
@@ -168,20 +223,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               decoration: InputDecoration(
                 hintText: 'service_role key...',
                 hintStyle: const TextStyle(color: Colors.white24),
-                filled: true, fillColor: Colors.black38,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                prefixIcon: const Icon(Icons.key_rounded, color: Colors.white24, size: 18),
+                filled: true,
+                fillColor: Colors.black38,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none),
+                prefixIcon: const Icon(Icons.key_rounded,
+                    color: Colors.white24, size: 18),
               ),
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () { Navigator.pop(ctx); if (mounted) Navigator.pop(context); },
-            child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              if (mounted) Navigator.pop(context);
+            },
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white38)),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: _accent, foregroundColor: Colors.black),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: _accent, foregroundColor: Colors.black),
             onPressed: () async {
               final val = ctrl.text.trim();
               if (val.isNotEmpty) {
@@ -191,7 +255,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 _initAdminClient(val);
               }
             },
-            child: const Text('Authorize', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text('Authorize',
+                style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -203,23 +268,46 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _nukeUser(String uid) async {
-    final ok = await _confirmAction('Delete User?', 'This will permanently erase the user identity and all their associated data from every table.');
+    final ok = await _confirmAction('Delete User?',
+        'This will permanently erase the user identity and all their associated data from every table.');
     if (!ok || _adminClient == null) return;
     if (mounted) setState(() => _isProcessing = true);
     try {
-      await _adminClient!.from('messages').delete().or('sender_id.eq.$uid,receiver_id.eq.$uid');
+      await _adminClient!
+          .from('messages')
+          .delete()
+          .or('sender_id.eq.$uid,receiver_id.eq.$uid');
       await _adminClient!.from('requests').delete().eq('sender_id', uid);
       await _adminClient!.from('hidden_feed').delete().eq('user_id', uid);
-      final userActs = await _adminClient!.from('activities').select('id').eq('user_id', uid);
+      final userActs = await _adminClient!
+          .from('activities')
+          .select('id')
+          .eq('user_id', uid);
       for (var act in userActs) {
-        await _adminClient!.from('requests').delete().eq('target_id', act['id']);
-        await _adminClient!.from('hidden_feed').delete().eq('rush_in_id', act['id']);
+        await _adminClient!
+            .from('requests')
+            .delete()
+            .eq('target_id', act['id']);
+        await _adminClient!
+            .from('hidden_feed')
+            .delete()
+            .eq('rush_in_id', act['id']);
       }
-      try { await _adminClient!.from('user_fcm_tokens').delete().eq('user_id', uid); } catch (_) {}
-      try { await _adminClient!.from('posts').delete().eq('user_id', uid); } catch (_) {}
-      final userComps = await _adminClient!.from('companions').select('id').eq('user_id', uid);
+      try {
+        await _adminClient!.from('user_fcm_tokens').delete().eq('user_id', uid);
+      } catch (_) {}
+      try {
+        await _adminClient!.from('posts').delete().eq('user_id', uid);
+      } catch (_) {}
+      final userComps = await _adminClient!
+          .from('companions')
+          .select('id')
+          .eq('user_id', uid);
       for (var comp in userComps) {
-        await _adminClient!.from('requests').delete().eq('target_id', comp['id']);
+        await _adminClient!
+            .from('requests')
+            .delete()
+            .eq('target_id', comp['id']);
       }
       await _adminClient!.from('companions').delete().eq('user_id', uid);
       await _adminClient!.from('activities').delete().eq('user_id', uid);
@@ -235,7 +323,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _nukeActivity(String actId) async {
-    final ok = await _confirmAction('Delete Activity?', 'This permanently removes the activity and all associated requests.');
+    final ok = await _confirmAction('Delete Activity?',
+        'This permanently removes the activity and all associated requests.');
     if (!ok || _adminClient == null) return;
     if (mounted) setState(() => _isProcessing = true);
     try {
@@ -252,14 +341,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _deleteAllRushIns() async {
-    final ok = await _confirmAction('Delete ALL Rush-Ins?', 'This will permanently wipe every Rush-In and all associated requests. This action cannot be undone.');
+    final ok = await _confirmAction('Delete ALL Rush-Ins?',
+        'This will permanently wipe every Rush-In and all associated requests. This action cannot be undone.');
     if (!ok || _adminClient == null) return;
     if (mounted) setState(() => _isProcessing = true);
     try {
       if (_rushIns.isNotEmpty) {
         final ids = _rushIns.map((r) => r['id'].toString()).toList();
-        await _adminClient!.from('requests').delete().inFilter('target_id', ids);
-        await _adminClient!.from('hidden_feed').delete().inFilter('rush_in_id', ids);
+        await _adminClient!
+            .from('requests')
+            .delete()
+            .inFilter('target_id', ids);
+        await _adminClient!
+            .from('hidden_feed')
+            .delete()
+            .inFilter('rush_in_id', ids);
         await _adminClient!.from('activities').delete().inFilter('id', ids);
       }
       if (mounted) _showSnack('All Rush-Ins purged.');
@@ -272,14 +368,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _deleteAllActivities() async {
-    final ok = await _confirmAction('Delete ALL Activities?', 'This will permanently wipe every standard Activity and all associated requests. This action cannot be undone.');
+    final ok = await _confirmAction('Delete ALL Activities?',
+        'This will permanently wipe every standard Activity and all associated requests. This action cannot be undone.');
     if (!ok || _adminClient == null) return;
     if (mounted) setState(() => _isProcessing = true);
     try {
       if (_activities.isNotEmpty) {
         final ids = _activities.map((r) => r['id'].toString()).toList();
-        await _adminClient!.from('requests').delete().inFilter('target_id', ids);
-        await _adminClient!.from('hidden_feed').delete().inFilter('rush_in_id', ids);
+        await _adminClient!
+            .from('requests')
+            .delete()
+            .inFilter('target_id', ids);
+        await _adminClient!
+            .from('hidden_feed')
+            .delete()
+            .inFilter('rush_in_id', ids);
         await _adminClient!.from('activities').delete().inFilter('id', ids);
       }
       if (mounted) _showSnack('All Activities purged.');
@@ -292,7 +395,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _nukeCompanion(String compId) async {
-    final ok = await _confirmAction('Delete Companion?', 'This permanently removes the companion listing.');
+    final ok = await _confirmAction(
+        'Delete Companion?', 'This permanently removes the companion listing.');
     if (!ok || _adminClient == null) return;
     if (mounted) setState(() => _isProcessing = true);
     try {
@@ -310,8 +414,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> _toggleActivityStatus(String actId, bool currentStatus) async {
     if (_adminClient == null) return;
     try {
-      await _adminClient!.from('activities').update({'is_active': !currentStatus}).eq('id', actId);
-      if (mounted) _showSnack(currentStatus ? 'Activity deactivated.' : 'Activity activated.');
+      await _adminClient!
+          .from('activities')
+          .update({'is_active': !currentStatus}).eq('id', actId);
+      if (mounted)
+        _showSnack(
+            currentStatus ? 'Activity deactivated.' : 'Activity activated.');
       await _fetchAllData();
     } catch (e) {
       if (mounted) _showSnack('Status toggle failed: $e', isError: true);
@@ -321,8 +429,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> _toggleCompanionStatus(String compId, bool currentStatus) async {
     if (_adminClient == null) return;
     try {
-      await _adminClient!.from('companions').update({'is_active': !currentStatus}).eq('id', compId);
-      if (mounted) _showSnack(currentStatus ? 'Companion deactivated.' : 'Companion activated.');
+      await _adminClient!
+          .from('companions')
+          .update({'is_active': !currentStatus}).eq('id', compId);
+      if (mounted)
+        _showSnack(
+            currentStatus ? 'Companion deactivated.' : 'Companion activated.');
       await _fetchAllData();
     } catch (e) {
       if (mounted) _showSnack('Status toggle failed: $e', isError: true);
@@ -343,7 +455,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> _updateRequestStatus(String reqId, String newStatus) async {
     if (_adminClient == null) return;
     try {
-      await _adminClient!.from('requests').update({'status': newStatus}).eq('id', reqId);
+      await _adminClient!
+          .from('requests')
+          .update({'status': newStatus}).eq('id', reqId);
       if (mounted) _showSnack('Request $newStatus.');
       await _fetchAllData();
     } catch (e) {
@@ -352,11 +466,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _clearAllMessages() async {
-    final ok = await _confirmAction('Purge ALL Messages?', 'This will permanently delete every message in the database. This action cannot be undone.');
+    final ok = await _confirmAction('Purge ALL Messages?',
+        'This will permanently delete every message in the database. This action cannot be undone.');
     if (!ok || _adminClient == null) return;
     if (mounted) setState(() => _isProcessing = true);
     try {
-      await _adminClient!.from('messages').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await _adminClient!
+          .from('messages')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
       if (mounted) _showSnack('All messages purged.');
       await _fetchAllData();
     } catch (e) {
@@ -383,7 +501,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
       if (diff.inHours < 24) return '${diff.inHours}h ago';
       return '${diff.inDays}d ago';
-    } catch (_) { return ''; }
+    } catch (_) {
+      return '';
+    }
   }
 
   void _showSnack(String msg, {bool isError = false}) {
@@ -407,15 +527,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         title: Row(children: [
           const Icon(Icons.warning_amber_rounded, color: _accentRed, size: 22),
           const SizedBox(width: 8),
-          Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))),
+          Expanded(
+              child: Text(title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold))),
         ]),
-        content: Text(body, style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.5)),
+        content: Text(body,
+            style: const TextStyle(
+                color: Colors.white60, fontSize: 13, height: 1.5)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white38))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: Colors.white38))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: _accentRed),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Confirm Delete', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+            child: const Text('Confirm Delete',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12)),
           ),
         ],
       ),
@@ -430,7 +564,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(backgroundColor: _bg, body: Center(child: CircularProgressIndicator(color: _accent)));
+      return const Scaffold(
+          backgroundColor: _bg,
+          body: Center(child: CircularProgressIndicator(color: _accent)));
     }
 
     return Scaffold(
@@ -438,32 +574,44 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       appBar: AppBar(
         backgroundColor: _card,
         elevation: 0,
-        leading: Builder(builder: (ctx) => IconButton(
-          icon: const Icon(Icons.menu_rounded, color: Colors.white70),
-          onPressed: () => Scaffold.of(ctx).openDrawer(),
-        )),
+        leading: Builder(
+            builder: (ctx) => IconButton(
+                  icon: const Icon(Icons.menu_rounded, color: Colors.white70),
+                  onPressed: () => Scaffold.of(ctx).openDrawer(),
+                )),
         title: Row(children: [
           const Icon(Icons.shield_rounded, color: _accent, size: 20),
           const SizedBox(width: 8),
           Text((_navItems[_selectedIndex]['label'] as String).toUpperCase(),
-            style: const TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+              style: const TextStyle(
+                  fontSize: 15,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5)),
         ]),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh_rounded, color: Colors.white38), onPressed: _fetchAllData, tooltip: 'Refresh'),
+          IconButton(
+              icon: const Icon(Icons.refresh_rounded, color: Colors.white38),
+              onPressed: _fetchAllData,
+              tooltip: 'Refresh'),
         ],
       ),
       drawer: _buildDrawer(),
       body: Stack(
         children: [
           _buildBody(),
-          if (_isProcessing) Container(
-            color: Colors.black87,
-            child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              CircularProgressIndicator(color: _accentRed),
-              SizedBox(height: 16),
-              Text('Processing...', style: TextStyle(color: Colors.white70, fontFamily: 'monospace')),
-            ])),
-          ),
+          if (_isProcessing)
+            Container(
+              color: Colors.black87,
+              child: const Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                CircularProgressIndicator(color: _accentRed),
+                SizedBox(height: 16),
+                Text('Processing...',
+                    style: TextStyle(
+                        color: Colors.white70, fontFamily: 'monospace')),
+              ])),
+            ),
         ],
       ),
     );
@@ -471,18 +619,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _buildBody() {
     switch (_selectedIndex) {
-      case 0: return _buildDashboard();
-      case 1: return _buildUsersSection();
-      case 2: return _buildActivitiesSection();
-      case 3: return _buildRushInsSection();
-      case 4: return _buildCompanionsSection();
-      case 5: return _buildRequestsSection();
-      case 6: return _buildSellerApplicationsSection();
-      case 7: return _buildMessagesSection();
-      case 8: return _buildBolRoomsSection();
-      case 9: return _buildPostsSection();
-      case 10: return _buildSettingsSection();
-      default: return _buildDashboard();
+      case 0:
+        return _buildDashboard();
+      case 1:
+        return _buildUsersSection();
+      case 2:
+        return _buildActivitiesSection();
+      case 3:
+        return _buildRushInsSection();
+      case 4:
+        return _buildCompanionsSection();
+      case 5:
+        return _buildRequestsSection();
+      case 6:
+        return _buildSellerApplicationsSection();
+      case 7:
+        return _buildMessagesSection();
+      case 8:
+        return _buildBolRoomsSection();
+      case 9:
+        return _buildPostsSection();
+      case 10:
+        return _buildCommunitiesSection();
+      case 11:
+        return _buildSettingsSection();
+      default:
+        return _buildDashboard();
     }
   }
 
@@ -503,8 +665,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 Icon(Icons.shield_rounded, color: _accent, size: 28),
                 SizedBox(width: 10),
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('ADMIN CONTROL', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-                  Text('Meetra Management', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  Text('ADMIN CONTROL',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.5)),
+                  Text('Meetra Management',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
                 ]),
               ]),
             ),
@@ -522,13 +690,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             _drawerItem(4, badge: _companions.length),
             _drawerItem(8, badge: _chatrooms.length),
             _drawerItem(9, badge: _posts.length),
+            _drawerItem(10, badge: _communities.length),
 
             // GOVERNANCE section
             _drawerSectionLabel('GOVERNANCE'),
             _drawerItem(5, badge: _requests.length),
-            _drawerItem(6, badge: _requests.where((r) => r['target_type'] == 'seller_application').length),
+            _drawerItem(6,
+                badge: _requests
+                    .where((r) => r['target_type'] == 'seller_application')
+                    .length),
             _drawerItem(7, badge: _messages.length),
-            _drawerItem(10),
+            _drawerItem(11),
 
             const Spacer(),
             const Divider(color: _cardBorder, height: 1),
@@ -537,13 +709,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(children: [
-                CircleAvatar(radius: 16, backgroundColor: _accent.withValues(alpha: 0.2),
-                  child: const Icon(Icons.person_rounded, color: _accent, size: 18)),
+                CircleAvatar(
+                    radius: 16,
+                    backgroundColor: _accent.withValues(alpha: 0.2),
+                    child: const Icon(Icons.person_rounded,
+                        color: _accent, size: 18)),
                 const SizedBox(width: 10),
-                const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Admin Root', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                  Text('SUPER ADMIN', style: TextStyle(color: _accent, fontSize: 9, letterSpacing: 1)),
-                ]),
+                const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Admin Root',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold)),
+                      Text('SUPER ADMIN',
+                          style: TextStyle(
+                              color: _accent, fontSize: 9, letterSpacing: 1)),
+                    ]),
               ]),
             ),
           ],
@@ -555,7 +738,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget _drawerSectionLabel(String label) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 6),
-      child: Text(label, style: const TextStyle(color: Colors.white30, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+      child: Text(label,
+          style: const TextStyle(
+              color: Colors.white30,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5)),
     );
   }
 
@@ -570,15 +758,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
       child: ListTile(
         dense: true,
-        leading: Icon(item['icon'] as IconData, color: selected ? _accent : Colors.white54, size: 20),
-        title: Text(item['label'] as String, style: TextStyle(color: selected ? _accent : Colors.white70, fontSize: 13, fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
+        leading: Icon(item['icon'] as IconData,
+            color: selected ? _accent : Colors.white54, size: 20),
+        title: Text(item['label'] as String,
+            style: TextStyle(
+                color: selected ? _accent : Colors.white70,
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
         trailing: badge != null && badge > 0
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: selected ? _accent.withValues(alpha: 0.2) : Colors.white10, borderRadius: BorderRadius.circular(10)),
-              child: Text('$badge', style: TextStyle(color: selected ? _accent : Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
-            )
-          : null,
+            ? Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                    color: selected
+                        ? _accent.withValues(alpha: 0.2)
+                        : Colors.white10,
+                    borderRadius: BorderRadius.circular(10)),
+                child: Text('$badge',
+                    style: TextStyle(
+                        color: selected ? _accent : Colors.white54,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold)),
+              )
+            : null,
         onTap: () {
           setState(() => _selectedIndex = index);
           Navigator.pop(context); // close drawer
@@ -596,12 +797,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final liveRushIns = _rushIns.where((r) {
       final exp = r['expires_at'];
       if (exp == null) return false;
-      try { return DateTime.parse(exp).isAfter(now); } catch (_) { return false; }
+      try {
+        return DateTime.parse(exp).isAfter(now);
+      } catch (_) {
+        return false;
+      }
     }).length;
 
-    final activeActivities = _activities.where((a) => a['is_active'] == true).length;
-    final activeCompanions = _companions.where((c) => c['is_active'] == true).length;
-    final completedOnboarding = _profiles.where((p) => p['onboarding_complete'] == true).length;
+    final activeActivities =
+        _activities.where((a) => a['is_active'] == true).length;
+    final activeCompanions =
+        _companions.where((c) => c['is_active'] == true).length;
+    final completedOnboarding =
+        _profiles.where((p) => p['onboarding_complete'] == true).length;
 
     return RefreshIndicator(
       onRefresh: _fetchAllData,
@@ -618,14 +826,34 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             crossAxisSpacing: 12,
             childAspectRatio: 1.6,
             children: [
-              _statCard('Total Users', _profiles.length.toString(), Icons.people_alt_rounded, _accent, '+${_profiles.length}'),
-              _statCard('Chatrooms', _chatrooms.length.toString(), Icons.forum_rounded, _accentPurple, 'active rooms'),
-              _statCard('Posts', _posts.length.toString(), Icons.feed_rounded, const Color(0xFFFF6B00), 'user posts'),
-              _statCard('Activities', activeActivities.toString(), Icons.event_rounded, _accentGreen, '${_activities.length} total'),
-              _statCard('Rush-Ins Live', liveRushIns.toString(), Icons.flash_on_rounded, _accentPink, '${_rushIns.length} total'),
-              _statCard('Companions', activeCompanions.toString(), Icons.volunteer_activism_rounded, _accentPurple, '${_companions.length} total'),
-              _statCard('Requests', _requests.length.toString(), Icons.swap_horiz_rounded, _accentOrange, 'all time'),
-              _statCard('Messages', _messages.length.toString(), Icons.message_rounded, const Color(0xFF06B6D4), 'last 100'),
+              _statCard('Total Users', _profiles.length.toString(),
+                  Icons.people_alt_rounded, _accent, '+${_profiles.length}'),
+              _statCard('Chatrooms', _chatrooms.length.toString(),
+                  Icons.forum_rounded, _accentPurple, 'active rooms'),
+              _statCard('Posts', _posts.length.toString(), Icons.feed_rounded,
+                  const Color(0xFFFF6B00), 'user posts'),
+              _statCard(
+                  'Activities',
+                  activeActivities.toString(),
+                  Icons.event_rounded,
+                  _accentGreen,
+                  '${_activities.length} total'),
+              _statCard(
+                  'Rush-Ins Live',
+                  liveRushIns.toString(),
+                  Icons.flash_on_rounded,
+                  _accentPink,
+                  '${_rushIns.length} total'),
+              _statCard(
+                  'Companions',
+                  activeCompanions.toString(),
+                  Icons.volunteer_activism_rounded,
+                  _accentPurple,
+                  '${_companions.length} total'),
+              _statCard('Requests', _requests.length.toString(),
+                  Icons.swap_horiz_rounded, _accentOrange, 'all time'),
+              _statCard('Messages', _messages.length.toString(),
+                  Icons.message_rounded, const Color(0xFF06B6D4), 'last 100'),
             ],
           ),
 
@@ -640,18 +868,39 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               child: Row(children: [
                 // Donut chart
                 SizedBox(
-                  width: 100, height: 100,
-                  child: CustomPaint(painter: _DonutPainter(
+                  width: 100,
+                  height: 100,
+                  child: CustomPaint(
+                      painter: _DonutPainter(
                     completedOnboarding.toDouble(),
                     _profiles.length.toDouble(),
                   )),
                 ),
                 const SizedBox(width: 24),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _legendItem(_accentGreen, 'Onboarded', completedOnboarding, _profiles.isEmpty ? 0 : ((completedOnboarding / _profiles.length) * 100).round()),
-                  const SizedBox(height: 12),
-                  _legendItem(Colors.white24, 'Pending', _profiles.length - completedOnboarding, _profiles.isEmpty ? 0 : (((_profiles.length - completedOnboarding) / _profiles.length) * 100).round()),
-                ])),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      _legendItem(
+                          _accentGreen,
+                          'Onboarded',
+                          completedOnboarding,
+                          _profiles.isEmpty
+                              ? 0
+                              : ((completedOnboarding / _profiles.length) * 100)
+                                  .round()),
+                      const SizedBox(height: 12),
+                      _legendItem(
+                          Colors.white24,
+                          'Pending',
+                          _profiles.length - completedOnboarding,
+                          _profiles.isEmpty
+                              ? 0
+                              : (((_profiles.length - completedOnboarding) /
+                                          _profiles.length) *
+                                      100)
+                                  .round()),
+                    ])),
               ]),
             ),
           ),
@@ -686,7 +935,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _statCard(String label, String value, IconData icon, Color color, String sub) {
+  Widget _statCard(
+      String label, String value, IconData icon, Color color, String sub) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -703,26 +953,51 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-              child: Text(sub, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6)),
+              child: Text(sub,
+                  style: TextStyle(
+                      color: color, fontSize: 9, fontWeight: FontWeight.bold)),
             ),
           ]),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
-          Text(label.toUpperCase(), style: const TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 1.2, fontWeight: FontWeight.bold)),
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold)),
+          Text(label.toUpperCase(),
+              style: const TextStyle(
+                  color: Colors.white38,
+                  fontSize: 9,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  Widget _sectionCard({required String title, required String subtitle, required Widget child}) {
+  Widget _sectionCard(
+      {required String title,
+      required String subtitle,
+      required Widget child}) {
     return Container(
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(16), border: Border.all(color: _cardBorder)),
+      decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _cardBorder)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-            Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14)),
+            Text(subtitle,
+                style: const TextStyle(color: Colors.white38, fontSize: 11)),
           ]),
         ),
         child,
@@ -732,13 +1007,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _legendItem(Color color, String label, int count, int pct) {
     return Row(children: [
-      Container(width: 10, height: 10, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+      Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+              color: color, borderRadius: BorderRadius.circular(3))),
       const SizedBox(width: 8),
       Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
       const Spacer(),
-      Text('$count', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+      Text('$count',
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
       const SizedBox(width: 6),
-      Text('$pct%', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+      Text('$pct%',
+          style: TextStyle(
+              color: color, fontSize: 11, fontWeight: FontWeight.bold)),
     ]);
   }
 
@@ -748,26 +1031,49 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       final city = (p['city'] ?? 'Unknown').toString().trim();
       if (city.isNotEmpty) cityMap[city] = (cityMap[city] ?? 0) + 1;
     }
-    if (cityMap.isEmpty) return const Text('No city data', style: TextStyle(color: Colors.white38));
-    final sorted = cityMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    if (cityMap.isEmpty)
+      return const Text('No city data',
+          style: TextStyle(color: Colors.white38));
+    final sorted = cityMap.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
     final maxVal = sorted.first.value;
-    final colors = [_accent, _accentPink, _accentGreen, _accentPurple, _accentOrange];
+    final colors = [
+      _accent,
+      _accentPink,
+      _accentGreen,
+      _accentPurple,
+      _accentOrange
+    ];
 
-    return Column(children: sorted.take(5).toList().asMap().entries.map((e) {
+    return Column(
+        children: sorted.take(5).toList().asMap().entries.map((e) {
       final idx = e.key;
       final entry = e.value;
       final pct = maxVal > 0 ? entry.value / maxVal : 0.0;
       return Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(children: [
-          SizedBox(width: 70, child: Text(entry.key, style: const TextStyle(color: Colors.white54, fontSize: 12), overflow: TextOverflow.ellipsis)),
+          SizedBox(
+              width: 70,
+              child: Text(entry.key,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  overflow: TextOverflow.ellipsis)),
           const SizedBox(width: 8),
-          Expanded(child: ClipRRect(
+          Expanded(
+              child: ClipRRect(
             borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(value: pct, backgroundColor: Colors.white10, color: colors[idx % colors.length], minHeight: 8),
+            child: LinearProgressIndicator(
+                value: pct,
+                backgroundColor: Colors.white10,
+                color: colors[idx % colors.length],
+                minHeight: 8),
           )),
           const SizedBox(width: 8),
-          Text('${entry.value}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+          Text('${entry.value}',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12)),
         ]),
       );
     }).toList());
@@ -778,23 +1084,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     for (var p in _profiles) {
       final interests = p['interests'];
       if (interests is List) {
-        for (var i in interests) { iMap[i.toString()] = (iMap[i.toString()] ?? 0) + 1; }
+        for (var i in interests) {
+          iMap[i.toString()] = (iMap[i.toString()] ?? 0) + 1;
+        }
       }
     }
-    if (iMap.isEmpty) return const Text('No interest data', style: TextStyle(color: Colors.white38));
-    final sorted = iMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    final colors = [_accent, _accentPink, _accentGreen, _accentPurple, _accentOrange, const Color(0xFF06B6D4)];
+    if (iMap.isEmpty)
+      return const Text('No interest data',
+          style: TextStyle(color: Colors.white38));
+    final sorted = iMap.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final colors = [
+      _accent,
+      _accentPink,
+      _accentGreen,
+      _accentPurple,
+      _accentOrange,
+      const Color(0xFF06B6D4)
+    ];
 
-    return Wrap(spacing: 8, runSpacing: 8, children: sorted.take(10).toList().asMap().entries.map((e) {
-      final idx = e.key;
-      final entry = e.value;
-      final c = colors[idx % colors.length];
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20), border: Border.all(color: c.withValues(alpha: 0.3))),
-        child: Text('${entry.key} (${entry.value})', style: TextStyle(color: c, fontSize: 11, fontWeight: FontWeight.bold)),
-      );
-    }).toList());
+    return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: sorted.take(10).toList().asMap().entries.map((e) {
+          final idx = e.key;
+          final entry = e.value;
+          final c = colors[idx % colors.length];
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+                color: c.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: c.withValues(alpha: 0.3))),
+            child: Text('${entry.key} (${entry.value})',
+                style: TextStyle(
+                    color: c, fontSize: 11, fontWeight: FontWeight.bold)),
+          );
+        }).toList());
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -817,53 +1143,93 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
         return Container(
           margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder)),
+          decoration: BoxDecoration(
+              color: _card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _cardBorder)),
           child: ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            leading: CircleAvatar(radius: 20, backgroundImage: NetworkImage(avatar)),
+            tilePadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            leading:
+                CircleAvatar(radius: 20, backgroundImage: NetworkImage(avatar)),
             title: Row(children: [
-              Expanded(child: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis)),
+              Expanded(
+                  child: Text(name,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14),
+                      overflow: TextOverflow.ellipsis)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: onboarded ? _accentGreen.withValues(alpha: 0.15) : Colors.white10,
+                  color: onboarded
+                      ? _accentGreen.withValues(alpha: 0.15)
+                      : Colors.white10,
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(onboarded ? 'ACTIVE' : 'PENDING', style: TextStyle(color: onboarded ? _accentGreen : Colors.white38, fontSize: 9, fontWeight: FontWeight.bold)),
+                child: Text(onboarded ? 'ACTIVE' : 'PENDING',
+                    style: TextStyle(
+                        color: onboarded ? _accentGreen : Colors.white38,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold)),
               ),
             ]),
-            subtitle: Text('$city · Age $age · ${uid.substring(0, 8)}...', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            subtitle: Text('$city · Age $age · ${uid.substring(0, 8)}...',
+                style: const TextStyle(color: Colors.white38, fontSize: 11)),
             iconColor: Colors.white38,
             collapsedIconColor: Colors.white24,
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Divider(color: _cardBorder),
-                  if (p['bio'] != null) ...[
-                    Text('Bio: ${p['bio']}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                    const SizedBox(height: 6),
-                  ],
-                  if (p['gender'] != null) Text('Gender: ${p['gender']}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                  if (p['personality'] != null) Text('Personality: ${p['personality']}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                  if (p['interests'] is List) ...[
-                    const SizedBox(height: 8),
-                    Wrap(spacing: 4, runSpacing: 4, children: (p['interests'] as List).map((i) =>
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: _accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                        child: Text(i.toString(), style: const TextStyle(color: _accent, fontSize: 10)),
-                      )).toList()),
-                  ],
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    _actionChip('View ID', Icons.copy_rounded, Colors.white38, () {
-                      _showSnack('ID: $uid');
-                    }),
-                    const SizedBox(width: 8),
-                    _actionChip('Delete', Icons.delete_forever_rounded, _accentRed, () => _nukeUser(uid)),
-                  ]),
-                ]),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Divider(color: _cardBorder),
+                      if (p['bio'] != null) ...[
+                        Text('Bio: ${p['bio']}',
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 12)),
+                        const SizedBox(height: 6),
+                      ],
+                      if (p['gender'] != null)
+                        Text('Gender: ${p['gender']}',
+                            style: const TextStyle(
+                                color: Colors.white38, fontSize: 11)),
+                      if (p['personality'] != null)
+                        Text('Personality: ${p['personality']}',
+                            style: const TextStyle(
+                                color: Colors.white38, fontSize: 11)),
+                      if (p['interests'] is List) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            children: (p['interests'] as List)
+                                .map((i) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                          color: _accent.withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(8)),
+                                      child: Text(i.toString(),
+                                          style: const TextStyle(
+                                              color: _accent, fontSize: 10)),
+                                    ))
+                                .toList()),
+                      ],
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        _actionChip(
+                            'View ID', Icons.copy_rounded, Colors.white38, () {
+                          _showSnack('ID: $uid');
+                        }),
+                        const SizedBox(width: 8),
+                        _actionChip('Delete', Icons.delete_forever_rounded,
+                            _accentRed, () => _nukeUser(uid)),
+                      ]),
+                    ]),
               ),
             ],
           ),
@@ -886,19 +1252,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: _accentGreen.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                    color: _accentGreen.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8)),
                 child: Row(children: [
-                  const Icon(Icons.event_rounded, color: _accentGreen, size: 14),
+                  const Icon(Icons.event_rounded,
+                      color: _accentGreen, size: 14),
                   const SizedBox(width: 4),
-                  Text('${_activities.length} Activit${_activities.length == 1 ? 'y' : 'ies'}', style: const TextStyle(color: _accentGreen, fontWeight: FontWeight.bold, fontSize: 12)),
+                  Text(
+                      '${_activities.length} Activit${_activities.length == 1 ? 'y' : 'ies'}',
+                      style: const TextStyle(
+                          color: _accentGreen,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12)),
                 ]),
               ),
               const Spacer(),
               TextButton.icon(
                 onPressed: _deleteAllActivities,
-                icon: const Icon(Icons.delete_sweep_rounded, color: _accentRed, size: 16),
-                label: const Text('Purge All', style: TextStyle(color: _accentRed, fontSize: 12, fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.delete_sweep_rounded,
+                    color: _accentRed, size: 16),
+                label: const Text('Purge All',
+                    style: TextStyle(
+                        color: _accentRed,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -933,19 +1313,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: _accentPink.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                    color: _accentPink.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8)),
                 child: Row(children: [
-                  const Icon(Icons.flash_on_rounded, color: _accentPink, size: 14),
+                  const Icon(Icons.flash_on_rounded,
+                      color: _accentPink, size: 14),
                   const SizedBox(width: 4),
-                  Text('${_rushIns.length} Rush-In${_rushIns.length == 1 ? '' : 's'}', style: const TextStyle(color: _accentPink, fontWeight: FontWeight.bold, fontSize: 12)),
+                  Text(
+                      '${_rushIns.length} Rush-In${_rushIns.length == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                          color: _accentPink,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12)),
                 ]),
               ),
               const Spacer(),
               TextButton.icon(
                 onPressed: _deleteAllRushIns,
-                icon: const Icon(Icons.delete_sweep_rounded, color: _accentRed, size: 16),
-                label: const Text('Purge All', style: TextStyle(color: _accentRed, fontSize: 12, fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.delete_sweep_rounded,
+                    color: _accentRed, size: 16),
+                label: const Text('Purge All',
+                    style: TextStyle(
+                        color: _accentRed,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -958,7 +1352,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: _rushIns.length,
-              itemBuilder: (ctx, i) => _activityTile(_rushIns[i], isRushIn: true),
+              itemBuilder: (ctx, i) =>
+                  _activityTile(_rushIns[i], isRushIn: true),
             ),
           ),
         ),
@@ -997,47 +1392,83 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder)),
+      decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _cardBorder)),
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: Container(
-          width: 40, height: 40,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
-            color: (isRushIn ? _accentPink : _accentGreen).withValues(alpha: 0.15),
+            color:
+                (isRushIn ? _accentPink : _accentGreen).withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(isRushIn ? Icons.flash_on_rounded : Icons.event_rounded,
-            color: isRushIn ? _accentPink : _accentGreen, size: 20),
+              color: isRushIn ? _accentPink : _accentGreen, size: 20),
         ),
         title: Row(children: [
-          Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
+          Expanded(
+              child: Text(title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13),
+                  overflow: TextOverflow.ellipsis)),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-            child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 9, fontWeight: FontWeight.bold)),
+            decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6)),
+            child: Text(statusText,
+                style: TextStyle(
+                    color: statusColor,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold)),
           ),
         ]),
-        subtitle: Text('$hostName · $location · $created', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+        subtitle: Text('$hostName · $location · $created',
+            style: const TextStyle(color: Colors.white38, fontSize: 11)),
         iconColor: Colors.white38,
         collapsedIconColor: Colors.white24,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Divider(color: _cardBorder),
-              Text('Category: $category', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-              if (act['description'] != null) Text('Desc: ${act['description']}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              Text('Category: $category',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12)),
+              if (act['description'] != null)
+                Text('Desc: ${act['description']}',
+                    style:
+                        const TextStyle(color: Colors.white38, fontSize: 11)),
               if (isRushIn) ...[
-                Text('Participants: ${act['participant_limit'] ?? '—'}  ·  Duration: ${act['duration_hours'] ?? '—'}h', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                Text('Ghost Mode: ${isGhost ? 'ON' : 'OFF'}  ·  Entry: ${act['entry_type'] ?? 'free'}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                Text(
+                    'Participants: ${act['participant_limit'] ?? '—'}  ·  Duration: ${act['duration_hours'] ?? '—'}h',
+                    style:
+                        const TextStyle(color: Colors.white38, fontSize: 11)),
+                Text(
+                    'Ghost Mode: ${isGhost ? 'ON' : 'OFF'}  ·  Entry: ${act['entry_type'] ?? 'free'}',
+                    style:
+                        const TextStyle(color: Colors.white38, fontSize: 11)),
               ],
-              if (act['lat'] != null) Text('Coords: ${act['lat']}, ${act['lng']}', style: const TextStyle(color: Colors.white24, fontSize: 10)),
+              if (act['lat'] != null)
+                Text('Coords: ${act['lat']}, ${act['lng']}',
+                    style:
+                        const TextStyle(color: Colors.white24, fontSize: 10)),
               const SizedBox(height: 12),
               Row(children: [
-                _actionChip(isActive ? 'Deactivate' : 'Activate', isActive ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  isActive ? _accentOrange : _accentGreen, () => _toggleActivityStatus(actId, isActive)),
+                _actionChip(
+                    isActive ? 'Deactivate' : 'Activate',
+                    isActive ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    isActive ? _accentOrange : _accentGreen,
+                    () => _toggleActivityStatus(actId, isActive)),
                 const SizedBox(width: 8),
-                _actionChip('Delete', Icons.delete_forever_rounded, _accentRed, () => _nukeActivity(actId)),
+                _actionChip('Delete', Icons.delete_forever_rounded, _accentRed,
+                    () => _nukeActivity(actId)),
               ]),
             ]),
           ),
@@ -1064,53 +1495,101 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         final isActive = c['is_active'] == true;
         final rate = c['hourly_rate']?.toString() ?? '0';
         final currency = c['currency'] ?? 'INR';
-        final avatar = c['avatar_url'] ?? 'https://picsum.photos/seed/$compId/100';
+        final avatar =
+            c['avatar_url'] ?? 'https://picsum.photos/seed/$compId/100';
 
         return Container(
           margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder)),
+          decoration: BoxDecoration(
+              color: _card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _cardBorder)),
           child: ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            leading: CircleAvatar(radius: 20, backgroundImage: NetworkImage(avatar)),
+            tilePadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            leading:
+                CircleAvatar(radius: 20, backgroundImage: NetworkImage(avatar)),
             title: Row(children: [
-              Expanded(child: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
+              Expanded(
+                  child: Text(name,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13),
+                      overflow: TextOverflow.ellipsis)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: isActive ? _accentGreen.withValues(alpha: 0.15) : Colors.white10,
+                  color: isActive
+                      ? _accentGreen.withValues(alpha: 0.15)
+                      : Colors.white10,
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(isActive ? 'ACTIVE' : 'INACTIVE', style: TextStyle(color: isActive ? _accentGreen : Colors.white38, fontSize: 9, fontWeight: FontWeight.bold)),
+                child: Text(isActive ? 'ACTIVE' : 'INACTIVE',
+                    style: TextStyle(
+                        color: isActive ? _accentGreen : Colors.white38,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold)),
               ),
             ]),
-            subtitle: Text('$compTitle · $city · $rate $currency/hr', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            subtitle: Text('$compTitle · $city · $rate $currency/hr',
+                style: const TextStyle(color: Colors.white38, fontSize: 11)),
             iconColor: Colors.white38,
             collapsedIconColor: Colors.white24,
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Divider(color: _cardBorder),
-                  if (c['bio'] != null) Text('Bio: ${c['bio']}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                  if (c['offering'] != null) Text('Offering: ${c['offering']}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                  Text('Experience: ${c['experience'] ?? '—'}  ·  Rating: ${c['rating'] ?? 0}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                  if (c['skills'] is List) ...[
-                    const SizedBox(height: 6),
-                    Wrap(spacing: 4, runSpacing: 4, children: (c['skills'] as List).map((s) =>
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: _accentPurple.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                        child: Text(s.toString(), style: const TextStyle(color: _accentPurple, fontSize: 10)),
-                      )).toList()),
-                  ],
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    _actionChip(isActive ? 'Deactivate' : 'Activate', isActive ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      isActive ? _accentOrange : _accentGreen, () => _toggleCompanionStatus(compId, isActive)),
-                    const SizedBox(width: 8),
-                    _actionChip('Delete', Icons.delete_forever_rounded, _accentRed, () => _nukeCompanion(compId)),
-                  ]),
-                ]),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Divider(color: _cardBorder),
+                      if (c['bio'] != null)
+                        Text('Bio: ${c['bio']}',
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 12)),
+                      if (c['offering'] != null)
+                        Text('Offering: ${c['offering']}',
+                            style: const TextStyle(
+                                color: Colors.white38, fontSize: 11)),
+                      Text(
+                          'Experience: ${c['experience'] ?? '—'}  ·  Rating: ${c['rating'] ?? 0}',
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 11)),
+                      if (c['skills'] is List) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            children: (c['skills'] as List)
+                                .map((s) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                          color: _accentPurple.withValues(
+                                              alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(8)),
+                                      child: Text(s.toString(),
+                                          style: const TextStyle(
+                                              color: _accentPurple,
+                                              fontSize: 10)),
+                                    ))
+                                .toList()),
+                      ],
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        _actionChip(
+                            isActive ? 'Deactivate' : 'Activate',
+                            isActive
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            isActive ? _accentOrange : _accentGreen,
+                            () => _toggleCompanionStatus(compId, isActive)),
+                        const SizedBox(width: 8),
+                        _actionChip('Delete', Icons.delete_forever_rounded,
+                            _accentRed, () => _nukeCompanion(compId)),
+                      ]),
+                    ]),
               ),
             ],
           ),
@@ -1145,32 +1624,56 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return Container(
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: _cardBorder)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          decoration: BoxDecoration(
+              color: _card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _cardBorder)),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Icon(Icons.swap_horiz_rounded, color: statusColor, size: 18),
               const SizedBox(width: 8),
-              Expanded(child: Text('$senderName → $targetType', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+              Expanded(
+                  child: Text('$senderName → $targetType',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13))),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-                child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 9, fontWeight: FontWeight.bold)),
+                decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6)),
+                child: Text(status.toUpperCase(),
+                    style: TextStyle(
+                        color: statusColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold)),
               ),
             ]),
-            if (message.isNotEmpty) Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text('"$message"', style: const TextStyle(color: Colors.white38, fontSize: 11, fontStyle: FontStyle.italic)),
-            ),
-            Text(created, style: const TextStyle(color: Colors.white24, fontSize: 10)),
+            if (message.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('"$message"',
+                    style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic)),
+              ),
+            Text(created,
+                style: const TextStyle(color: Colors.white24, fontSize: 10)),
             const SizedBox(height: 10),
             Row(children: [
               if (status == 'pending') ...[
-                _actionChip('Approve', Icons.check_rounded, _accentGreen, () => _updateRequestStatus(reqId, 'approved')),
+                _actionChip('Approve', Icons.check_rounded, _accentGreen,
+                    () => _updateRequestStatus(reqId, 'approved')),
                 const SizedBox(width: 6),
-                _actionChip('Reject', Icons.close_rounded, _accentOrange, () => _updateRequestStatus(reqId, 'rejected')),
+                _actionChip('Reject', Icons.close_rounded, _accentOrange,
+                    () => _updateRequestStatus(reqId, 'rejected')),
                 const SizedBox(width: 6),
               ],
-              _actionChip('Delete', Icons.delete_rounded, _accentRed, () => _deleteRequest(reqId)),
+              _actionChip('Delete', Icons.delete_rounded, _accentRed,
+                  () => _deleteRequest(reqId)),
             ]),
           ]),
         );
@@ -1188,17 +1691,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       Container(
         margin: const EdgeInsets.all(12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(color: _accentRed.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: _accentRed.withValues(alpha: 0.2))),
+        decoration: BoxDecoration(
+            color: _accentRed.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _accentRed.withValues(alpha: 0.2))),
         child: Row(children: [
           const Icon(Icons.warning_amber_rounded, color: _accentRed, size: 18),
           const SizedBox(width: 10),
-          const Expanded(child: Text('Danger Zone: Purge all messages', style: TextStyle(color: Colors.white54, fontSize: 12))),
+          const Expanded(
+              child: Text('Danger Zone: Purge all messages',
+                  style: TextStyle(color: Colors.white54, fontSize: 12))),
           GestureDetector(
             onTap: _clearAllMessages,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: _accentRed, borderRadius: BorderRadius.circular(8)),
-              child: const Text('PURGE ALL', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+              decoration: BoxDecoration(
+                  color: _accentRed, borderRadius: BorderRadius.circular(8)),
+              child: const Text('PURGE ALL',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold)),
             ),
           ),
         ]),
@@ -1206,36 +1719,59 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       // Message list
       Expanded(
         child: _messages.isEmpty
-          ? _emptyState('No messages found')
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: _messages.length,
-              itemBuilder: (ctx, i) {
-                final m = _messages[i];
-                final senderName = _getUserName(m['sender_id']?.toString() ?? '');
-                final receiverName = _getUserName(m['receiver_id']?.toString() ?? '');
-                final text = m['text']?.toString() ?? '';
-                final isImage = m['is_image'] == true;
-                final created = _timeAgo(m['created_at']);
+            ? _emptyState('No messages found')
+            : ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: _messages.length,
+                itemBuilder: (ctx, i) {
+                  final m = _messages[i];
+                  final senderName =
+                      _getUserName(m['sender_id']?.toString() ?? '');
+                  final receiverName =
+                      _getUserName(m['receiver_id']?.toString() ?? '');
+                  final text = m['text']?.toString() ?? '';
+                  final isImage = m['is_image'] == true;
+                  final created = _timeAgo(m['created_at']);
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Text(senderName, style: const TextStyle(color: _accent, fontWeight: FontWeight.bold, fontSize: 12)),
-                      const Text(' → ', style: TextStyle(color: Colors.white24, fontSize: 12)),
-                      Text(receiverName, style: const TextStyle(color: _accentPink, fontWeight: FontWeight.bold, fontSize: 12)),
-                      const Spacer(),
-                      Text(created, style: const TextStyle(color: Colors.white24, fontSize: 10)),
-                    ]),
-                    const SizedBox(height: 4),
-                    Text(isImage ? '📷 [Image]' : text, style: const TextStyle(color: Colors.white54, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  ]),
-                );
-              },
-            ),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                        color: _card,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _cardBorder)),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Text(senderName,
+                                style: const TextStyle(
+                                    color: _accent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12)),
+                            const Text(' → ',
+                                style: TextStyle(
+                                    color: Colors.white24, fontSize: 12)),
+                            Text(receiverName,
+                                style: const TextStyle(
+                                    color: _accentPink,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12)),
+                            const Spacer(),
+                            Text(created,
+                                style: const TextStyle(
+                                    color: Colors.white24, fontSize: 10)),
+                          ]),
+                          const SizedBox(height: 4),
+                          Text(isImage ? '📷 [Image]' : text,
+                              style: const TextStyle(
+                                  color: Colors.white54, fontSize: 12),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis),
+                        ]),
+                  );
+                },
+              ),
       ),
     ]);
   }
@@ -1256,14 +1792,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: Column(children: [
               _settingsRow('Status', 'Authorized', _accentGreen),
               const SizedBox(height: 12),
-              _settingsRow('Client', _adminClient != null ? 'Connected' : 'Disconnected', _adminClient != null ? _accentGreen : _accentRed),
+              _settingsRow(
+                  'Client',
+                  _adminClient != null ? 'Connected' : 'Disconnected',
+                  _adminClient != null ? _accentGreen : _accentRed),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: _accentRed.withValues(alpha: 0.15), foregroundColor: _accentRed, padding: const EdgeInsets.symmetric(vertical: 14)),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: _accentRed.withValues(alpha: 0.15),
+                      foregroundColor: _accentRed,
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
                   icon: const Icon(Icons.logout_rounded, size: 18),
-                  label: const Text('Clear Admin Key & Logout', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  label: const Text('Clear Admin Key & Logout',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   onPressed: () async {
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.remove('supabase_admin_key');
@@ -1281,13 +1825,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(children: [
-              _settingsRow('profiles', '${_profiles.length} rows', Colors.white54),
-              _settingsRow('activities', '${_activities.length} rows', Colors.white54),
-              _settingsRow('rush_ins', '${_rushIns.length} rows', Colors.white54),
-              _settingsRow('companions', '${_companions.length} rows', Colors.white54),
-              _settingsRow('requests', '${_requests.length} rows', Colors.white54),
-              _settingsRow('messages', '${_messages.length} rows', Colors.white54),
-              _settingsRow('chatrooms', '${_chatrooms.length} rows', Colors.white54),
+              _settingsRow(
+                  'profiles', '${_profiles.length} rows', Colors.white54),
+              _settingsRow(
+                  'activities', '${_activities.length} rows', Colors.white54),
+              _settingsRow(
+                  'rush_ins', '${_rushIns.length} rows', Colors.white54),
+              _settingsRow(
+                  'companions', '${_companions.length} rows', Colors.white54),
+              _settingsRow(
+                  'requests', '${_requests.length} rows', Colors.white54),
+              _settingsRow(
+                  'messages', '${_messages.length} rows', Colors.white54),
+              _settingsRow(
+                  'chatrooms', '${_chatrooms.length} rows', Colors.white54),
               _settingsRow('posts', '${_posts.length} rows', Colors.white54),
             ]),
           ),
@@ -1301,9 +1852,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: _accent.withValues(alpha: 0.15), foregroundColor: _accent, padding: const EdgeInsets.symmetric(vertical: 14)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: _accent.withValues(alpha: 0.15),
+                    foregroundColor: _accent,
+                    padding: const EdgeInsets.symmetric(vertical: 14)),
                 icon: const Icon(Icons.key_rounded, size: 18),
-                label: const Text('Change Service Role Key', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                label: const Text('Change Service Role Key',
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 onPressed: () async {
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.remove('supabase_admin_key');
@@ -1322,8 +1878,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13)),
-        Text(value, style: TextStyle(color: valueColor, fontSize: 13, fontWeight: FontWeight.bold)),
+        Text(label,
+            style: const TextStyle(color: Colors.white54, fontSize: 13)),
+        Text(value,
+            style: TextStyle(
+                color: valueColor, fontSize: 13, fontWeight: FontWeight.bold)),
       ]),
     );
   }
@@ -1332,24 +1891,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // SHARED WIDGETS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Widget _actionChip(String label, IconData icon, Color color, VoidCallback onTap) {
+  Widget _actionChip(
+      String label, IconData icon, Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withValues(alpha: 0.3))),
+        decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: 0.3))),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, color: color, size: 14),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+          Text(label,
+              style: TextStyle(
+                  color: color, fontSize: 11, fontWeight: FontWeight.bold)),
         ]),
       ),
     );
   }
 
   Widget _emptyState(String msg) {
-    return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Icon(Icons.inbox_rounded, color: Colors.white.withValues(alpha: 0.1), size: 64),
+    return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.inbox_rounded,
+          color: Colors.white.withValues(alpha: 0.1), size: 64),
       const SizedBox(height: 12),
       Text(msg, style: const TextStyle(color: Colors.white30, fontSize: 14)),
     ]));
@@ -1366,18 +1933,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return '#${str.substring(0, math.min(6, str.length)).toUpperCase()}';
   }
 
-  String _brGetTopic(dynamic t) => (t ?? 'Topic').toString().split('|').first.trim();
+  String _brGetTopic(dynamic t) =>
+      (t ?? 'Topic').toString().split('|').first.trim();
   String _brGetLoc(dynamic t) {
     final p = (t ?? '').toString().split('|');
     return p.length > 1 ? p.last.trim() : 'Unknown';
   }
 
   Future<void> _deleteChatroom(String roomId) async {
-    final ok = await _confirmAction('Delete BolRoom?', 'This will permanently remove this chatroom and all its member records.');
+    final ok = await _confirmAction('Delete BolRoom?',
+        'This will permanently remove this chatroom and all its member records.');
     if (!ok || _adminClient == null) return;
     if (mounted) setState(() => _isProcessing = true);
     try {
-      try { await _adminClient!.from('chatroom_members').delete().eq('room_id', roomId); } catch (_) {}
+      try {
+        await _adminClient!
+            .from('chatroom_members')
+            .delete()
+            .eq('room_id', roomId);
+      } catch (_) {}
       await _adminClient!.from('chatrooms').delete().eq('id', roomId);
       if (mounted) _showSnack('BolRoom deleted.');
       await _fetchAllData();
@@ -1389,12 +1963,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _deleteAllChatrooms() async {
-    final ok = await _confirmAction('Delete ALL BolRooms?', 'This will permanently wipe every chatroom and all member records. This action cannot be undone.');
+    final ok = await _confirmAction('Delete ALL BolRooms?',
+        'This will permanently wipe every chatroom and all member records. This action cannot be undone.');
     if (!ok || _adminClient == null) return;
     if (mounted) setState(() => _isProcessing = true);
     try {
-      try { await _adminClient!.from('chatroom_members').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (_) {}
-      await _adminClient!.from('chatrooms').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      try {
+        await _adminClient!
+            .from('chatroom_members')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (_) {}
+      await _adminClient!
+          .from('chatrooms')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
       if (mounted) _showSnack('All BolRooms purged.');
       await _fetchAllData();
     } catch (e) {
@@ -1414,19 +1997,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: _accentPurple.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                    color: _accentPurple.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8)),
                 child: Row(children: [
                   const Icon(Icons.mic_rounded, color: _accentPurple, size: 14),
                   const SizedBox(width: 4),
-                  Text('${_chatrooms.length} Room${_chatrooms.length == 1 ? '' : 's'}', style: const TextStyle(color: _accentPurple, fontWeight: FontWeight.bold, fontSize: 12)),
+                  Text(
+                      '${_chatrooms.length} Room${_chatrooms.length == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                          color: _accentPurple,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12)),
                 ]),
               ),
               const Spacer(),
               TextButton.icon(
                 onPressed: _deleteAllChatrooms,
-                icon: const Icon(Icons.delete_sweep_rounded, color: _accentRed, size: 16),
-                label: const Text('Purge All', style: TextStyle(color: _accentRed, fontSize: 12, fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.delete_sweep_rounded,
+                    color: _accentRed, size: 16),
+                label: const Text('Purge All',
+                    style: TextStyle(
+                        color: _accentRed,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -1450,7 +2046,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 final hostName = room['host_name'] ?? 'Unknown';
                 final hostAvatar = room['host_avatar'];
                 final createdAt = room['created_at']?.toString() ?? '';
-                final members = _chatroomMembers.where((m) => m['room_id']?.toString() == roomId).toList();
+                final members = _chatroomMembers
+                    .where((m) => m['room_id']?.toString() == roomId)
+                    .toList();
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
@@ -1460,33 +2058,60 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     border: Border.all(color: _cardBorder),
                   ),
                   child: ExpansionTile(
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    tilePadding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     leading: Container(
-                      width: 44, height: 44,
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [_accentPurple.withValues(alpha: 0.3), _accent.withValues(alpha: 0.15)]),
+                        gradient: LinearGradient(colors: [
+                          _accentPurple.withValues(alpha: 0.3),
+                          _accent.withValues(alpha: 0.15)
+                        ]),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.mic_rounded, color: _accent, size: 22),
+                      child: const Icon(Icons.mic_rounded,
+                          color: _accent, size: 22),
                     ),
                     title: Row(
                       children: [
-                        Expanded(child: Text(roomName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis)),
+                        Expanded(
+                            child: Text(roomName,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14),
+                                overflow: TextOverflow.ellipsis)),
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: _accent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-                          child: Text(roomUid, style: const TextStyle(color: _accent, fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                              color: _accent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6)),
+                          child: Text(roomUid,
+                              style: const TextStyle(
+                                  color: _accent,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'monospace')),
                         ),
                       ],
                     ),
                     subtitle: Row(
                       children: [
-                        Text(topic, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                        Text(topic,
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 11)),
                         const SizedBox(width: 6),
-                        const Icon(Icons.location_on, color: _accentPink, size: 10),
+                        const Icon(Icons.location_on,
+                            color: _accentPink, size: 10),
                         const SizedBox(width: 2),
-                        Expanded(child: Text(location, style: const TextStyle(color: Colors.white38, fontSize: 10), overflow: TextOverflow.ellipsis)),
+                        Expanded(
+                            child: Text(location,
+                                style: const TextStyle(
+                                    color: Colors.white38, fontSize: 10),
+                                overflow: TextOverflow.ellipsis)),
                       ],
                     ),
                     iconColor: Colors.white38,
@@ -1504,31 +2129,63 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               decoration: BoxDecoration(
                                 color: _accentOrange.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: _accentOrange.withValues(alpha: 0.15)),
+                                border: Border.all(
+                                    color:
+                                        _accentOrange.withValues(alpha: 0.15)),
                               ),
                               child: Row(
                                 children: [
                                   CircleAvatar(
                                     radius: 18,
-                                    backgroundColor: _accentOrange.withValues(alpha: 0.2),
-                                    backgroundImage: hostAvatar != null ? NetworkImage(hostAvatar) : null,
-                                    child: hostAvatar == null ? const Icon(Icons.person, color: _accentOrange, size: 16) : null,
+                                    backgroundColor:
+                                        _accentOrange.withValues(alpha: 0.2),
+                                    backgroundImage: hostAvatar != null
+                                        ? NetworkImage(hostAvatar)
+                                        : null,
+                                    child: hostAvatar == null
+                                        ? const Icon(Icons.person,
+                                            color: _accentOrange, size: 16)
+                                        : null,
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(children: [
                                           Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                            decoration: BoxDecoration(color: _accentOrange.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
-                                            child: const Text('HOST', style: TextStyle(color: _accentOrange, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 5, vertical: 1),
+                                            decoration: BoxDecoration(
+                                                color: _accentOrange.withValues(
+                                                    alpha: 0.2),
+                                                borderRadius:
+                                                    BorderRadius.circular(4)),
+                                            child: const Text('HOST',
+                                                style: TextStyle(
+                                                    color: _accentOrange,
+                                                    fontSize: 8,
+                                                    fontWeight: FontWeight.w900,
+                                                    letterSpacing: 1)),
                                           ),
                                           const SizedBox(width: 6),
-                                          Expanded(child: Text(hostName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                                          Expanded(
+                                              child: Text(hostName,
+                                                  style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 13),
+                                                  overflow:
+                                                      TextOverflow.ellipsis)),
                                         ]),
-                                        Text('ID: ${hostId.length > 8 ? '${hostId.substring(0, 8)}...' : hostId}', style: const TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace')),
+                                        Text(
+                                            'ID: ${hostId.length > 8 ? '${hostId.substring(0, 8)}...' : hostId}',
+                                            style: const TextStyle(
+                                                color: Colors.white38,
+                                                fontSize: 10,
+                                                fontFamily: 'monospace')),
                                       ],
                                     ),
                                   ),
@@ -1539,46 +2196,97 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             Row(children: [
                               _brDetailChip(Icons.tag, 'UID', roomUid, _accent),
                               const SizedBox(width: 8),
-                              _brDetailChip(Icons.category_rounded, 'Topic', topic, _accentPurple),
+                              _brDetailChip(Icons.category_rounded, 'Topic',
+                                  topic, _accentPurple),
                             ]),
                             const SizedBox(height: 8),
                             Row(children: [
-                              _brDetailChip(Icons.location_on, 'Location', location, _accentPink),
+                              _brDetailChip(Icons.location_on, 'Location',
+                                  location, _accentPink),
                               const SizedBox(width: 8),
-                              _brDetailChip(Icons.access_time_rounded, 'Created', _timeAgo(createdAt), _accentGreen),
+                              _brDetailChip(Icons.access_time_rounded,
+                                  'Created', _timeAgo(createdAt), _accentGreen),
                             ]),
                             const SizedBox(height: 8),
                             Row(children: [
-                              _brDetailChip(Icons.people_rounded, 'Participants', '${members.length}', const Color(0xFF06B6D4)),
+                              _brDetailChip(
+                                  Icons.people_rounded,
+                                  'Participants',
+                                  '${members.length}',
+                                  const Color(0xFF06B6D4)),
                               const SizedBox(width: 8),
-                              _brDetailChip(Icons.fingerprint_rounded, 'Room ID', '${roomId.substring(0, 8)}...', Colors.white38),
+                              _brDetailChip(
+                                  Icons.fingerprint_rounded,
+                                  'Room ID',
+                                  '${roomId.substring(0, 8)}...',
+                                  Colors.white38),
                             ]),
                             if (members.isNotEmpty) ...[
                               const SizedBox(height: 16),
-                              const Text('PARTICIPANTS', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                              const Text('PARTICIPANTS',
+                                  style: TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.5)),
                               const SizedBox(height: 8),
                               ...members.map((m) {
-                                final mn = m['user_name'] ?? m['display_name'] ?? 'Unknown';
+                                final mn = m['user_name'] ??
+                                    m['display_name'] ??
+                                    'Unknown';
                                 final mi = m['user_id']?.toString() ?? '';
                                 return Container(
                                   margin: const EdgeInsets.only(bottom: 6),
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03), borderRadius: BorderRadius.circular(8)),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 8),
+                                  decoration: BoxDecoration(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.03),
+                                      borderRadius: BorderRadius.circular(8)),
                                   child: Row(children: [
-                                    CircleAvatar(radius: 12, backgroundColor: _accent.withValues(alpha: 0.15),
-                                      child: Text(mn.isNotEmpty ? mn[0].toUpperCase() : '?', style: const TextStyle(color: _accent, fontSize: 10, fontWeight: FontWeight.bold))),
+                                    CircleAvatar(
+                                        radius: 12,
+                                        backgroundColor:
+                                            _accent.withValues(alpha: 0.15),
+                                        child: Text(
+                                            mn.isNotEmpty
+                                                ? mn[0].toUpperCase()
+                                                : '?',
+                                            style: const TextStyle(
+                                                color: _accent,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold))),
                                     const SizedBox(width: 8),
-                                    Expanded(child: Text(mn, style: const TextStyle(color: Colors.white70, fontSize: 12))),
-                                    Text(mi.length > 8 ? '${mi.substring(0, 8)}...' : mi, style: const TextStyle(color: Colors.white24, fontSize: 9, fontFamily: 'monospace')),
+                                    Expanded(
+                                        child: Text(mn,
+                                            style: const TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 12))),
+                                    Text(
+                                        mi.length > 8
+                                            ? '${mi.substring(0, 8)}...'
+                                            : mi,
+                                        style: const TextStyle(
+                                            color: Colors.white24,
+                                            fontSize: 9,
+                                            fontFamily: 'monospace')),
                                   ]),
                                 );
                               }),
                             ],
                             const SizedBox(height: 16),
                             Row(children: [
-                              _actionChip('Copy Room ID', Icons.copy_rounded, Colors.white38, () => _showSnack('Room ID: $roomId')),
+                              _actionChip(
+                                  'Copy Room ID',
+                                  Icons.copy_rounded,
+                                  Colors.white38,
+                                  () => _showSnack('Room ID: $roomId')),
                               const SizedBox(width: 8),
-                              _actionChip('Delete Room', Icons.delete_forever_rounded, _accentRed, () => _deleteChatroom(roomId)),
+                              _actionChip(
+                                  'Delete Room',
+                                  Icons.delete_forever_rounded,
+                                  _accentRed,
+                                  () => _deleteChatroom(roomId)),
                             ]),
                           ],
                         ),
@@ -1609,10 +2317,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             Row(children: [
               Icon(icon, color: color, size: 12),
               const SizedBox(width: 4),
-              Text(label.toUpperCase(), style: TextStyle(color: color.withValues(alpha: 0.7), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+              Text(label.toUpperCase(),
+                  style: TextStyle(
+                      color: color.withValues(alpha: 0.7),
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.8)),
             ]),
             const SizedBox(height: 4),
-            Text(value, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(value,
+                style: TextStyle(
+                    color: color, fontSize: 12, fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
           ],
         ),
       ),
@@ -1620,7 +2337,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   String _getUserAvatar(String uid) {
-    final p = _profiles.firstWhere((e) => e['id']?.toString() == uid, orElse: () => {});
+    final p = _profiles.firstWhere((e) => e['id']?.toString() == uid,
+        orElse: () => {});
     return p['avatar_url']?.toString() ?? '';
   }
 
@@ -1645,7 +2363,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _deletePost(String postId) async {
-    final ok = await _confirmAction('Delete Post?', 'This will permanently remove this post from the feed.');
+    final ok = await _confirmAction('Delete Post?',
+        'This will permanently remove this post from the feed.');
     if (!ok || _adminClient == null) return;
     if (mounted) setState(() => _isProcessing = true);
     try {
@@ -1660,11 +2379,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _deleteAllPosts() async {
-    final ok = await _confirmAction('Delete ALL Posts?', 'This will permanently wipe every user post in the system. This action cannot be undone.');
+    final ok = await _confirmAction('Delete ALL Posts?',
+        'This will permanently wipe every user post in the system. This action cannot be undone.');
     if (!ok || _adminClient == null) return;
     if (mounted) setState(() => _isProcessing = true);
     try {
-      await _adminClient!.from('posts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await _adminClient!
+          .from('posts')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
       if (mounted) _showSnack('All posts purged.');
       await _fetchAllData();
     } catch (e) {
@@ -1684,19 +2407,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFFF6B00).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFFF6B00).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8)),
                 child: Row(children: [
-                  const Icon(Icons.feed_rounded, color: Color(0xFFFF6B00), size: 14),
+                  const Icon(Icons.feed_rounded,
+                      color: Color(0xFFFF6B00), size: 14),
                   const SizedBox(width: 4),
-                  Text('${_posts.length} Post${_posts.length == 1 ? '' : 's'}', style: const TextStyle(color: Color(0xFFFF6B00), fontWeight: FontWeight.bold, fontSize: 12)),
+                  Text('${_posts.length} Post${_posts.length == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                          color: Color(0xFFFF6B00),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12)),
                 ]),
               ),
               const Spacer(),
               TextButton.icon(
                 onPressed: _deleteAllPosts,
-                icon: const Icon(Icons.delete_sweep_rounded, color: _accentRed, size: 16),
-                label: const Text('Purge All', style: TextStyle(color: _accentRed, fontSize: 12, fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.delete_sweep_rounded,
+                    color: _accentRed, size: 16),
+                label: const Text('Purge All',
+                    style: TextStyle(
+                        color: _accentRed,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -1744,33 +2480,51 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     border: Border.all(color: _cardBorder),
                   ),
                   child: ExpansionTile(
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    tilePadding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     leading: CircleAvatar(
                       radius: 20,
-                      backgroundImage: userAvatar.isNotEmpty ? NetworkImage(userAvatar) : null,
+                      backgroundImage: userAvatar.isNotEmpty
+                          ? NetworkImage(userAvatar)
+                          : null,
                       backgroundColor: Colors.white10,
-                      child: userAvatar.isEmpty ? const Icon(Icons.person, color: Colors.white38, size: 18) : null,
+                      child: userAvatar.isEmpty
+                          ? const Icon(Icons.person,
+                              color: Colors.white38, size: 18)
+                          : null,
                     ),
                     title: Row(
                       children: [
-                        Expanded(child: Text(userName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                        Expanded(
+                            child: Text(userName,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13),
+                                overflow: TextOverflow.ellipsis)),
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                            color:
+                                const Color(0xFFF59E0B).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
                             interestTag.isNotEmpty ? interestTag : 'General',
-                            style: const TextStyle(color: Color(0xFFF59E0B), fontSize: 9, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                color: Color(0xFFF59E0B),
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],
                     ),
                     subtitle: Text(
                       _timeAgo(createdAt),
-                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                      style:
+                          const TextStyle(color: Colors.white38, fontSize: 11),
                     ),
                     iconColor: Colors.white38,
                     collapsedIconColor: Colors.white24,
@@ -1792,19 +2546,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             if (postContent.isNotEmpty) ...[
                               Text(
                                 postContent,
-                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 13),
                               ),
                               const SizedBox(height: 12),
                             ],
                             if (district.isNotEmpty || state.isNotEmpty) ...[
                               Row(
                                 children: [
-                                  const Icon(Icons.location_on, color: _accentPink, size: 12),
+                                  const Icon(Icons.location_on,
+                                      color: _accentPink, size: 12),
                                   const SizedBox(width: 4),
                                   Expanded(
                                     child: Text(
                                       '${district.isNotEmpty ? district : ''}${district.isNotEmpty && state.isNotEmpty ? ', ' : ''}${state.isNotEmpty ? state : ''}',
-                                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                      style: const TextStyle(
+                                          color: Colors.white38, fontSize: 11),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -1813,12 +2570,225 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               const SizedBox(height: 12),
                             ],
                             Row(children: [
-                              _actionChip('Copy Post ID', Icons.copy_rounded, Colors.white38, () => _showSnack('Post ID: $postId')),
+                              _actionChip(
+                                  'Copy Post ID',
+                                  Icons.copy_rounded,
+                                  Colors.white38,
+                                  () => _showSnack('Post ID: $postId')),
                               const SizedBox(width: 8),
-                              _actionChip('Delete Post', Icons.delete_forever_rounded, _accentRed, () => _deletePost(postId)),
+                              _actionChip(
+                                  'Delete Post',
+                                  Icons.delete_forever_rounded,
+                                  _accentRed,
+                                  () => _deletePost(postId)),
                             ]),
                           ],
                         ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SECTION 10 — COMMUNITIES
+  // ═══════════════════════════════════════════════════════════════
+
+  Future<void> _deleteCommunity(String commId) async {
+    final ok = await _confirmAction('Delete Community?',
+        'This will permanently remove this community, all its members, and all messages.');
+    if (!ok || _adminClient == null) return;
+    if (mounted) setState(() => _isProcessing = true);
+    try {
+      try {
+        await _adminClient!
+            .from('bolroom_community_messages')
+            .delete()
+            .eq('community_id', commId);
+      } catch (_) {}
+      try {
+        await _adminClient!
+            .from('bolroom_community_members')
+            .delete()
+            .eq('community_id', commId);
+      } catch (_) {}
+      await _adminClient!.from('bolroom_communities').delete().eq('id', commId);
+      if (mounted) _showSnack('Community deleted.');
+      await _fetchAllData();
+    } catch (e) {
+      if (mounted) _showSnack('Delete failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _deleteAllCommunities() async {
+    final ok = await _confirmAction('Delete ALL Communities?',
+        'This will permanently wipe every community, its members, and messages. This action cannot be undone.');
+    if (!ok || _adminClient == null) return;
+    if (mounted) setState(() => _isProcessing = true);
+    try {
+      try {
+        await _adminClient!
+            .from('bolroom_community_messages')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (_) {}
+      try {
+        await _adminClient!
+            .from('bolroom_community_members')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (_) {}
+      await _adminClient!
+          .from('bolroom_communities')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+      if (mounted) _showSnack('All Communities purged.');
+      await _fetchAllData();
+    } catch (e) {
+      if (mounted) _showSnack('Purge failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Widget _buildCommunitiesSection() {
+    if (_communities.isEmpty) return _emptyState('No communities found');
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: _card,
+          child: Row(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                    color: _accent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Row(children: [
+                  const Icon(Icons.groups_rounded, color: _accent, size: 14),
+                  const SizedBox(width: 4),
+                  Text(
+                      '${_communities.length} Communit${_communities.length == 1 ? 'y' : 'ies'}',
+                      style: const TextStyle(
+                          color: _accent,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12)),
+                ]),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _deleteAllCommunities,
+                icon: const Icon(Icons.delete_sweep_rounded,
+                    color: _accentRed, size: 16),
+                label: const Text('Purge All',
+                    style: TextStyle(
+                        color: _accentRed,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+        const Divider(color: _cardBorder, height: 1),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _fetchAllData,
+            color: _accent,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _communities.length,
+              itemBuilder: (ctx, i) {
+                final c = _communities[i];
+                final commId = c['id'].toString();
+                final name = c['name'] ?? 'Untitled';
+                final desc = c['description'] ?? 'No description';
+                final creatorId = c['creator_id']?.toString() ?? '';
+                final creatorName = _getUserName(creatorId);
+                final members = _communityMembers
+                    .where((m) => m['community_id']?.toString() == commId)
+                    .toList();
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _cardBorder)),
+                  child: ExpansionTile(
+                    tilePadding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    leading: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                          color: _accent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.diversity_3_rounded,
+                          color: _accent, size: 22),
+                    ),
+                    title: Row(
+                      children: [
+                        Expanded(
+                            child: Text(name,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14),
+                                overflow: TextOverflow.ellipsis)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                              color: _accent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6)),
+                          child: Text('${members.length} members',
+                              style: const TextStyle(
+                                  color: _accent,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    subtitle: Text('Creator: $creatorName',
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 11)),
+                    iconColor: Colors.white38,
+                    collapsedIconColor: Colors.white24,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Divider(color: _cardBorder),
+                              Text('ID: $commId',
+                                  style: const TextStyle(
+                                      color: Colors.white24,
+                                      fontSize: 10,
+                                      fontFamily: 'monospace')),
+                              const SizedBox(height: 6),
+                              Text('Description: $desc',
+                                  style: const TextStyle(
+                                      color: Colors.white54, fontSize: 12)),
+                              const SizedBox(height: 12),
+                              Row(children: [
+                                _actionChip(
+                                    'Delete Community',
+                                    Icons.delete_forever_rounded,
+                                    _accentRed,
+                                    () => _deleteCommunity(commId)),
+                              ]),
+                            ]),
                       ),
                     ],
                   ),
@@ -1848,27 +2818,46 @@ class _DonutPainter extends CustomPainter {
     const stroke = 12.0;
 
     // Background ring
-    canvas.drawCircle(center, radius, Paint()..color = Colors.white10..style = PaintingStyle.stroke..strokeWidth = stroke);
+    canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..color = Colors.white10
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke);
 
     // Completed arc
     if (total > 0) {
       final sweep = (completed / total) * 2 * math.pi;
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
-        -math.pi / 2, sweep, false,
-        Paint()..color = const Color(0xFF10B981)..style = PaintingStyle.stroke..strokeWidth = stroke..strokeCap = StrokeCap.round,
+        -math.pi / 2,
+        sweep,
+        false,
+        Paint()
+          ..color = const Color(0xFF10B981)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke
+          ..strokeCap = StrokeCap.round,
       );
     }
 
     // Center text
     final tp = TextPainter(
-      text: TextSpan(text: '${total.toInt()}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22)),
+      text: TextSpan(
+          text: '${total.toInt()}',
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22)),
       textDirection: TextDirection.ltr,
     )..layout();
-    tp.paint(canvas, Offset(center.dx - tp.width / 2, center.dy - tp.height / 2 - 4));
+    tp.paint(canvas,
+        Offset(center.dx - tp.width / 2, center.dy - tp.height / 2 - 4));
 
     final tp2 = TextPainter(
-      text: const TextSpan(text: 'USERS', style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1)),
+      text: const TextSpan(
+          text: 'USERS',
+          style:
+              TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1)),
       textDirection: TextDirection.ltr,
     )..layout();
     tp2.paint(canvas, Offset(center.dx - tp2.width / 2, center.dy + 8));
@@ -1884,7 +2873,9 @@ class _DonutPainter extends CustomPainter {
 
 extension _SellerAdminExtensions on _AdminDashboardScreenState {
   Widget _buildSellerApplicationsSection() {
-    final apps = _requests.where((r) => r['target_type'] == 'seller_application').toList();
+    final apps = _requests
+        .where((r) => r['target_type'] == 'seller_application')
+        .toList();
     if (apps.isEmpty) return _emptyState('No seller applications found');
 
     return ListView.builder(
@@ -1904,18 +2895,38 @@ extension _SellerAdminExtensions on _AdminDashboardScreenState {
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(color: const Color(0xFF12121E), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1E1E30))),
+          decoration: BoxDecoration(
+              color: const Color(0xFF12121E),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF1E1E30))),
           child: ExpansionTile(
-            leading: CircleAvatar(backgroundColor: const Color(0xFFFF6B00).withValues(alpha: 0.1), child: const Icon(Icons.storefront_rounded, color: Color(0xFFFF6B00), size: 20)),
-            title: Text(bizName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-            subtitle: Text('Category: $category · Applied by ${_getUserName(uid)}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            leading: CircleAvatar(
+                backgroundColor: const Color(0xFFFF6B00).withValues(alpha: 0.1),
+                child: const Icon(Icons.storefront_rounded,
+                    color: Color(0xFFFF6B00), size: 20)),
+            title: Text(bizName,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14)),
+            subtitle: Text(
+                'Category: $category · Applied by ${_getUserName(uid)}',
+                style: const TextStyle(color: Colors.white38, fontSize: 11)),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: isApproved ? const Color(0xFF10B981).withValues(alpha: 0.1) : const Color(0xFFF59E0B).withValues(alpha: 0.1),
+                color: isApproved
+                    ? const Color(0xFF10B981).withValues(alpha: 0.1)
+                    : const Color(0xFFF59E0B).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(status.toUpperCase(), style: TextStyle(color: isApproved ? const Color(0xFF10B981) : const Color(0xFFF59E0B), fontSize: 10, fontWeight: FontWeight.bold)),
+              child: Text(status.toUpperCase(),
+                  style: TextStyle(
+                      color: isApproved
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFF59E0B),
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold)),
             ),
             children: [
               Padding(
@@ -1923,37 +2934,57 @@ extension _SellerAdminExtensions on _AdminDashboardScreenState {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('BUSINESS DESCRIPTION', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+                    const Text('BUSINESS DESCRIPTION',
+                        style: TextStyle(
+                            color: Colors.white38,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text(desc, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text(desc,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12)),
                     const SizedBox(height: 20),
-                    if (!isApproved) Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.black),
-                            onPressed: () async {
-                              final ok = await _confirmAction('Approve Seller?', 'This will grant the user verified seller status and allow them to list commercial packages.');
-                              if (ok) {
-                                try {
-                                  // Approval logic
-                                  await Supabase.instance.client.from('profiles').update({'is_seller': true}).eq('id', uid);
-                                  await _updateRequestStatus(rid, 'approved');
-                                } catch (e) {
-                                  _showSnack('Approval failed: $e', isError: true);
+                    if (!isApproved)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF10B981),
+                                  foregroundColor: Colors.black),
+                              onPressed: () async {
+                                final ok = await _confirmAction(
+                                    'Approve Seller?',
+                                    'This will grant the user verified seller status and allow them to list commercial packages.');
+                                if (ok) {
+                                  try {
+                                    // Approval logic
+                                    await Supabase.instance.client
+                                        .from('profiles')
+                                        .update({'is_seller': true}).eq(
+                                            'id', uid);
+                                    await _updateRequestStatus(rid, 'approved');
+                                  } catch (e) {
+                                    _showSnack('Approval failed: $e',
+                                        isError: true);
+                                  }
                                 }
-                              }
-                            },
-                            child: const Text('APPROVE & VERIFY', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                              },
+                              child: const Text('APPROVE & VERIFY',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12)),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, color: Color(0xFFEF4444)),
-                          onPressed: () => _updateRequestStatus(rid, 'declined'),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 12),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded,
+                                color: Color(0xFFEF4444)),
+                            onPressed: () =>
+                                _updateRequestStatus(rid, 'declined'),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),

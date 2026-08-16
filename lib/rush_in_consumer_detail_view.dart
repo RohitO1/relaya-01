@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'widgets/forward_sheet.dart';
 import 'profile_screen.dart';
 import 'rush_in_chat_room_screen.dart';
 import 'services/notification_service.dart';
@@ -39,6 +41,7 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
   bool _isRequesting = false;
   bool _isDeleting = false;
   bool _isLeaving = false;
+  bool _isSaved = false;
   Future<Map<String, dynamic>?>? _hostProfileFuture;
 
   // Profile cache so waitlist rows never re-fetch stale FutureBuilder data
@@ -77,6 +80,37 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
         .select()
         .eq('id', widget.activity['user_id'])
         .maybeSingle();
+    _checkSavedStatus();
+  }
+
+  Future<void> _checkSavedStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('saved_activities') ?? [];
+    if (mounted) {
+      setState(() {
+        _isSaved = saved.contains(widget.activity['id'].toString());
+      });
+    }
+  }
+
+  Future<void> _toggleSave() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved =
+        List<String>.from(prefs.getStringList('saved_activities') ?? []);
+    final id = widget.activity['id'].toString();
+    if (_isSaved) {
+      saved.remove(id);
+    } else {
+      if (!saved.contains(id)) saved.add(id);
+    }
+    await prefs.setStringList('saved_activities', saved);
+    if (mounted) setState(() => _isSaved = !_isSaved);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content:
+          Text(_isSaved ? 'Saved to collections' : 'Removed from collections'),
+      backgroundColor: Colors.blueGrey,
+      duration: const Duration(seconds: 1),
+    ));
   }
 
   Future<void> _approveRequest(String requestId, String senderId) async {
@@ -1292,7 +1326,7 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                                     )
                                   else ...[
                                     GestureDetector(
-                                      onTap: () {},
+                                      onTap: _toggleSave,
                                       child: Container(
                                         width: 40,
                                         height: 40,
@@ -1303,20 +1337,33 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                                           border:
                                               Border.all(color: Colors.white10),
                                         ),
-                                        child: const Icon(Icons.bookmark_border,
-                                            color: Colors.white, size: 20),
+                                        child: Icon(
+                                            _isSaved
+                                                ? Icons.bookmark
+                                                : Icons.bookmark_border,
+                                            color: _isSaved
+                                                ? const Color(0xFFFF7A00)
+                                                : Colors.white,
+                                            size: 20),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
                                   ],
                                   GestureDetector(
                                     onTap: () {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text('Link copied!'),
-                                            backgroundColor: Colors.blueGrey),
-                                      );
+                                      final title =
+                                          act['title'] ?? 'this event';
+                                      final imageUrl =
+                                          act['image_url']?.toString();
+                                      showModalBottomSheet(
+                                          context: context,
+                                          isScrollControlled: true,
+                                          backgroundColor: Colors.transparent,
+                                          builder: (_) => ForwardBottomSheet(
+                                              contentTitle: title,
+                                              contentUrl:
+                                                  'https://relaya.in/event/${act['id']}',
+                                              contentImageUrl: imageUrl));
                                     },
                                     child: Container(
                                       width: 40,
@@ -1328,7 +1375,7 @@ class _RushInConsumerDetailViewState extends State<RushInConsumerDetailView> {
                                         border:
                                             Border.all(color: Colors.white10),
                                       ),
-                                      child: const Icon(Icons.share_outlined,
+                                      child: const Icon(Icons.send_outlined,
                                           color: Colors.white, size: 20),
                                     ),
                                   ),

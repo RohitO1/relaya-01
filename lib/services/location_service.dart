@@ -11,19 +11,22 @@ class LocationService {
   factory LocationService() => _instance;
   LocationService._internal();
 
-  final ValueNotifier<String> activeLocationNotifier = ValueNotifier<String>('');
-  final ValueNotifier<String> activeDistrictNotifier = ValueNotifier<String>('');
+  final ValueNotifier<String> activeLocationNotifier =
+      ValueNotifier<String>('');
+  final ValueNotifier<String> activeDistrictNotifier =
+      ValueNotifier<String>('');
   final ValueNotifier<String> activeStateNotifier = ValueNotifier<String>('');
-  
+
   // Coordinate State Tracking
   double? _activeLat;
   double? _activeLng;
   double? get activeLat => _activeLat;
   double? get activeLng => _activeLng;
-  
+
   // Listeners can attach to this if they care specifically when the MAP coordinates change
   final ValueNotifier<int> coordinatesUpdateNotifier = ValueNotifier<int>(0);
-  final ValueNotifier<bool> isLocationGrantedNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> isLocationGrantedNotifier =
+      ValueNotifier<bool>(false);
 
   String get activeLocation => activeLocationNotifier.value;
   String get activeDistrict => activeDistrictNotifier.value;
@@ -47,15 +50,20 @@ class LocationService {
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // Check if we explicitly saved map coordinates first
-    if (prefs.containsKey('current_map_lat') && prefs.containsKey('current_map_lng')) {
+    if (prefs.containsKey('current_map_lat') &&
+        prefs.containsKey('current_map_lng')) {
       _activeLat = prefs.getDouble('current_map_lat');
       _activeLng = prefs.getDouble('current_map_lng');
       final savedName = prefs.getString('current_map_name') ?? 'Map Location';
       activeLocationNotifier.value = savedName;
-      activeDistrictNotifier.value = prefs.getString('current_map_district') ?? (savedName.split(',').first.trim());
-      activeStateNotifier.value = prefs.getString('current_map_state') ?? (savedName.split(',').length > 1 ? savedName.split(',')[1].trim() : '');
+      activeDistrictNotifier.value = prefs.getString('current_map_district') ??
+          (savedName.split(',').first.trim());
+      activeStateNotifier.value = prefs.getString('current_map_state') ??
+          (savedName.split(',').length > 1
+              ? savedName.split(',')[1].trim()
+              : '');
     } else {
       // First try to grab saved locations from old array format
       final savedLocRaw = prefs.getString('saved_locations');
@@ -67,7 +75,9 @@ class LocationService {
             final nameStr = firstLoc['name']?.toString() ?? '';
             activeLocationNotifier.value = nameStr;
             activeDistrictNotifier.value = nameStr.split(',').first.trim();
-            activeStateNotifier.value = nameStr.split(',').length > 1 ? nameStr.split(',')[1].trim() : '';
+            activeStateNotifier.value = nameStr.split(',').length > 1
+                ? nameStr.split(',')[1].trim()
+                : '';
             _activeLat = (firstLoc['lat'] as num?)?.toDouble();
             _activeLng = (firstLoc['lng'] as num?)?.toDouble();
           }
@@ -77,43 +87,53 @@ class LocationService {
       }
     }
 
-    // Set isLocationGrantedNotifier to true if we loaded a valid cached location
-    if (_activeLat != null && _activeLng != null && activeDistrictNotifier.value.isNotEmpty && activeDistrictNotifier.value != 'Unknown') {
-      isLocationGrantedNotifier.value = true;
-    }
-    
-    // Check if permission is already granted and auto-fetch
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (serviceEnabled) {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
-        isLocationGrantedNotifier.value = true;
-        // Run in background without blocking init
-        fetchLiveLocation(forceReverseGeocode: false).catchError((e) { debugPrint('Auto-fetch error: $e'); return false; });
-      } else {
-        if (_activeLat == null || _activeLng == null) {
-          isLocationGrantedNotifier.value = false;
-        }
-      }
-    } else {
-      if (_activeLat == null || _activeLng == null) {
-        isLocationGrantedNotifier.value = false;
-      }
-    }
-    
+    // NOTE: isLocationGrantedNotifier is intentionally left as false here.
+    // The LocationPermissionScreen gate runs on every app launch and will
+    // set it to true after the user confirms their location (fast for returning
+    // users with permission already granted, full flow for new users).
+    isLocationGrantedNotifier.value = false;
+
     coordinatesUpdateNotifier.value++;
   }
 
   String sanitizeDistrict(String rawDistrict, String fullName) {
     String d = rawDistrict.trim();
-    final invalidWords = ['institute', 'engineering', 'technology', 'university', 'college', 'school', 'hospital', 'station', 'airport', 'park', 'road', 'street', 'building', 'apartment', 'nagar', 'sector', 'colony', 'shop', 'mall', 'hotel', 'temple', 'house', 'office'];
-    
-    bool isInvalid = d.isEmpty || d.length > 25 || invalidWords.any((w) => d.toLowerCase().contains(w));
-    
+    final invalidWords = [
+      'institute',
+      'engineering',
+      'technology',
+      'university',
+      'college',
+      'school',
+      'hospital',
+      'station',
+      'airport',
+      'park',
+      'road',
+      'street',
+      'building',
+      'apartment',
+      'nagar',
+      'sector',
+      'colony',
+      'shop',
+      'mall',
+      'hotel',
+      'temple',
+      'house',
+      'office'
+    ];
+
+    bool isInvalid = d.isEmpty ||
+        d.length > 25 ||
+        invalidWords.any((w) => d.toLowerCase().contains(w));
+
     if (isInvalid && fullName.isNotEmpty) {
       final parts = fullName.split(',').map((p) => p.trim()).toList();
       for (final p in parts) {
-        if (p.isNotEmpty && p.length <= 25 && !invalidWords.any((w) => p.toLowerCase().contains(w))) {
+        if (p.isNotEmpty &&
+            p.length <= 25 &&
+            !invalidWords.any((w) => p.toLowerCase().contains(w))) {
           if (RegExp(r'^\d+$').hasMatch(p)) continue;
           if (p.toLowerCase() == 'india') continue;
           return p;
@@ -141,8 +161,16 @@ class LocationService {
         final mappedData = data.map<Map<String, dynamic>>((it) {
           final displayName = it['display_name']?.toString() ?? '';
           final addr = it['address'] as Map<String, dynamic>? ?? {};
-          final rawDistrict = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['municipality'] ?? addr['county'] ?? addr['state_district'] ?? addr['district'] ?? '';
-          final district = sanitizeDistrict(rawDistrict.toString(), displayName);
+          final rawDistrict = addr['city'] ??
+              addr['town'] ??
+              addr['village'] ??
+              addr['municipality'] ??
+              addr['county'] ??
+              addr['state_district'] ??
+              addr['district'] ??
+              '';
+          final district =
+              sanitizeDistrict(rawDistrict.toString(), displayName);
           final state = addr['state'] ?? '';
           return {
             'name': displayName.split(',').first.trim(),
@@ -175,17 +203,17 @@ class LocationService {
   /// Used for efficient Bounding Box queries in Supabase.
   Future<Map<String, double>?> getBoundingBoxAsync() async {
     if (_activeLat == null || _activeLng == null) return null;
-    
+
     final prefs = await SharedPreferences.getInstance();
     // Default to 50km if match radius isn't set
     final radiusKm = prefs.getDouble('matchRadius') ?? 50.0;
-    
+
     // Rough approximation: 1 degree of latitude is ~111 kilometers
     final latOffset = radiusKm / 111.0;
-    
+
     // Longitude offset scales with latitude (cos function)
     final lngOffset = radiusKm / (111.0 * cos(_activeLat! * pi / 180.0));
-    
+
     return {
       'minLat': _activeLat! - latOffset,
       'maxLat': _activeLat! + latOffset,
@@ -194,25 +222,32 @@ class LocationService {
     };
   }
 
-  void setLocation(String newLocation, {double? lat, double? lng, String? district, String? state}) async {
+  void setLocation(String newLocation,
+      {double? lat, double? lng, String? district, String? state}) async {
     _activeLat = lat ?? _activeLat;
     _activeLng = lng ?? _activeLng;
-    
+
     if (activeLocationNotifier.value != newLocation) {
       activeLocationNotifier.value = newLocation;
     }
-    
+
     final rawDistrict = district ?? (newLocation.split(',').first.trim());
     final finalDistrict = sanitizeDistrict(rawDistrict, newLocation);
-    final finalState = state ?? (newLocation.split(',').length > 1 ? newLocation.split(',')[1].trim() : '');
-    
+    final finalState = state ??
+        (newLocation.split(',').length > 1
+            ? newLocation.split(',')[1].trim()
+            : '');
+
     activeDistrictNotifier.value = finalDistrict;
     activeStateNotifier.value = finalState;
 
-    if (_activeLat != null && _activeLng != null && finalDistrict.isNotEmpty && finalDistrict != 'Unknown') {
+    if (_activeLat != null &&
+        _activeLng != null &&
+        finalDistrict.isNotEmpty &&
+        finalDistrict != 'Unknown') {
       isLocationGrantedNotifier.value = true;
     }
-    
+
     if (lat != null && lng != null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble('current_map_lat', lat);
@@ -230,7 +265,8 @@ class LocationService {
             'lng': lng,
             'city': finalDistrict,
           }).eq('id', uid);
-          debugPrint('LocationService: Instantly synced new location ($finalDistrict) to DB');
+          debugPrint(
+              'LocationService: Instantly synced new location ($finalDistrict) to DB');
         } catch (_) {}
       }
     }
@@ -242,26 +278,32 @@ class LocationService {
     try {
       final uid = Supabase.instance.client.auth.currentUser?.id;
       if (uid == null) return;
-      final currentCity = activeDistrictNotifier.value.isNotEmpty ? activeDistrictNotifier.value : 'Unknown';
+      final currentCity = activeDistrictNotifier.value.isNotEmpty
+          ? activeDistrictNotifier.value
+          : 'Unknown';
       await Supabase.instance.client.from('profiles').update({
         'lat': _activeLat,
         'lng': _activeLng,
         'city': currentCity,
       }).eq('id', uid);
-      debugPrint('LocationService: Synced cached location to DB ($_activeLat, $_activeLng)');
+      debugPrint(
+          'LocationService: Synced cached location to DB ($_activeLat, $_activeLng)');
     } catch (e) {
       debugPrint('LocationService: Failed to sync cached location: $e');
     }
   }
+
   /// Haversine formula to calculate distance in km
-  double calculateDistanceInKm(double lat1, double lon1, double lat2, double lon2) {
-    const double R = 6371.0; 
+  double calculateDistanceInKm(
+      double lat1, double lon1, double lat2, double lon2) {
+    const double R = 6371.0;
     final double dLat = (lat2 - lat1) * pi / 180.0;
     final double dLon = (lon2 - lon1) * pi / 180.0;
-    final double a = 
-        sin(dLat / 2) * sin(dLat / 2) +
-        cos(lat1 * pi / 180.0) * cos(lat2 * pi / 180.0) * 
-        sin(dLon / 2) * sin(dLon / 2);
+    final double a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat1 * pi / 180.0) *
+            cos(lat2 * pi / 180.0) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
     final double c = 2 * asin(sqrt(a));
     return R * c;
   }
@@ -270,8 +312,7 @@ class LocationService {
   Future<String?> reverseGeocode(double lat, double lng) async {
     try {
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json&zoom=10&addressdetails=1'
-      );
+          'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json&zoom=10&addressdetails=1');
       final res = await http.get(url, headers: {
         'User-Agent': 'MeetraApp/1.0 (contact@meetra.app)',
       });
@@ -279,7 +320,14 @@ class LocationService {
         final data = jsonDecode(res.body);
         final addr = data['address'] as Map<String, dynamic>? ?? {};
         final displayName = data['display_name']?.toString() ?? '';
-        final rawDistrict = addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['municipality'] ?? addr['county'] ?? addr['state_district'] ?? addr['district'] ?? '';
+        final rawDistrict = addr['city'] ??
+            addr['town'] ??
+            addr['village'] ??
+            addr['municipality'] ??
+            addr['county'] ??
+            addr['state_district'] ??
+            addr['district'] ??
+            '';
         final state = addr['state'] ?? '';
         final sanitized = sanitizeDistrict(rawDistrict.toString(), displayName);
         return state.toString().isNotEmpty ? '$sanitized, $state' : sanitized;
@@ -321,29 +369,42 @@ class LocationService {
 
     // We do NOT set isLocationGrantedNotifier to true yet.
     // We must successfully fetch the position first to be absolutely sure they didn't block it at the prompt.
-    
+
     try {
-      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
       double distanceKm = 0.0;
       if (_activeLat != null && _activeLng != null) {
-        distanceKm = calculateDistanceInKm(_activeLat!, _activeLng!, position.latitude, position.longitude);
+        distanceKm = calculateDistanceInKm(
+            _activeLat!, _activeLng!, position.latitude, position.longitude);
       }
 
       // If we moved > 5km, or don't have a cached location name, or forced -> Reverse Geocode
-      if (forceReverseGeocode || distanceKm > 5.0 || activeLocationNotifier.value.isEmpty || activeLocationNotifier.value == 'Map Location') {
-        String? newLocationName = await reverseGeocode(position.latitude, position.longitude);
+      if (forceReverseGeocode ||
+          distanceKm > 5.0 ||
+          activeLocationNotifier.value.isEmpty ||
+          activeLocationNotifier.value == 'Map Location') {
+        String? newLocationName =
+            await reverseGeocode(position.latitude, position.longitude);
         if (newLocationName != null) {
-          setLocation(newLocationName, lat: position.latitude, lng: position.longitude);
+          setLocation(newLocationName,
+              lat: position.latitude, lng: position.longitude);
         } else {
           // Fallback to update coords only if API fails
-          setLocation(activeLocationNotifier.value.isNotEmpty ? activeLocationNotifier.value : 'Current Location', lat: position.latitude, lng: position.longitude);
+          setLocation(
+              activeLocationNotifier.value.isNotEmpty
+                  ? activeLocationNotifier.value
+                  : 'Current Location',
+              lat: position.latitude,
+              lng: position.longitude);
         }
       } else {
         // Just update coordinates silently without hitting API
-        setLocation(activeLocationNotifier.value, lat: position.latitude, lng: position.longitude);
+        setLocation(activeLocationNotifier.value,
+            lat: position.latitude, lng: position.longitude);
       }
-      
+
       isLocationGrantedNotifier.value = true;
       return true;
     } catch (e) {

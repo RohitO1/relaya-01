@@ -18,16 +18,15 @@ import 'services/theme_service.dart';
 import 'services/location_service.dart';
 
 import 'widgets/location_picker_sheet.dart';
+import 'widgets/profile_detail_sheet.dart';
 // import 'follow_list_screen.dart'; // removed unused
 import 'auth_screen.dart';
-import 'dashboard_detail_screens.dart';
-import 'chat_screen.dart';
+
 import 'edit_profile_screen.dart';
 import 'package:share_plus/share_plus.dart';
 import 'admin_dashboard_screen.dart';
 import 'widgets/skeleton_loaders.dart';
 import 'widgets/tiltable_hero_section.dart';
-import 'hosted_joined_screens.dart';
 import 'services/doodle_theme.dart';
 import 'communities_screen.dart';
 
@@ -97,9 +96,10 @@ class _ProfileScreenState extends State<ProfileScreen>
   int _totalRushInsCount = 0;
   late AnimationController _orbController;
   final String _myUid = Supabase.instance.client.auth.currentUser?.id ?? '';
-  int _activeTabIndex = 0; // 0=Grid, 1=Reels, 2=Experiences, 3=Tagged
+  int _activeTabIndex = 0; // 0=Grid, 1=Saved/Tagged
   int _contributionScore = 100;
   List<Map<String, dynamic>> _joinedCommunities = [];
+  bool _requestSent = false;
 
   // Settings State Variables
   bool _pushNotifications = true;
@@ -200,6 +200,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           .order('created_at', ascending: false);
 
       bool isFollowing = false;
+      bool reqSent = false;
       if (widget.userId != null && widget.userId != _myUid) {
         final check = await Supabase.instance.client
             .from('requests')
@@ -209,6 +210,14 @@ class _ProfileScreenState extends State<ProfileScreen>
             .eq('target_type', 'follow')
             .maybeSingle();
         isFollowing = check != null;
+
+        final msgCheck = await Supabase.instance.client
+            .from('messages')
+            .select('id')
+            .eq('sender_id', _myUid)
+            .eq('receiver_id', uid)
+            .limit(1);
+        reqSent = (msgCheck as List).isNotEmpty;
       }
 
       final rushInsRes = await Supabase.instance.client
@@ -283,6 +292,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           _totalRushInsCount = rushInsRes.length + joinedRushInsRes.length;
           _userPosts = List<Map<String, dynamic>>.from(postsRes);
           _isFollowing = isFollowing;
+          _requestSent = reqSent;
           _isPublic = _profile?['is_public'] ?? true;
           _contributionScore = score;
           _joinedCommunities = joinedCamps;
@@ -847,22 +857,43 @@ class _ProfileScreenState extends State<ProfileScreen>
 
               // 6. Centered Capsule Outline Button
               GestureDetector(
-                onTap: isMe ? _onEditProfile : () {},
+                onTap: (isMe || _requestSent)
+                    ? (isMe ? _onEditProfile : null)
+                    : () {
+                        if (_profile != null) {
+                          showMessageRequestSheet(
+                            context,
+                            _profile!,
+                            onSent: () {
+                              if (mounted) {
+                                setState(() => _requestSent = true);
+                              }
+                            },
+                          );
+                        }
+                      },
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.transparent,
+                    color: _requestSent
+                        ? const Color(0xFF22C55E).withValues(alpha: 0.15)
+                        : Colors.transparent,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white24,
+                      color: _requestSent
+                          ? const Color(0xFF22C55E).withValues(alpha: 0.4)
+                          : Colors.white24,
                       width: 1,
                     ),
                   ),
                   child: Text(
-                    isMe ? 'Edit Profile' : 'Message',
+                    isMe
+                        ? 'Edit Profile'
+                        : (_requestSent ? 'Request Sent' : 'Request'),
                     style: GoogleFonts.inter(
-                      color: Colors.white,
+                      color:
+                          _requestSent ? const Color(0xFF22C55E) : Colors.white,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1762,9 +1793,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         child: Row(
           children: [
             _buildTabBtn(0, 'GRID'),
-            _buildTabBtn(1, 'REELS'),
-            _buildTabBtn(2, 'VIBES'),
-            _buildTabBtn(3, isMe ? 'SAVED' : 'TAGGED'),
+            _buildTabBtn(1, isMe ? 'SAVED' : 'TAGGED'),
           ],
         ),
       );
@@ -1776,9 +1805,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       child: Row(
         children: [
           _buildTabBtn(0, 'GRID'),
-          _buildTabBtn(1, 'REELS'),
-          _buildTabBtn(2, 'VIBES'),
-          _buildTabBtn(3, isMe ? 'SAVED' : 'TAGGED'),
+          _buildTabBtn(1, isMe ? 'SAVED' : 'TAGGED'),
         ],
       ),
     );
@@ -1857,39 +1884,13 @@ class _ProfileScreenState extends State<ProfileScreen>
       );
     }
 
-    if (_activeTabIndex != 0 && _activeTabIndex != 3) {
-      // Empty state for Reels, Experiencs
-      return Container(
-        padding: const EdgeInsets.all(60),
-        alignment: Alignment.center,
-        child: Column(
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border:
-                      Border.all(color: ProfileColors.borderLight, width: 2)),
-              child:
-                  const Icon(Icons.filter_none, color: ProfileColors.textMuted),
-            ),
-            const SizedBox(height: 16),
-            Text('No Content Yet',
-                style: GoogleFonts.inter(
-                    fontSize: 18, fontWeight: FontWeight.w600)),
-          ],
-        ),
-      );
-    }
-
-    final displayPosts = _activeTabIndex == 3 ? _savedPosts : _userPosts;
+    final displayPosts = _activeTabIndex == 1 ? _savedPosts : _userPosts;
 
     if (displayPosts.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(60),
         alignment: Alignment.center,
-        child: Text(_activeTabIndex == 3 ? 'No saved posts' : 'No posts yet',
+        child: Text(_activeTabIndex == 1 ? 'No saved posts' : 'No posts yet',
             style: GoogleFonts.inter(
                 color: ProfileColors.textMuted, fontSize: 14)),
       );
@@ -1993,13 +1994,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                     .stream(primaryKey: ['id']),
                 builder: (context, reqSnap) {
                   final allReqs = reqSnap.data ?? [];
-                  // Counts
-                  final followCount = allReqs
-                      .where((r) =>
-                          r['target_id'] == uid &&
-                          r['target_type'] == 'follow' &&
-                          r['status'] == 'pending')
-                      .length;
                   final msgCount = allReqs
                       .where((r) =>
                           r['target_id'] == uid &&
@@ -2010,141 +2004,21 @@ class _ProfileScreenState extends State<ProfileScreen>
                   return ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      // ── SECTION 1: YOUR ECOSYSTEM ──
-                      _buildSectionTitle('🏠 YOUR ECOSYSTEM'),
-                      _buildDashItem(Icons.campaign, 'amber', 'Hosted by You',
-                          'Manage participants across your rush-ins, activities & events',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const HostedByYouScreen()))),
-                      _buildDashItem(Icons.how_to_reg, 'teal', 'Joined by You',
-                          'Track your participation status across all categories',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const JoinedByYouScreen()))),
-                      _buildDashItem(
-                          Icons.person_add_alt_1,
-                          'coral',
-                          'Follow Requests',
-                          'Approve or deny incoming follow requests',
-                          badge: followCount > 0 ? '$followCount' : null,
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) =>
-                                      const FollowRequestsScreen()))),
-                      const Divider(
-                          color: ProfileColors.borderSubtle, height: 40),
-
-                      // ── SECTION 2: CONTENT MANAGEMENT ──
-                      _buildSectionTitle('📦 CONTENT MANAGEMENT'),
-                      _buildDashItem(Icons.photo_library, 'teal', 'My Posts',
-                          'Manage, archive or delete posts',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const MyPostsScreen()))),
-                      _buildDashItem(
-                          Icons.bookmark_border,
-                          'violet',
-                          'Saved Collections',
-                          'Posts, places & experiences saved',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) =>
-                                      const SavedCollectionsScreen()))),
-                      _buildDashItem(Icons.star_border, 'amber',
-                          'Reviews & Ratings', 'Manage your reviews across app',
-                          onTap: () => ScaffoldMessenger.of(context)
-                              .showSnackBar(const SnackBar(
-                                  content: Text('Coming soon!')))),
-                      _buildDashItem(Icons.chat_bubble_outline, 'blue',
-                          'Messages & Chats', 'All conversations & chat groups',
-                          badge: msgCount > 0 ? '$msgCount' : null,
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const ChatScreen()))),
-                      const Divider(
-                          color: ProfileColors.borderSubtle, height: 40),
-
-                      // ── SECTION 3: ANALYTICS & INSIGHTS ──
-                      _buildSectionTitle('📊 ANALYTICS & INSIGHTS'),
-                      _buildDashItem(Icons.bar_chart, 'green',
-                          'Profile Insights', 'Views, reach & engagement stats',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) =>
-                                      const ProfileInsightsScreen()))),
-                      _buildDashItem(
-                          Icons.trending_up,
-                          'teal',
-                          'Spark Score Analytics',
-                          'Track your Spark score growth',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) =>
-                                      const SparkAnalyticsScreen()))),
-                      _buildDashItem(
-                          Icons.donut_large,
-                          'amber',
-                          'Activity Summary',
-                          'Weekly & monthly activity report',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) =>
-                                      const ActivitySummaryScreen()))),
-                      const Divider(
-                          color: ProfileColors.borderSubtle, height: 40),
-
-                      // ── SECTION 4: QUICK TOOLS ──
-                      _buildSectionTitle('🔧 QUICK TOOLS'),
-                      _buildDashItem(Icons.block, 'pink', 'Blocked Users',
-                          'Manage blocked accounts',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const BlockedUsersScreen()))),
-                      _buildDashItem(Icons.visibility_off, 'blue',
-                          'Restricted Accounts', 'Silently limit interactions',
-                          onTap: () => ScaffoldMessenger.of(context)
-                              .showSnackBar(const SnackBar(
-                                  content: Text('Coming soon!')))),
-                      _buildDashItem(Icons.qr_code_2, 'violet', 'QR Code',
-                          'Share your profile via QR',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const QRCodeScreen()))),
-                      _buildDashItem(Icons.share, 'green', 'Invite Friends',
-                          'Invite contacts to join Relaya',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) =>
-                                      const InviteFriendsScreen()))),
-                      const Divider(
-                          color: ProfileColors.borderSubtle, height: 40),
-
-                      // ── SECTION 5: SYSTEM ADMINISTRATION ──
-                      _buildSectionTitle('⚡ SYSTEM ADMIN'),
-                      _buildDashItem(
-                          Icons.admin_panel_settings,
-                          'red',
-                          'Super Admin Panel',
-                          'Supreme power over the Relaya ecosystem',
-                          onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) =>
-                                      const AdminDashboardScreen()))),
-                      const SizedBox(height: 30),
+                      if (_profile?['is_super_admin'] == true) ...[
+                        // ── SECTION 4: SYSTEM ADMINISTRATION ──
+                        _buildSectionTitle('⚡ SYSTEM ADMIN'),
+                        _buildDashItem(
+                            Icons.admin_panel_settings,
+                            'red',
+                            'Super Admin Panel',
+                            'Supreme power over the Relaya ecosystem',
+                            onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        const AdminDashboardScreen()))),
+                        const SizedBox(height: 30),
+                      ],
                     ],
                   );
                 },
@@ -3591,8 +3465,7 @@ class _LocationMapPickerSheetState extends State<LocationMapPickerSheet> {
           _selectedPoint = LatLng(position.latitude, position.longitude);
           _fetchingGps = false;
         });
-        _googleMapController
-            ?.animateToLatLng(_selectedPoint, zoom: 14.0);
+        _googleMapController?.animateToLatLng(_selectedPoint, zoom: 14.0);
         _reverseGeocode(_selectedPoint);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Row(children: [

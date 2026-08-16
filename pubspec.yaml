@@ -46,6 +46,8 @@ dependencies:
   google_generative_ai: ^0.4.7
   firebase_app_check: ^0.4.5+2
   flutter_svg: ^2.3.0
+  flutter_dotenv: ^6.0.1
+  image: ^4.8.0
 
 # Override flutter_webrtc to use our patched version with VoiceMaskBridge.
 # This is the ONLY reliable way to intercept raw PCM audio before Opus encoding.
@@ -60,10 +62,18 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_native_splash: ^2.4.1
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
   assets:
+    - .env
     - assets/images/
     - assets/images/rello/
     - assets/svg/
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/meetra_icon.png"
+  min_sdk_android: 21

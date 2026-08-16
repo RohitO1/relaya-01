@@ -401,8 +401,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       _locSearchCtrl.text = name;
       _searchResults = [];
     });
-    _googleMapCtrl
-        ?.animateToLatLng(LatLng(lat, lng), zoom: 14.0);
+    _googleMapCtrl?.animateToLatLng(LatLng(lat, lng), zoom: 14.0);
   }
 
   Future<void> _reverseGeocode(double lat, double lng) async {
@@ -445,8 +444,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         _lat = pos.latitude;
         _lng = pos.longitude;
       });
-      _googleMapCtrl?.animateToLatLng(
-          LatLng(pos.latitude, pos.longitude), zoom: 14.0);
+      _googleMapCtrl?.animateToLatLng(LatLng(pos.latitude, pos.longitude),
+          zoom: 14.0);
       await _reverseGeocode(pos.latitude, pos.longitude);
     } catch (e) {
       if (mounted)
@@ -534,6 +533,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             locationName.isNotEmpty ? locationName : _cityCtrl.text,
             lat: _lat,
             lng: _lng);
+        // Mark location as confirmed so the location gate doesn't re-show
+        // for this new user who just set their city in onboarding.
+        locationService.isLocationGrantedNotifier.value = true;
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble('matchRadius', 25.0);

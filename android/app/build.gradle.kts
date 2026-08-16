@@ -16,7 +16,6 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.example.meetra_app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "28.2.13676358"
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -60,6 +59,7 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            keepDebugSymbols.add("**/*.so")
             excludes.add("**/libagora_clear_vision_extension.so")
             excludes.add("**/libagora_lip_sync_extension.so")
             excludes.add("**/libagora_spatial_audio_extension.so")

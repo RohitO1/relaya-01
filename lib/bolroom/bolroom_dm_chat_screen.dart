@@ -15,6 +15,9 @@ import '../chatroom_live_screen.dart';
 import '../services/doodle_theme.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'bolroom_avatars.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:google_fonts/google_fonts.dart' hide Config;
 
 import '../services/notification_service.dart';
 
@@ -23,6 +26,7 @@ class BolroomDmChatScreen extends StatefulWidget {
   final String partnerId;
   final String partnerName;
   final String partnerAvatarKey;
+  final String? partnerAvatarUrl;
 
   const BolroomDmChatScreen({
     super.key,
@@ -30,6 +34,7 @@ class BolroomDmChatScreen extends StatefulWidget {
     required this.partnerId,
     required this.partnerName,
     required this.partnerAvatarKey,
+    this.partnerAvatarUrl,
   });
 
   @override
@@ -70,7 +75,7 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
-  
+
   static LinearGradient userAvatarAura = const LinearGradient(
     colors: [Color(0xFFD433FF), Color(0xFF7B2CBF), Color(0xFFFF6B00)],
     begin: Alignment.topLeft,
@@ -83,7 +88,8 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
     _audioRecorder = AudioRecorder();
     _audioPlayer = AudioPlayer();
     _audioPlayer.onPlayerStateChanged.listen((state) {
-      if (mounted) setState(() => _isPlayingAudio = state == PlayerState.playing);
+      if (mounted)
+        setState(() => _isPlayingAudio = state == PlayerState.playing);
     });
 
     _messageController.addListener(() {
@@ -109,13 +115,17 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
 
   Future<void> _loadMessages() async {
     try {
-      final res = await _sb.from('bolroom_dm_messages')
+      final res = await _sb
+          .from('bolroom_dm_messages')
           .select('*')
           .eq('conversation_id', widget.conversationId)
           .order('created_at', ascending: true)
           .limit(200);
       if (mounted) {
-        setState(() { _messages = List<Map<String, dynamic>>.from(res); _loading = false; });
+        setState(() {
+          _messages = List<Map<String, dynamic>>.from(res);
+          _loading = false;
+        });
         _scrollToBottom();
       }
     } catch (e) {
@@ -125,36 +135,41 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
   }
 
   void _subscribeRealtime() {
-    _channel = _sb.channel('dm_chat_${widget.conversationId}').onPostgresChanges(
-      event: PostgresChangeEvent.insert,
-      schema: 'public',
-      table: 'bolroom_dm_messages',
-      filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'conversation_id', value: widget.conversationId),
-      callback: (payload) {
-        if (payload.newRecord.isNotEmpty && mounted) {
-          final newMsg = payload.newRecord;
-          final newId = newMsg['id'];
-          if (newId != null && _messages.any((m) => m['id'] == newId)) return;
-          setState(() => _messages.add(newMsg));
-          _scrollToBottom();
-          _markRead();
-        }
-      },
-    );
+    _channel =
+        _sb.channel('dm_chat_${widget.conversationId}').onPostgresChanges(
+              event: PostgresChangeEvent.insert,
+              schema: 'public',
+              table: 'bolroom_dm_messages',
+              filter: PostgresChangeFilter(
+                  type: PostgresChangeFilterType.eq,
+                  column: 'conversation_id',
+                  value: widget.conversationId),
+              callback: (payload) {
+                final newMsg = payload.newRecord;
+                final newId = newMsg['id'];
+                if (newId != null && _messages.any((m) => m['id'] == newId))
+                  return;
+                setState(() => _messages.add(newMsg));
+                _scrollToBottom();
+                _markRead();
+              },
+            );
     _channel!.subscribe();
   }
 
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+        _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
       }
     });
   }
 
   Future<void> _markRead() async {
     try {
-      await _sb.from('bolroom_dm_messages')
+      await _sb
+          .from('bolroom_dm_messages')
           .update({'is_read': true})
           .eq('conversation_id', widget.conversationId)
           .neq('sender_id', _myId)
@@ -180,7 +195,8 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       String previewMessage = text;
       if (text.startsWith('[IMAGE]')) {
         previewMessage = '📷 Image';
-      } else if (text.startsWith('[AUDIO]')) previewMessage = '🎤 Voice Message';
+      } else if (text.startsWith('[AUDIO]'))
+        previewMessage = '🎤 Voice Message';
 
       // Update conversation last_message
       await _sb.from('bolroom_dm_conversations').update({
@@ -190,7 +206,11 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
 
       // Send push notification
       try {
-        final myProfile = await _sb.from('bolroom_profiles').select('anon_name').eq('id', _myId).maybeSingle();
+        final myProfile = await _sb
+            .from('bolroom_profiles')
+            .select('anon_name')
+            .eq('id', _myId)
+            .maybeSingle();
         final myName = myProfile?['anon_name'] ?? 'User';
         NotificationService.sendNotification(
           userId: widget.partnerId,
@@ -204,7 +224,7 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
           },
         );
       } catch (_) {}
-      
+
       setState(() {
         _isAudioPreview = false;
         _recordedFilePath = null;
@@ -225,7 +245,10 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
             _buildCustomAppBar(doodle),
             Expanded(
               child: _loading
-                  ? Center(child: CircularProgressIndicator(color: doodle ? DoodleColors.brown : purplePrimary, strokeWidth: 2))
+                  ? Center(
+                      child: CircularProgressIndicator(
+                          color: doodle ? DoodleColors.brown : purplePrimary,
+                          strokeWidth: 2))
                   : _buildMessageList(doodle),
             ),
             _buildInputArea(doodle),
@@ -242,21 +265,25 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: doodle
-        ? BoxDecoration(
-            color: DoodleColors.paper,
-            border: Border(bottom: BorderSide(color: DoodleColors.brown.withValues(alpha: 0.1), width: 1)),
-          )
-        : BoxDecoration(
-            color: bgColor,
-            border: const Border(bottom: BorderSide(color: borderColor, width: 1)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              )
-            ],
-          ),
+          ? BoxDecoration(
+              color: DoodleColors.paper,
+              border: Border(
+                  bottom: BorderSide(
+                      color: DoodleColors.brown.withValues(alpha: 0.1),
+                      width: 1)),
+            )
+          : BoxDecoration(
+              color: bgColor,
+              border: const Border(
+                  bottom: BorderSide(color: borderColor, width: 1)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ],
+            ),
       child: Row(
         children: [
           // Back Button
@@ -265,21 +292,28 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: doodle
-                ? DoodleDecorations.card()
-                : BoxDecoration(
-                    color: cardColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: borderColor),
-                  ),
-              child: Icon(Icons.arrow_back_ios_new_rounded, color: doodle ? DoodleColors.brown : Colors.white, size: 18),
+                  ? DoodleDecorations.card()
+                  : BoxDecoration(
+                      color: cardColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: borderColor),
+                    ),
+              child: Icon(Icons.arrow_back_ios_new_rounded,
+                  color: doodle ? DoodleColors.brown : Colors.white, size: 18),
             ),
           ),
           const SizedBox(width: 16),
-          
+
           // User Avatar & Online Status
           Stack(
             children: [
-              doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 22, child: Icon(Icons.person, color: DoodleColors.cream, size: 22)) : _buildGlowingAvatar(44),
+              doodle
+                  ? CircleAvatar(
+                      backgroundColor: DoodleColors.orange,
+                      radius: 22,
+                      child: Icon(Icons.person,
+                          color: DoodleColors.cream, size: 22))
+                  : _buildGlowingAvatar(44),
               Positioned(
                 bottom: 0,
                 right: 0,
@@ -289,14 +323,15 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF00FF00), // Online Green
                     shape: BoxShape.circle,
-                    border: Border.all(color: doodle ? DoodleColors.paper : bgColor, width: 2),
+                    border: Border.all(
+                        color: doodle ? DoodleColors.paper : bgColor, width: 2),
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(width: 12),
-          
+
           // User Name & Subtitle
           Expanded(
             child: Column(
@@ -304,23 +339,30 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
               children: [
                 Text(
                   widget.partnerName,
-                  style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: doodle
+                      ? DoodleFonts.heading(
+                          color: DoodleColors.brown, fontSize: 18)
+                      : const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   "Online now",
-                  style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 12).copyWith(fontWeight: FontWeight.bold) : TextStyle(color: purplePrimary.withValues(alpha: 0.8), fontSize: 12, fontWeight: FontWeight.w500),
+                  style: doodle
+                      ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 12)
+                          .copyWith(fontWeight: FontWeight.bold)
+                      : TextStyle(
+                          color: purplePrimary.withValues(alpha: 0.8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500),
                 ),
               ],
             ),
           ),
-          
-          // Action Buttons
-          _buildAppBarAction(Icons.videocam_outlined, doodle),
-          const SizedBox(width: 12),
-          _buildAppBarAction(Icons.call_outlined, doodle),
         ],
       ),
     );
@@ -331,13 +373,14 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       width: 40,
       height: 40,
       decoration: doodle
-        ? DoodleDecorations.card()
-        : BoxDecoration(
-            color: cardColor,
-            shape: BoxShape.circle,
-            border: Border.all(color: borderColor),
-          ),
-      child: Icon(icon, color: doodle ? DoodleColors.blue : purplePrimary, size: 20),
+          ? DoodleDecorations.card()
+          : BoxDecoration(
+              color: cardColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: borderColor),
+            ),
+      child: Icon(icon,
+          color: doodle ? DoodleColors.blue : purplePrimary, size: 20),
     );
   }
 
@@ -351,8 +394,9 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       itemCount: _messages.length,
       itemBuilder: (context, index) {
         final msg = _messages[index];
-        final showDate = index == 0 || _shouldShowDate(_messages[index - 1], msg);
-        
+        final showDate =
+            index == 0 || _shouldShowDate(_messages[index - 1], msg);
+
         return Column(
           children: [
             if (showDate) _buildDateSeparator(msg['created_at'], doodle),
@@ -368,7 +412,9 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       final prevDt = DateTime.parse(prev['created_at'].toString()).toLocal();
       final currDt = DateTime.parse(curr['created_at'].toString()).toLocal();
       return prevDt.day != currDt.day || prevDt.month != currDt.month;
-    } catch (_) { return false; }
+    } catch (_) {
+      return false;
+    }
   }
 
   Widget _buildDateSeparator(dynamic ts, bool doodle) {
@@ -378,8 +424,10 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       final diff = DateTime.now().difference(dt);
       if (diff.inDays == 0) {
         label = 'Today';
-      } else if (diff.inDays == 1) label = 'Yesterday';
-      else label = '${dt.day}/${dt.month}/${dt.year}';
+      } else if (diff.inDays == 1)
+        label = 'Yesterday';
+      else
+        label = '${dt.day}/${dt.month}/${dt.year}';
     } catch (_) {}
 
     return Padding(
@@ -388,19 +436,28 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: doodle
-            ? BoxDecoration(
-                color: DoodleColors.cream,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: DoodleColors.brown.withValues(alpha: 0.2)),
-              )
-            : BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: borderColor),
-              ),
+              ? BoxDecoration(
+                  color: DoodleColors.cream,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: DoodleColors.brown.withValues(alpha: 0.2)),
+                )
+              : BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: borderColor),
+                ),
           child: Text(
             label,
-            style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 12).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: textMuted, fontSize: 11, fontWeight: FontWeight.w600),
+            style: doodle
+                ? DoodleFonts.body(
+                        color: DoodleColors.brown.withValues(alpha: 0.7),
+                        fontSize: 12)
+                    .copyWith(fontWeight: FontWeight.bold)
+                : const TextStyle(
+                    color: textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -413,9 +470,6 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
     String time = _formatTime(msg['created_at']);
     bool isRead = msg['is_read'] == true;
 
-    // To mimic the UI logic exactly: determine if the NEXT message is from the same user.
-    // Because ListView builds top-down (index 0 is oldest), the "bottom" spacing 
-    // should be larger if the next message (index + 1) is from someone else.
     bool isLastInSequence = true;
     if (index < _messages.length - 1) {
       isLastInSequence = _messages[index + 1]['sender_id'] != msg['sender_id'];
@@ -426,91 +480,107 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
         bottom: isLastInSequence ? 16.0 : 4.0,
       ),
       child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isMe) ...[
-            doodle ? CircleAvatar(backgroundColor: DoodleColors.orange, radius: 14, child: Icon(Icons.person, color: DoodleColors.cream, size: 14)) : _buildGlowingAvatar(28),
+            doodle
+                ? CircleAvatar(
+                    backgroundColor: DoodleColors.orange,
+                    radius: 14,
+                    child:
+                        Icon(Icons.person, color: DoodleColors.cream, size: 14))
+                : _buildGlowingAvatar(28),
             const SizedBox(width: 8),
           ],
-          
+
           Flexible(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: doodle
-                ? BoxDecoration(
-                    color: isMe ? DoodleColors.cream : DoodleColors.paper,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(20),
-                      topRight: const Radius.circular(20),
-                      bottomLeft: Radius.circular(isMe ? 20 : 4),
-                      bottomRight: Radius.circular(isMe ? 4 : 20),
+                  ? BoxDecoration(
+                      color: isMe ? DoodleColors.cream : DoodleColors.paper,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(20),
+                        topRight: const Radius.circular(20),
+                        bottomLeft: Radius.circular(isMe ? 20 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 20),
+                      ),
+                      border: Border.all(color: DoodleColors.brown, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                            color: DoodleColors.brown,
+                            offset: const Offset(2, 2))
+                      ],
+                    )
+                  : BoxDecoration(
+                      color: isMe ? null : cardColor,
+                      gradient: isMe ? neonGradient : null,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(20),
+                        topRight: const Radius.circular(20),
+                        bottomLeft: Radius.circular(isMe ? 20 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 20),
+                      ),
+                      border: isMe ? null : Border.all(color: borderColor),
+                      boxShadow: isMe
+                          ? [
+                              BoxShadow(
+                                color: purpleDark.withValues(alpha: 0.3),
+                                blurRadius: 12,
+                                spreadRadius: 1,
+                                offset: const Offset(0, 4),
+                              )
+                            ]
+                          : [],
                     ),
-                    border: Border.all(color: DoodleColors.brown, width: 2),
-                    boxShadow: [BoxShadow(color: DoodleColors.brown, offset: const Offset(2, 2))],
-                  )
-                : BoxDecoration(
-                    color: isMe ? null : cardColor,
-                    gradient: isMe ? neonGradient : null,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(20),
-                      topRight: const Radius.circular(20),
-                      bottomLeft: Radius.circular(isMe ? 20 : 4),
-                      bottomRight: Radius.circular(isMe ? 4 : 20),
-                    ),
-                    border: isMe ? null : Border.all(color: borderColor),
-                    boxShadow: isMe
-                        ? [
-                            BoxShadow(
-                              color: purpleDark.withValues(alpha: 0.3),
-                              blurRadius: 12,
-                              spreadRadius: 1,
-                              offset: const Offset(0, 4),
-                            )
-                          ]
-                        : [],
-                  ),
               child: Column(
-                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
-                  Builder(
-                    builder: (context) {
-                      if (text.startsWith('[IMAGE]')) {
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(text.substring(7), width: 220, fit: BoxFit.cover),
+                  Builder(builder: (context) {
+                    if (text.startsWith('[IMAGE]')) {
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(text.substring(7),
+                            width: 220, fit: BoxFit.cover),
+                      );
+                    } else if (text.startsWith('[AUDIO]')) {
+                      final audioUrl = text.substring(7);
+                      return _buildAudioPlayerMessage(audioUrl, isMe, doodle);
+                    } else if (text.startsWith('[VOICEROOM_INVITE]')) {
+                      final data = text.substring(18).split('::');
+                      if (data.length == 5) {
+                        return _buildInviteCard(
+                          roomId: data[0],
+                          roomName: data[1],
+                          topic: data[2],
+                          hostId: data[3],
+                          hostName: data[4],
+                          isMe: isMe,
+                          doodle: doodle,
                         );
-                      } else if (text.startsWith('[AUDIO]')) {
-                        final audioUrl = text.substring(7);
-                        return _buildAudioPlayerMessage(audioUrl, isMe, doodle);
-                      } else if (text.startsWith('[VOICEROOM_INVITE]')) {
-                        final data = text.substring(18).split('::');
-                        if (data.length == 5) {
-                          return _buildInviteCard(
-                            roomId: data[0],
-                            roomName: data[1],
-                            topic: data[2],
-                            hostId: data[3],
-                            hostName: data[4],
-                            isMe: isMe,
-                            doodle: doodle,
-                          );
-                        }
-                        return const Text("Invalid Invite");
-                      } else {
-                        return Text(
-                          text,
-                          style: doodle
-                            ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16)
+                      }
+                      return const Text("Invalid Invite");
+                    } else if (_isForwardedEvent(text)) {
+                      return _buildForwardedEventCard(text, isMe, doodle);
+                    } else {
+                      return Text(
+                        text,
+                        style: doodle
+                            ? DoodleFonts.body(
+                                color: DoodleColors.brown, fontSize: 16)
                             : TextStyle(
-                                color: isMe ? Colors.white : Colors.white.withValues(alpha: 0.9),
+                                color: isMe
+                                    ? Colors.white
+                                    : Colors.white.withValues(alpha: 0.9),
                                 fontSize: 15,
                                 height: 1.3,
                               ),
-                        );
-                      }
+                      );
                     }
-                  ),
+                  }),
                   const SizedBox(height: 6),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -518,12 +588,17 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
                       Text(
                         time,
                         style: doodle
-                          ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.6), fontSize: 12)
-                          : TextStyle(
-                              color: isMe ? Colors.white.withValues(alpha: 0.7) : textMuted,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            ? DoodleFonts.body(
+                                color:
+                                    DoodleColors.brown.withValues(alpha: 0.6),
+                                fontSize: 12)
+                            : TextStyle(
+                                color: isMe
+                                    ? Colors.white.withValues(alpha: 0.7)
+                                    : textMuted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
                       ),
                       if (isMe) ...[
                         const SizedBox(width: 4),
@@ -531,8 +606,12 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
                           Icons.done_all,
                           size: 14,
                           color: doodle
-                            ? (isRead ? DoodleColors.blue : DoodleColors.brown.withValues(alpha: 0.5))
-                            : (isRead ? const Color(0xFF00FFFF) : Colors.white.withValues(alpha: 0.5)),
+                              ? (isRead
+                                  ? DoodleColors.blue
+                                  : DoodleColors.brown.withValues(alpha: 0.5))
+                              : (isRead
+                                  ? const Color(0xFF00FFFF)
+                                  : Colors.white.withValues(alpha: 0.5)),
                         ),
                       ]
                     ],
@@ -541,11 +620,16 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
               ),
             ),
           ),
-          
-          if (isMe) const SizedBox(width: 28), // Spacer to balance the avatar on the left
+
+          if (isMe)
+            const SizedBox(
+                width: 28), // Spacer to balance the avatar on the left
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0, duration: 300.ms, curve: Curves.easeOut);
+    )
+        .animate()
+        .fadeIn(duration: 300.ms, curve: Curves.easeOut)
+        .slideY(begin: 0.1, end: 0, duration: 300.ms, curve: Curves.easeOut);
   }
 
   String _formatTime(dynamic ts) {
@@ -555,7 +639,9 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       final h = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
       final ampm = dt.hour >= 12 ? 'PM' : 'AM';
       return '$h:${dt.minute.toString().padLeft(2, '0')} $ampm';
-    } catch (_) { return ''; }
+    } catch (_) {
+      return '';
+    }
   }
 
   // ==========================================
@@ -576,24 +662,205 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
               await _audioPlayer.play(UrlSource(url));
             }
           },
-          child: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
-            color: doodle ? DoodleColors.orange : (isMe ? Colors.white : purplePrimary), size: 36),
+          child: Icon(
+              isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
+              color: doodle
+                  ? DoodleColors.orange
+                  : (isMe ? Colors.white : purplePrimary),
+              size: 36),
         ),
         const SizedBox(width: 8),
         SizedBox(
-          width: 100, height: 20,
+          width: 100,
+          height: 20,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: List.generate(10, (i) => Container(
-              width: 3, height: isPlaying ? (10 + (i % 3) * 5).toDouble() : 4,
-              decoration: BoxDecoration(
-                color: doodle ? DoodleColors.brown.withValues(alpha: 0.5) : (isMe ? Colors.white.withValues(alpha: 0.7) : textMuted),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            )),
+            children: List.generate(
+                10,
+                (i) => Container(
+                      width: 3,
+                      height: isPlaying ? (10 + (i % 3) * 5).toDouble() : 4,
+                      decoration: BoxDecoration(
+                        color: doodle
+                            ? DoodleColors.brown.withValues(alpha: 0.5)
+                            : (isMe
+                                ? Colors.white.withValues(alpha: 0.7)
+                                : textMuted),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    )),
           ),
         ),
       ],
+    );
+  }
+
+  bool _isForwardedEvent(String text) {
+    return text.startsWith('📌 Check this out: ') &&
+        (text.contains('https://relaya.in/event/') ||
+            text.contains('https://relaya.in/spark/') ||
+            text.contains('https://meetra.app/profile/'));
+  }
+
+  Widget _buildForwardedEventCard(String text, bool isMe, bool doodle) {
+    final lines = text.split('\n');
+    final titleLine = lines.isNotEmpty
+        ? lines[0].replaceFirst('📌 Check this out: ', '').trim()
+        : 'Event';
+
+    String url = '';
+    String? imageUrl;
+
+    if (lines.length > 1) {
+      for (int i = 1; i < lines.length; i++) {
+        if (lines[i].startsWith('|IMG|')) {
+          imageUrl = lines[i].substring(5);
+        } else {
+          url += (url.isEmpty ? '' : '\n') + lines[i];
+        }
+      }
+    }
+    url = url.trim();
+
+    final isProfile = url.contains('/profile/');
+    final typeLabel = isProfile
+        ? 'PROFILE'
+        : (url.contains('/spark/') ? 'SPARK EVENT' : 'RUSH-IN');
+
+    return GestureDetector(
+      onTap: () async {
+        if (url.isNotEmpty && await canLaunchUrl(Uri.parse(url))) {
+          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        }
+      },
+      child: Container(
+        width: 250,
+        decoration: doodle
+            ? BoxDecoration(
+                color: isMe ? DoodleColors.cream : DoodleColors.paper,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: DoodleColors.brown, width: 2),
+              )
+            : BoxDecoration(
+                color: isMe ? Colors.white.withValues(alpha: 0.15) : cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header Banner
+            Container(
+              height: 80,
+              decoration: doodle
+                  ? DoodleDecorations.card(color: DoodleColors.orange)
+                  : BoxDecoration(
+                      gradient: isProfile
+                          ? const LinearGradient(
+                              colors: [Color(0xFF8A2BE2), Color(0xFFFF6B00)])
+                          : const LinearGradient(
+                              colors: [Color(0xFFFF6B00), Color(0xFFFF3D5A)]),
+                    ),
+              clipBehavior: Clip.hardEdge,
+              child: Stack(
+                children: [
+                  if (imageUrl != null)
+                    Positioned.fill(
+                      child: CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        fit: BoxFit.cover,
+                        errorWidget: (context, url, error) =>
+                            _buildFallbackBannerIcon(typeLabel),
+                      ),
+                    ),
+                  if (imageUrl == null)
+                    Center(
+                      child: _buildFallbackBannerIcon(typeLabel),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.push_pin,
+                          color: doodle
+                              ? DoodleColors.brown
+                              : const Color(0xFFFF7A00),
+                          size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        typeLabel,
+                        style: doodle
+                            ? DoodleFonts.body(
+                                color: DoodleColors.brown,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              )
+                            : GoogleFonts.inter(
+                                color: const Color(0xFFFF7A00),
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1,
+                              ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    titleLine,
+                    style: doodle
+                        ? DoodleFonts.subheading(
+                            color: DoodleColors.brown,
+                            fontSize: 18,
+                          )
+                        : GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color:
+                          doodle ? DoodleColors.blue : const Color(0xFFFF7A00),
+                      borderRadius: BorderRadius.circular(10),
+                      border: doodle
+                          ? Border.all(color: DoodleColors.brown, width: 2)
+                          : null,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'View Details',
+                      style: doodle
+                          ? DoodleFonts.body(
+                              color: DoodleColors.cream,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            )
+                          : GoogleFonts.inter(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -610,12 +877,15 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       width: 240,
       padding: const EdgeInsets.all(12),
       decoration: doodle
-        ? DoodleDecorations.card(color: DoodleColors.cream)
-        : BoxDecoration(
-            color: isMe ? Colors.white.withValues(alpha: 0.1) : cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: isMe ? Colors.white30 : purplePrimary.withValues(alpha: 0.3)),
-          ),
+          ? DoodleDecorations.card(color: DoodleColors.cream)
+          : BoxDecoration(
+              color: isMe ? Colors.white.withValues(alpha: 0.1) : cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                  color: isMe
+                      ? Colors.white30
+                      : purplePrimary.withValues(alpha: 0.3)),
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -623,17 +893,44 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: doodle ? DoodleColors.blue.withValues(alpha: 0.2) : purplePrimary.withValues(alpha: 0.2), shape: BoxShape.circle),
-                child: Icon(Icons.graphic_eq, color: doodle ? DoodleColors.blue : purplePrimary, size: 16),
+                decoration: BoxDecoration(
+                    color: doodle
+                        ? DoodleColors.blue.withValues(alpha: 0.2)
+                        : purplePrimary.withValues(alpha: 0.2),
+                    shape: BoxShape.circle),
+                child: Icon(Icons.graphic_eq,
+                    color: doodle ? DoodleColors.blue : purplePrimary,
+                    size: 16),
               ),
               const SizedBox(width: 8),
-              Expanded(child: Text("Private VoiceRoom", style: doodle ? DoodleFonts.body(color: DoodleColors.blue, fontSize: 12).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: purplePrimary, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(
+                  child: Text("Private VoiceRoom",
+                      style: doodle
+                          ? DoodleFonts.body(
+                                  color: DoodleColors.blue, fontSize: 12)
+                              .copyWith(fontWeight: FontWeight.bold)
+                          : const TextStyle(
+                              color: purplePrimary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold))),
             ],
           ),
           const SizedBox(height: 12),
-          Text(roomName, style: doodle ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18) : TextStyle(color: isMe ? Colors.white : Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(roomName,
+              style: doodle
+                  ? DoodleFonts.heading(color: DoodleColors.brown, fontSize: 18)
+                  : TextStyle(
+                      color: isMe ? Colors.white : Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text("Host: $hostName", style: doodle ? DoodleFonts.body(color: DoodleColors.brown.withValues(alpha: 0.7), fontSize: 14) : TextStyle(color: isMe ? Colors.white70 : textMuted, fontSize: 12)),
+          Text("Host: $hostName",
+              style: doodle
+                  ? DoodleFonts.body(
+                      color: DoodleColors.brown.withValues(alpha: 0.7),
+                      fontSize: 14)
+                  : TextStyle(
+                      color: isMe ? Colors.white70 : textMuted, fontSize: 12)),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -642,7 +939,8 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: doodle ? DoodleColors.blue : purplePrimary,
                 foregroundColor: doodle ? DoodleColors.cream : Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
               ),
               onPressed: () {
@@ -655,7 +953,13 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
                   hostName: hostName,
                 );
               },
-              child: Text("Join Space", style: doodle ? DoodleFonts.body(color: DoodleColors.cream, fontSize: 14).copyWith(fontWeight: FontWeight.bold) : const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              child: Text("Join Space",
+                  style: doodle
+                      ? DoodleFonts.body(
+                              color: DoodleColors.cream, fontSize: 14)
+                          .copyWith(fontWeight: FontWeight.bold)
+                      : const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 13)),
             ),
           )
         ],
@@ -677,8 +981,10 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       // Start recording
       if (await _audioRecorder.hasPermission()) {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
-        await _audioRecorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+        final path =
+            '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        await _audioRecorder
+            .start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
         setState(() {
           _isRecording = true;
           _recordDuration = Duration.zero;
@@ -702,12 +1008,14 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
     try {
       final file = File(_recordedFilePath!);
       final bytes = await file.readAsBytes();
-      final fileName = 'dm_audio/${_myId}_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      final fileName =
+          'dm_audio/${_myId}_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await _sb.storage.from('avatars').uploadBinary(
-        fileName,
-        bytes,
-        fileOptions: const FileOptions(contentType: 'audio/m4a', upsert: true),
-      );
+            fileName,
+            bytes,
+            fileOptions:
+                const FileOptions(contentType: 'audio/m4a', upsert: true),
+          );
       final url = _sb.storage.from('avatars').getPublicUrl(fileName);
       _sendMessage(attachmentText: '[AUDIO]$url');
     } catch (e) {
@@ -716,7 +1024,8 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
   }
 
   Future<void> _pickImage() async {
-    final url = await ImageUploadService.pickAndUpload(context: context, folder: 'dm_images');
+    final url = await ImageUploadService.pickAndUpload(
+        context: context, folder: 'dm_images');
     if (url != null) {
       _sendMessage(attachmentText: '[IMAGE]$url');
     }
@@ -728,19 +1037,29 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       children: [
         ClipRRect(
           child: BackdropFilter(
-            filter: doodle ? ImageFilter.blur(sigmaX: 0, sigmaY: 0) : ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            filter: doodle
+                ? ImageFilter.blur(sigmaX: 0, sigmaY: 0)
+                : ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
-              padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 20),
+              padding: const EdgeInsets.only(
+                  left: 16, right: 16, top: 12, bottom: 20),
               decoration: doodle
-                ? BoxDecoration(
-                    color: DoodleColors.paper,
-                    border: Border(top: BorderSide(color: DoodleColors.brown.withValues(alpha: 0.1), width: 1)),
-                  )
-                : BoxDecoration(
-                    color: const Color(0xFF0E0B16).withValues(alpha: 0.7), // Semi-transparent
-                    border: const Border(top: BorderSide(color: borderColor, width: 1)),
-                  ),
-              child: _isAudioPreview ? _buildAudioPreviewBar(doodle) : _buildNormalInputBar(doodle),
+                  ? BoxDecoration(
+                      color: DoodleColors.paper,
+                      border: Border(
+                          top: BorderSide(
+                              color: DoodleColors.brown.withValues(alpha: 0.1),
+                              width: 1)),
+                    )
+                  : BoxDecoration(
+                      color: const Color(0xFF0E0B16)
+                          .withValues(alpha: 0.7), // Semi-transparent
+                      border: const Border(
+                          top: BorderSide(color: borderColor, width: 1)),
+                    ),
+              child: _isAudioPreview
+                  ? _buildAudioPreviewBar(doodle)
+                  : _buildNormalInputBar(doodle),
             ),
           ),
         ),
@@ -751,7 +1070,8 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
             child: EmojiPicker(
               textEditingController: _messageController,
               config: Config(
-                checkPlatformCompatibility: false, // Disables font checking to eliminate the 0.5s lag
+                checkPlatformCompatibility:
+                    false, // Disables font checking to eliminate the 0.5s lag
                 bottomActionBarConfig: const BottomActionBarConfig(
                   showBackspaceButton: false,
                   backgroundColor: Color(0xFF0E0B16),
@@ -769,7 +1089,8 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
                   backgroundColor: Color(0xFF0E0B16),
                   columns: 8,
                   loadingIndicator: Center(
-                    child: CircularProgressIndicator(color: purplePrimary, strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                        color: purplePrimary, strokeWidth: 2),
                   ),
                 ),
                 searchViewConfig: const SearchViewConfig(
@@ -788,27 +1109,34 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
       children: [
         GestureDetector(
           onTap: _cancelAudioPreview,
-          child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 28),
+          child: const Icon(Icons.delete_outline,
+              color: Colors.redAccent, size: 28),
         ),
         const SizedBox(width: 16),
         Expanded(
           child: Container(
             height: 44,
             decoration: doodle
-              ? DoodleDecorations.input()
-              : BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: borderColor),
-                ),
+                ? DoodleDecorations.input()
+                : BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: borderColor),
+                  ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.multitrack_audio, color: doodle ? DoodleColors.blue : purplePrimary),
+                Icon(Icons.multitrack_audio,
+                    color: doodle ? DoodleColors.blue : purplePrimary),
                 const SizedBox(width: 8),
                 Text(
                   '${_recordDuration.inMinutes}:${(_recordDuration.inSeconds % 60).toString().padLeft(2, '0')}',
-                  style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16).copyWith(fontWeight: FontWeight.bold) : const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: doodle
+                      ? DoodleFonts.body(
+                              color: DoodleColors.brown, fontSize: 16)
+                          .copyWith(fontWeight: FontWeight.bold)
+                      : const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
@@ -816,10 +1144,16 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
                     if (_isPlayingAudio) {
                       await _audioPlayer.pause();
                     } else if (_recordedFilePath != null) {
-                      await _audioPlayer.play(DeviceFileSource(_recordedFilePath!));
+                      await _audioPlayer
+                          .play(DeviceFileSource(_recordedFilePath!));
                     }
                   },
-                  child: Icon(_isPlayingAudio ? Icons.pause_circle_filled : Icons.play_circle_fill, color: doodle ? DoodleColors.blue : purplePrimary, size: 28),
+                  child: Icon(
+                      _isPlayingAudio
+                          ? Icons.pause_circle_filled
+                          : Icons.play_circle_fill,
+                      color: doodle ? DoodleColors.blue : purplePrimary,
+                      size: 28),
                 ),
               ],
             ),
@@ -829,11 +1163,21 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
         GestureDetector(
           onTap: _sendAudioMessage,
           child: Container(
-            width: 44, height: 44,
+            width: 44,
+            height: 44,
             decoration: doodle
-              ? DoodleDecorations.card(color: DoodleColors.orange).copyWith(shape: BoxShape.circle, borderRadius: null)
-              : BoxDecoration(shape: BoxShape.circle, gradient: neonGradient, boxShadow: [BoxShadow(color: purpleDark.withValues(alpha: 0.5), blurRadius: 12)]),
-            child: Icon(Icons.send_rounded, color: doodle ? DoodleColors.cream : Colors.white, size: 20),
+                ? DoodleDecorations.card(color: DoodleColors.orange)
+                    .copyWith(shape: BoxShape.circle, borderRadius: null)
+                : BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: neonGradient,
+                    boxShadow: [
+                        BoxShadow(
+                            color: purpleDark.withValues(alpha: 0.5),
+                            blurRadius: 12)
+                      ]),
+            child: Icon(Icons.send_rounded,
+                color: doodle ? DoodleColors.cream : Colors.white, size: 20),
           ),
         ),
       ],
@@ -853,58 +1197,77 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
               width: 40,
               height: 40,
               decoration: doodle
-                ? DoodleDecorations.card(color: DoodleColors.cream).copyWith(shape: BoxShape.circle, borderRadius: null)
-                : BoxDecoration(
-                    color: cardColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: borderColor),
-                  ),
-              child: Icon(Icons.add, color: doodle ? DoodleColors.brown : textMuted, size: 22),
+                  ? DoodleDecorations.card(color: DoodleColors.cream)
+                      .copyWith(shape: BoxShape.circle, borderRadius: null)
+                  : BoxDecoration(
+                      color: cardColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: borderColor),
+                    ),
+              child: Icon(Icons.add,
+                  color: doodle ? DoodleColors.brown : textMuted, size: 22),
             ),
           ),
         ),
         const SizedBox(width: 12),
-        
+
         // Text Field
         Expanded(
           child: Container(
             constraints: const BoxConstraints(minHeight: 48, maxHeight: 120),
             decoration: doodle
-              ? DoodleDecorations.input()
-              : BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: borderColor),
-                ),
+                ? DoodleDecorations.input()
+                : BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: borderColor),
+                  ),
             child: TextField(
               controller: _messageController,
               maxLines: null,
-              onTap: () { if (_showEmojiPicker) setState(() => _showEmojiPicker = false); },
+              onTap: () {
+                if (_showEmojiPicker) setState(() => _showEmojiPicker = false);
+              },
               textInputAction: TextInputAction.newline,
-              style: doodle ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16) : const TextStyle(color: Colors.white, fontSize: 15),
+              style: doodle
+                  ? DoodleFonts.body(color: DoodleColors.brown, fontSize: 16)
+                  : const TextStyle(color: Colors.white, fontSize: 15),
               decoration: InputDecoration(
-                hintText: _isRecording ? "Recording..." : "Message ${widget.partnerName}...",
+                hintText: _isRecording
+                    ? "Recording..."
+                    : "Message ${widget.partnerName}...",
                 hintStyle: doodle
-                  ? DoodleFonts.body(color: _isRecording ? Colors.redAccent : DoodleColors.brown.withValues(alpha: 0.5), fontSize: 16)
-                  : TextStyle(color: _isRecording ? Colors.redAccent : textMuted, fontSize: 14),
+                    ? DoodleFonts.body(
+                        color: _isRecording
+                            ? Colors.redAccent
+                            : DoodleColors.brown.withValues(alpha: 0.5),
+                        fontSize: 16)
+                    : TextStyle(
+                        color: _isRecording ? Colors.redAccent : textMuted,
+                        fontSize: 14),
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 suffixIcon: GestureDetector(
                   onTap: () {
                     setState(() => _showEmojiPicker = !_showEmojiPicker);
                     if (_showEmojiPicker) FocusScope.of(context).unfocus();
                   },
                   child: Icon(
-                    _showEmojiPicker ? Icons.keyboard : Icons.emoji_emotions_outlined,
-                    color: doodle ? DoodleColors.brown.withValues(alpha: 0.7) : textMuted.withValues(alpha: 0.7), size: 22
-                  ),
+                      _showEmojiPicker
+                          ? Icons.keyboard
+                          : Icons.emoji_emotions_outlined,
+                      color: doodle
+                          ? DoodleColors.brown.withValues(alpha: 0.7)
+                          : textMuted.withValues(alpha: 0.7),
+                      size: 22),
                 ),
               ),
             ),
           ),
         ),
         const SizedBox(width: 12),
-        
+
         // Mic / Send Button (Animated Transition)
         Padding(
           padding: const EdgeInsets.only(bottom: 2),
@@ -915,34 +1278,56 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
               width: 44,
               height: 44,
               decoration: doodle
-                ? DoodleDecorations.card(color: _isTyping ? DoodleColors.orange : (_isRecording ? Colors.redAccent : DoodleColors.cream))
-                    .copyWith(shape: BoxShape.circle, borderRadius: null)
-                : BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: _isTyping ? neonGradient : (_isRecording ? const LinearGradient(colors: [Colors.red, Colors.redAccent]) : null),
-                    color: (_isTyping || _isRecording) ? null : cardColor,
-                    border: (_isTyping || _isRecording) ? null : Border.all(color: borderColor),
-                    boxShadow: _isTyping || _isRecording
-                        ? [
-                            BoxShadow(
-                              color: _isTyping ? purpleDark.withValues(alpha: 0.5) : Colors.red.withValues(alpha: 0.5),
-                              blurRadius: 12,
-                              spreadRadius: 2,
-                            )
-                          ]
-                        : [],
-                  ),
+                  ? DoodleDecorations.card(
+                          color: _isTyping
+                              ? DoodleColors.orange
+                              : (_isRecording
+                                  ? Colors.redAccent
+                                  : DoodleColors.cream))
+                      .copyWith(shape: BoxShape.circle, borderRadius: null)
+                  : BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: _isTyping
+                          ? neonGradient
+                          : (_isRecording
+                              ? const LinearGradient(
+                                  colors: [Colors.red, Colors.redAccent])
+                              : null),
+                      color: (_isTyping || _isRecording) ? null : cardColor,
+                      border: (_isTyping || _isRecording)
+                          ? null
+                          : Border.all(color: borderColor),
+                      boxShadow: _isTyping || _isRecording
+                          ? [
+                              BoxShadow(
+                                color: _isTyping
+                                    ? purpleDark.withValues(alpha: 0.5)
+                                    : Colors.red.withValues(alpha: 0.5),
+                                blurRadius: 12,
+                                spreadRadius: 2,
+                              )
+                            ]
+                          : [],
+                    ),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 transitionBuilder: (Widget child, Animation<double> animation) {
                   return ScaleTransition(scale: animation, child: child);
                 },
                 child: Icon(
-                  _isTyping ? Icons.send_rounded : (_isRecording ? Icons.stop_rounded : Icons.mic_none_rounded),
+                  _isTyping
+                      ? Icons.send_rounded
+                      : (_isRecording
+                          ? Icons.stop_rounded
+                          : Icons.mic_none_rounded),
                   key: ValueKey<bool>(_isTyping || _isRecording),
                   color: doodle
-                    ? ((_isTyping || _isRecording) ? DoodleColors.cream : DoodleColors.brown)
-                    : ((_isTyping || _isRecording) ? Colors.white : purplePrimary),
+                      ? ((_isTyping || _isRecording)
+                          ? DoodleColors.cream
+                          : DoodleColors.brown)
+                      : ((_isTyping || _isRecording)
+                          ? Colors.white
+                          : purplePrimary),
                   size: 20,
                 ),
               ),
@@ -953,18 +1338,29 @@ class _BolroomDmChatScreenState extends State<BolroomDmChatScreen> {
     );
   }
 
+  Widget _buildFallbackBannerIcon(String typeLabel) {
+    return Icon(
+      typeLabel == 'PROFILE' ? Icons.person : Icons.celebration,
+      color: Colors.white.withValues(alpha: 0.6),
+      size: 40,
+    ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(
+        begin: const Offset(1, 1),
+        end: const Offset(1.1, 1.1),
+        duration: 1500.ms,
+        curve: Curves.easeInOut);
+  }
+
   // ==========================================
   // HELPER WIDGETS
   // ==========================================
   Widget _buildGlowingAvatar(double size) {
     return BolroomAvatarWidget(
       size: size,
-      avatarUrl: null, // DM uses avatarKey only (no photo needed in chat)
-      avatarKey: widget.partnerAvatarKey.isNotEmpty ? widget.partnerAvatarKey : null,
+      avatarUrl: widget.partnerAvatarUrl,
+      avatarKey:
+          widget.partnerAvatarKey.isNotEmpty ? widget.partnerAvatarKey : null,
       userId: widget.partnerId,
       showRing: size > 30,
     );
   }
 }
-
-

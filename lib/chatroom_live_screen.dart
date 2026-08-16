@@ -6477,52 +6477,6 @@ class ChatroomLiveScreenState extends State<ChatroomLiveScreen>
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
-                                // 1. Mask (Voice Disguise)
-                                GestureDetector(
-                                  onTap: () async {
-                                    // Quick toggle on tap
-                                    final newValue = !_isVoiceMasked;
-                                    setState(() {
-                                      _isVoiceMasked = newValue;
-                                      if (newValue) _isEditingVoiceMask = false;
-                                    });
-                                    _updateNativeVoiceMasking();
-
-                                    try {
-                                      await _sb
-                                          .from('bolroom_profiles')
-                                          .update({
-                                        'voice_mask_enabled': newValue
-                                      }).eq('id', _myId);
-                                      if (newValue) {
-                                        _showToast('Voice Masking ON');
-                                        _broadcastVoiceMaskChange(
-                                            true, _voiceMaskPreset);
-                                      } else {
-                                        _showToast(
-                                            'Voice Masking OFF (Original Voice)');
-                                        _broadcastVoiceMaskChange(false, '');
-                                      }
-                                    } catch (e) {
-                                      _showToast('Failed to update voice mask');
-                                    }
-                                  },
-                                  onLongPress: () {
-                                    _showVoiceMaskSheet();
-                                  },
-                                  child: Container(
-                                    width: 42,
-                                    height: 42,
-                                    color: Colors.transparent,
-                                    child: Center(
-                                      child: Icon(Icons.masks,
-                                          color: _isVoiceMasked
-                                              ? const Color(0xFFFF6B00)
-                                              : Colors.white54,
-                                          size: 24),
-                                    ),
-                                  ),
-                                ),
                                 // 2. React
                                 GestureDetector(
                                   onTap: _showReactionPicker,

@@ -7,6 +7,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'firebase_options.dart';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 // ignore_for_file: avoid_print, unused_local_variable, unused_element, unused_field, use_build_context_synchronously, unused_element_parameter, prefer_final_fields
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
@@ -53,6 +55,12 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint("[Dotenv] .env file not found or could not be loaded: $e");
+  }
 
   await Supabase.initialize(
     url: 'https://zlljvualqfjhbifhgabw.supabase.co',
@@ -612,7 +620,7 @@ class _MainDashboardState extends State<MainDashboard> {
   final List<int> _navigationHistory = [];
   static const int _maxHistory = 10;
   bool _goingForward = true;
-  String _navTransition = 'Slide';
+  String _navTransition = 'Fade';
   Timer? _presenceTimer;
 
   @override
@@ -650,7 +658,7 @@ class _MainDashboardState extends State<MainDashboard> {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
-        _navTransition = prefs.getString('nav_transition') ?? 'Slide';
+        _navTransition = prefs.getString('nav_transition') ?? 'Fade';
       });
     }
   }
@@ -682,13 +690,11 @@ class _MainDashboardState extends State<MainDashboard> {
     final double bottomSafeArea = MediaQuery.of(context).padding.bottom;
 
     return PopScope(
-      canPop: false,
+      canPop: _currentIndex == 0,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        if (_navigationHistory.isNotEmpty) {
-          setState(() {
-            _currentIndex = _navigationHistory.removeLast();
-          });
+        if (_currentIndex != 0) {
+          _onSelectTab(0);
         } else {
           SystemNavigator.pop();
         }
@@ -702,11 +708,12 @@ class _MainDashboardState extends State<MainDashboard> {
             // Swiping disabled to allow Mapbox horizontal panning without switching tabs
             Padding(
               padding: EdgeInsets.only(
-                  bottom: _currentIndex == 2 ? 0 : ((isDoodleMode(context) ? 84 : 80) + bottomSafeArea)),
+                  bottom: _currentIndex == 2
+                      ? 0
+                      : ((isDoodleMode(context) ? 64 : 60) + bottomSafeArea)),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                transitionBuilder:
-                    (Widget child, Animation<double> animation) {
+                transitionBuilder: (Widget child, Animation<double> animation) {
                   switch (_navTransition) {
                     case 'Fade':
                       return FadeTransition(opacity: animation, child: child);
@@ -741,9 +748,8 @@ class _MainDashboardState extends State<MainDashboard> {
                       final slideOffset = _goingForward
                           ? const Offset(1.0, 0.0)
                           : const Offset(-1.0, 0.0);
-                      final slide =
-                          Tween(begin: slideOffset, end: Offset.zero)
-                              .animate(animation);
+                      final slide = Tween(begin: slideOffset, end: Offset.zero)
+                          .animate(animation);
                       return SlideTransition(position: slide, child: child);
                   }
                 },
@@ -1315,7 +1321,8 @@ class _MainDashboardState extends State<MainDashboard> {
                                                 ]),
                                       child: AppMapView(
                                         onMapReady: (c) => mapSheetCtrl = c,
-                                        initialCenter: const LatLng(28.6139, 77.2090),
+                                        initialCenter:
+                                            const LatLng(28.6139, 77.2090),
                                         initialZoom: 14.0,
                                         myLocationEnabled: true,
                                       ),
@@ -1489,7 +1496,8 @@ class _MainDashboardState extends State<MainDashboard> {
                                                             timeLimit: Duration(
                                                                 seconds: 15)));
                                             mapSheetCtrl?.animateToLatLng(
-                                                LatLng(pos.latitude, pos.longitude),
+                                                LatLng(pos.latitude,
+                                                    pos.longitude),
                                                 zoom: 15.0);
                                             if (context.mounted) {
                                               ScaffoldMessenger.of(context)
@@ -1623,7 +1631,8 @@ class _MainDashboardState extends State<MainDashboard> {
                                                         fontSize: 12)),
                                                 onTap: () {
                                                   mapSheetCtrl?.animateToLatLng(
-                                                      LatLng(r['lat'], r['lon']),
+                                                      LatLng(
+                                                          r['lat'], r['lon']),
                                                       zoom: 15.0);
                                                   setSheetState(() {
                                                     sheetSearchResults = [];
@@ -5863,10 +5872,9 @@ extension _MapLayerX on _MapLayer {
         _MapLayer.hybrid: Color(0xFFFF9800),
       }[this]!;
 
-
-
   // Satellite and Hybrid imagery already look dark
-  bool get allowsDarkMode => this == _MapLayer.normal || this == _MapLayer.terrain;
+  bool get allowsDarkMode =>
+      this == _MapLayer.normal || this == _MapLayer.terrain;
 }
 
 // ----------------------------------------------------
@@ -5880,8 +5888,8 @@ class ActivityHubScreen extends StatefulWidget {
   State<ActivityHubScreen> createState() => _ActivityHubScreenState();
 }
 
-  // Google Maps native Dark Mode style JSON
-  const String _darkMapStyle = '''
+// Google Maps native Dark Mode style JSON
+const String _darkMapStyle = '''
 [
   {
     "elementType": "geometry",
@@ -6099,8 +6107,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
           });
           // Move map after a short delay so the widget has been built
           try {
-            _mapController?.animateToLatLng(
-                LatLng(lat, lng), zoom: 14.0);
+            _mapController?.animateToLatLng(LatLng(lat, lng), zoom: 14.0);
           } catch (_) {}
         }
       }
@@ -6233,8 +6240,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
   void _startLocationTracking() async {
     // Already tracking - just re-center the map
     if (_myLocation != null && _locationSubscription != null) {
-      _mapController
-          ?.animateToLatLng(_myLocation!, zoom: 15.0);
+      _mapController?.animateToLatLng(_myLocation!, zoom: 15.0);
       return;
     }
 
@@ -6283,8 +6289,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         // Only fly to location on first fix
         if (firstFix) {
           firstFix = false;
-          _mapController?.animateToLatLng(
-              LatLng(lat, lng), zoom: 15.0);
+          _mapController?.animateToLatLng(LatLng(lat, lng), zoom: 15.0);
         }
       }
     }, onError: (error) {
@@ -6559,9 +6564,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
               decoration: const BoxDecoration(
                   color: Colors.black54, shape: BoxShape.circle),
               child: Icon(
-                  _isMapDarkMode
-                      ? Icons.wb_sunny
-                      : Icons.nightlight_round,
+                  _isMapDarkMode ? Icons.wb_sunny : Icons.nightlight_round,
                   color: _isMapDarkMode ? Colors.yellow : Colors.blueGrey,
                   size: 20),
             ),
@@ -6611,7 +6614,6 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
       ]),
     );
   }
-
 
   Widget _buildFlutterMap(List<Map<String, dynamic>> liveActivities) {
     // Build markers ONLY for Standard Activities on the map
@@ -6878,8 +6880,8 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
                 _searchResults.clear();
                 _showDropdown = false;
               });
-              _mapController?.animateToLatLng(
-                  LatLng(loc['lat'], loc['lng']), zoom: 14.0);
+              _mapController?.animateToLatLng(LatLng(loc['lat'], loc['lng']),
+                  zoom: 14.0);
             },
           );
         },
@@ -6901,8 +6903,7 @@ class _ActivityHubScreenState extends State<ActivityHubScreen> {
         setState(() {
           _selectedMapActivity = act;
         });
-        _mapController
-            ?.animateToLatLng(LatLng(lat, lng), zoom: 15.0);
+        _mapController?.animateToLatLng(LatLng(lat, lng), zoom: 15.0);
       },
     );
   }

@@ -1,6 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:math' as math;
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -23,19 +22,32 @@ enum NotificationType {
 extension NotificationTypeExtension on NotificationType {
   String get value {
     switch (this) {
-      case NotificationType.match: return 'match';
-      case NotificationType.nearbyActivity: return 'nearby_activity';
-      case NotificationType.approval: return 'approval';
-      case NotificationType.rejection: return 'rejection';
-      case NotificationType.message: return 'message';
-      case NotificationType.compliment: return 'compliment';
-      case NotificationType.system: return 'system';
-      case NotificationType.bolroomMessage: return 'bolroom_message';
-      case NotificationType.bolroomSystem: return 'bolroom_system';
-      case NotificationType.bolroomFollower: return 'bolroom_follower';
-      case NotificationType.bolroomChatroom: return 'bolroom_chatroom';
-      case NotificationType.knock: return 'knock';
-      case NotificationType.knock_accepted: return 'knock_accepted';
+      case NotificationType.match:
+        return 'match';
+      case NotificationType.nearbyActivity:
+        return 'nearby_activity';
+      case NotificationType.approval:
+        return 'approval';
+      case NotificationType.rejection:
+        return 'rejection';
+      case NotificationType.message:
+        return 'message';
+      case NotificationType.compliment:
+        return 'compliment';
+      case NotificationType.system:
+        return 'system';
+      case NotificationType.bolroomMessage:
+        return 'bolroom_message';
+      case NotificationType.bolroomSystem:
+        return 'bolroom_system';
+      case NotificationType.bolroomFollower:
+        return 'bolroom_follower';
+      case NotificationType.bolroomChatroom:
+        return 'bolroom_chatroom';
+      case NotificationType.knock:
+        return 'knock';
+      case NotificationType.knock_accepted:
+        return 'knock_accepted';
     }
   }
 }
@@ -61,15 +73,21 @@ class NotificationService {
             .maybeSingle();
 
         if (profile != null && profile['notification_settings'] != null) {
-          final settings = profile['notification_settings'] as Map<String, dynamic>;
+          final settings =
+              profile['notification_settings'] as Map<String, dynamic>;
           bool shouldNotify = true;
 
-          if (type == NotificationType.match) shouldNotify = settings['matches'] ?? true;
-          if (type == NotificationType.nearbyActivity) shouldNotify = settings['nearby_activities'] ?? true;
-          if (type == NotificationType.approval || type == NotificationType.rejection) {
+          if (type == NotificationType.match)
+            shouldNotify = settings['matches'] ?? true;
+          if (type == NotificationType.nearbyActivity)
+            shouldNotify = settings['nearby_activities'] ?? true;
+          if (type == NotificationType.approval ||
+              type == NotificationType.rejection) {
             shouldNotify = settings['approvals'] ?? true;
           }
-          if (type == NotificationType.message || type == NotificationType.compliment) shouldNotify = settings['messages'] ?? true;
+          if (type == NotificationType.message ||
+              type == NotificationType.compliment)
+            shouldNotify = settings['messages'] ?? true;
 
           if (!shouldNotify) {
             debugPrint('Notification suppressed user preferences: $type');
@@ -77,7 +95,8 @@ class NotificationService {
           }
         }
       } catch (e) {
-        debugPrint('Warning: Could not fetch notification_settings. Proceeding to send anyway. Error: $e');
+        debugPrint(
+            'Warning: Could not fetch notification_settings. Proceeding to send anyway. Error: $e');
       }
 
       // 2. Insert into notifications table
@@ -91,17 +110,17 @@ class NotificationService {
         'created_at': DateTime.now().toIso8601String(),
       });
 
-      
       debugPrint('Notification sent to $userId: $title');
     } catch (e) {
       debugPrint('Error sending notification: $e');
       try {
-        await Supabase.instance.client.from('debug_logs').insert({'message': 'Error sending notification: $e'});
+        await Supabase.instance.client
+            .from('debug_logs')
+            .insert({'message': 'Error sending notification: $e'});
       } catch (_) {}
     }
   }
 
-  /// Notifies multiple users about a nearby activity using coordinate-based radius check
   static Future<void> notifyNearbyActivity({
     required String creatorId,
     required String activityId,
@@ -116,96 +135,44 @@ class NotificationService {
     bool isAnonymous = false,
   }) async {
     try {
-      debugPrint('[NotifBlast] Starting notification blast. isRushIn=$isRushIn radius=${radiusKm}km lat=$lat lng=$lng');
+      debugPrint(
+          '[NotifBlast] Starting notification blast via RPC. isRushIn=$isRushIn radius=${radiusKm}km lat=$lat lng=$lng');
 
-      final resolvedLocation = await _resolveLocationName(locationName, lat, lng);
+      final resolvedLocation =
+          await _resolveLocationName(locationName, lat, lng);
       debugPrint('[NotifBlast] Resolved location: $resolvedLocation');
 
-      // Fetch all users except creator — get their coordinates
-      final List<dynamic> users = await _supabase
-          .from('profiles')
-          .select('id, notification_settings, lat, lng, city, district')
-          .neq('id', creatorId);
-
-      debugPrint('[NotifBlast] Found ${users.length} potential users to notify');
-
-      int notifiedCount = 0;
-      int skippedCount = 0;
-
-      for (var user in users) {
-        try {
-          final userId = user['id']?.toString();
-          if (userId == null) continue;
-
-          // Respect notification settings
-          final settings = user['notification_settings'];
-          if (settings is Map && settings['nearby_activities'] == false) {
-            skippedCount++;
-            continue;
-          }
-
-          final userLatRaw = user['lat'];
-          final userLngRaw = user['lng'];
-          final double? userLat = userLatRaw != null
-              ? (userLatRaw is num ? userLatRaw.toDouble() : double.tryParse(userLatRaw.toString()))
-              : null;
-          final double? userLng = userLngRaw != null
-              ? (userLngRaw is num ? userLngRaw.toDouble() : double.tryParse(userLngRaw.toString()))
-              : null;
-
-          bool shouldNotify = false;
-
-          if (userLat != null && userLng != null) {
-            final distance = _calculateDistance(lat, lng, userLat, userLng);
-            debugPrint('[NotifBlast] User $userId distance: ${distance.toStringAsFixed(2)}km (threshold: ${radiusKm}km)');
-            if (distance <= radiusKm) {
-              shouldNotify = true;
-            }
-          } else {
-            // No coordinates: for Rush-ins notify anyway (user hasn't shared location)
-            if (isRushIn) {
-              debugPrint('[NotifBlast] User $userId has no coords, notifying by default for Rush-in');
-              shouldNotify = true;
-            }
-          }
-
-          if (shouldNotify) {
-            final String notificationTitle;
-            final String notificationBody;
-            if (isRushIn) {
-              notificationTitle = isAnonymous
-                  ? 'New Rush-in Nearby! ⚡'
-                  : '$hostName created a Rush-in! ⚡';
-              notificationBody = isAnonymous
-                  ? 'Someone created a rush-in near $resolvedLocation'
-                  : '$title near $resolvedLocation';
-            } else {
-              notificationTitle = isAnonymous
-                  ? 'New Activity Nearby! 📍'
-                  : '$hostName created an Activity! 📅';
-              notificationBody = isAnonymous
-                  ? 'Someone created an activity near $resolvedLocation'
-                  : '$title near $resolvedLocation';
-            }
-
-            await sendNotification(
-              userId: userId,
-              type: NotificationType.nearbyActivity,
-              title: notificationTitle,
-              body: notificationBody,
-              payload: {'activity_id': activityId},
-            );
-            notifiedCount++;
-            debugPrint('[NotifBlast] ✅ Notified user $userId');
-          } else {
-            skippedCount++;
-          }
-        } catch (innerError) {
-          debugPrint('[NotifBlast] Error processing user ${user['id']}: $innerError');
-        }
+      final String notificationTitle;
+      final String notificationBody;
+      if (isRushIn) {
+        notificationTitle = isAnonymous
+            ? 'New Rush-in Nearby! ⚡'
+            : '$hostName created a Rush-in! ⚡';
+        notificationBody = isAnonymous
+            ? 'Someone created a rush-in near $resolvedLocation'
+            : '$title near $resolvedLocation';
+      } else {
+        notificationTitle = isAnonymous
+            ? 'New Activity Nearby! 📍'
+            : '$hostName created an Activity! 📅';
+        notificationBody = isAnonymous
+            ? 'Someone created an activity near $resolvedLocation'
+            : '$title near $resolvedLocation';
       }
 
-      debugPrint('[NotifBlast] Done. Notified: $notifiedCount, Skipped: $skippedCount');
+      await _supabase.rpc('broadcast_nearby_notifications', params: {
+        'p_creator_id': creatorId,
+        'p_activity_id': activityId,
+        'p_title': notificationTitle,
+        'p_body': notificationBody,
+        'p_lat': lat,
+        'p_lng': lng,
+        'p_radius_km': radiusKm,
+        'p_type': 'nearby_activity',
+        'p_payload': {'activity_id': activityId},
+      });
+
+      debugPrint('[NotifBlast] Done initiating blast via RPC.');
     } catch (e) {
       debugPrint('[NotifBlast] Fatal error: $e');
     }
@@ -215,7 +182,8 @@ class NotificationService {
   /// If [locationName] already looks like a specific place (not just a city),
   /// returns it as-is. Otherwise, reverse-geocodes [lat]/[lng] to find the
   /// nearest landmark (hospital, park, road, etc.).
-  static Future<String> _resolveLocationName(String locationName, double lat, double lng) async {
+  static Future<String> _resolveLocationName(
+      String locationName, double lat, double lng) async {
     // If a specific location was already provided, use it directly
     if (locationName.trim().isNotEmpty) {
       // Check if it looks like a generic city-level name (e.g. "Lucknow, UP")
@@ -240,13 +208,13 @@ class NotificationService {
         final address = data['address'] as Map<String, dynamic>? ?? {};
 
         // Try to find a specific landmark in priority order
-        final landmark = data['name']
-            ?? address['amenity']
-            ?? address['building']
-            ?? address['shop']
-            ?? address['leisure']
-            ?? address['historic']
-            ?? address['tourism'];
+        final landmark = data['name'] ??
+            address['amenity'] ??
+            address['building'] ??
+            address['shop'] ??
+            address['leisure'] ??
+            address['historic'] ??
+            address['tourism'];
 
         if (landmark != null && landmark.toString().trim().isNotEmpty) {
           return landmark.toString().trim();
@@ -254,7 +222,8 @@ class NotificationService {
 
         // Fall back to road + neighbourhood
         final road = address['road'] ?? address['pedestrian'];
-        final area = address['neighbourhood'] ?? address['suburb'] ?? address['village'];
+        final area =
+            address['neighbourhood'] ?? address['suburb'] ?? address['village'];
         if (road != null) {
           return area != null ? '$road, $area' : road.toString();
         }
@@ -268,26 +237,11 @@ class NotificationService {
     return locationName.trim().isNotEmpty ? locationName.trim() : 'your area';
   }
 
-  // Haversine formula to calculate distance between two coordinates in kilometers
-  static double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-    const double R = 6371.0; // Earth's radius in km
-    final double dLat = _toRadians(lat2 - lat1);
-    final double dLon = _toRadians(lon2 - lon1);
-    final double a = 
-        math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_toRadians(lat1)) * math.cos(_toRadians(lat2)) * 
-        math.sin(dLon / 2) * math.sin(dLon / 2);
-    final double c = 2 * math.asin(math.sqrt(a));
-    return R * c;
-  }
-
-  static double _toRadians(double degree) {
-    return degree * 3.1415926535897932 / 180;
-  }
-
   static Future<void> markAsRead(String notificationId) async {
     try {
-      await _supabase.from('notifications').update({'is_read': true}).eq('id', notificationId);
+      await _supabase
+          .from('notifications')
+          .update({'is_read': true}).eq('id', notificationId);
     } catch (e) {
       debugPrint('Error marking notification as read: $e');
     }
@@ -303,13 +257,16 @@ class NotificationService {
 
   static Future<void> markAllAsRead(String userId) async {
     try {
-      await _supabase.from('notifications').update({'is_read': true}).eq('user_id', userId);
+      await _supabase
+          .from('notifications')
+          .update({'is_read': true}).eq('user_id', userId);
     } catch (e) {
       debugPrint('Error marking all notifications as read: $e');
     }
   }
 
-  static Future<List<Map<String, dynamic>>> fetchNotifications(String userId) async {
+  static Future<List<Map<String, dynamic>>> fetchNotifications(
+      String userId) async {
     try {
       final res = await _supabase
           .from('notifications')
